@@ -1,4 +1,4 @@
-"""The band's press on a new study (SR-294): ``plumb mod room --study <slug>``, run by the
+"""The band's press on a new study (SR-294): ``iaso mod room --study <slug>``, run by the
 panel with its key on stdin, opens the browser room on the study (starting it when the
 panel's room is not running) and marks the study opened; without the panel's key, or under the
 agent's marker, nothing opens."""
@@ -11,13 +11,13 @@ from study.helpers import written
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
-from plumb import study
-from plumb.browser import launch
+from iaso import study
+from iaso.browser import launch
 
 pytestmark = pytest.mark.sr("SR-294")
 
 intent = test_intent_loop.intent   # INT-001, SR-040 deriving from it, and an open loop
-TITLE = "How plumb's background jobs run"
+TITLE = "How iaso's background jobs run"
 ORIGIN = "http://127.0.0.1:50123"
 
 
@@ -73,7 +73,7 @@ def test_sr294_ex2_without_the_owners_press_the_room_stays_closed(announced, mon
     """SR-294 EX-2: only the panel's press opens the room; the study waits in it."""
     root, slug, seen = announced
     if how == "the agent's marker":
-        monkeypatch.setenv("PLUMB_AGENT_SESSION", SESSION)
+        monkeypatch.setenv("IASO_AGENT_SESSION", SESSION)
     stdin = {} if how == "no key" else {"key": "b2" * 32 if how == "another key" else KEY}
     assert _room(monkeypatch, capsys, root, slug, stdin)[0] == 3
     assert seen["started"] == [] and seen["opened"] == []

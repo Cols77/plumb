@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-from plumb import debug
-from plumb.evaluate import issues, loop
-from plumb.understand import loops
+from iaso import debug
+from iaso.evaluate import issues, loop
+from iaso.understand import loops
 
 pytestmark = pytest.mark.sr("SR-392")
 
@@ -20,8 +20,8 @@ TASK = NS(name="simple")
 
 @pytest.fixture(autouse=True)
 def _doubles(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("plumb.api.open_core", lambda root: object())
-    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [])
+    monkeypatch.setattr("iaso.api.open_core", lambda root: object())
+    monkeypatch.setattr("iaso.debug.all_cases", lambda root: [])
     monkeypatch.setattr(issues, "open_cases", lambda root, found: [f"e{i}" for i in found])
 
 
@@ -106,4 +106,4 @@ def test_note_and_case_writes_move_the_stamp(repo: Path) -> None:
     monkey_case = {"id": "c", "state": "open"}
     moved(lambda: debug._write_case(repo, monkey_case))
     moved(lambda: debug._update(repo, ["c"], stage="fix"))
-    assert json.loads((repo / ".plumb/cache/evaluate/n.json").read_text())["task"] == "simple"
+    assert json.loads((repo / ".iaso/cache/evaluate/n.json").read_text())["task"] == "simple"

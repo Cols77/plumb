@@ -1,6 +1,6 @@
 """R17's merge hold when git would FAST-FORWARD the default branch (SR-077 EX-13): a
 fast-forward records no merge commit, so git runs no pre-merge-commit hook. The one choke
-point, installed by /plumb init with the other merge hooks (``premerge.ff_hold`` and the
+point, installed by /iaso init with the other merge hooks (``premerge.ff_hold`` and the
 post-merge hook), keeps every way in held. One test per entry point: a plain ``git merge``
 that would fast-forward, a ``git pull`` that would, and ``--ff-only`` (merge and pull)."""
 
@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 from mergedriver.mdhelpers import commit_all, ex, make_repo, record, run_git, write_record
-from plumb import cli
-from plumb.boundary.premerge import NO_FF
+from iaso import cli
+from iaso.boundary.premerge import NO_FF
 
 
 def _env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     env.update(PYTHONUTF8="1", GIT_EDITOR="true")
     return env
 
@@ -31,7 +31,7 @@ def _head(root: Path) -> str:
 
 
 def _adopted(tmp_path: Path) -> tuple[Path, Path]:
-    """``/plumb init`` in a repository holding SR-005, and a worktree on feat-x; main has
+    """``/iaso init`` in a repository holding SR-005, and a worktree on feat-x; main has
     not moved since, so merging feat-x into main would fast-forward."""
     root = make_repo(tmp_path / "main")
     assert cli.main(["init", "--root", str(root)]) == 0
@@ -132,7 +132,7 @@ def test_clean_fast_forward_stays(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-260")
 def test_owner_option_kept_and_hold_switch(tmp_path: Path) -> None:
     """An owner's own fast-forward option stays (the post-merge hook still checks), and
-    ``plumb.mergeHold=false`` lets a fast-forward through."""
+    ``iaso.mergeHold=false`` lets a fast-forward through."""
     root = make_repo(tmp_path / "own")
     run_git(root, "config", "branch.main.mergeoptions", "--ff-only")
     assert cli.main(["init", "--root", str(root)]) == 0
@@ -143,7 +143,7 @@ def test_owner_option_kept_and_hold_switch(tmp_path: Path) -> None:
     other = tmp_path / "feat"
     run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
     _held_work(other)
-    run_git(root, "config", "plumb.mergeHold", "false")
+    run_git(root, "config", "iaso.mergeHold", "false")
     after = run_git(root, "rev-parse", "feat-x").stdout.strip()
     _git(root, "merge", "feat-x")
     assert _head(root) == after

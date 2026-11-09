@@ -3,8 +3,8 @@
 Guarantee (sp3 1, 4; "trust comes from evidence"): exit 0 needs verification evidence. When
 reading it raises (a corrupt evidence line, a git error in the tree identity, a test-map scan
 error) or the verification lane is absent, the report holds with 5 and names the error. The
-choke point is ``plumb.boundary.exit_code``; one test per entry point that takes its exit
-from it: the library ``merge_report``, ``plumb merge-check``, ``plumb validate --merge`` and
+choke point is ``iaso.boundary.exit_code``; one test per entry point that takes its exit
+from it: the library ``merge_report``, ``iaso merge-check``, ``iaso validate --merge`` and
 the pre-push hook mode.
 """
 
@@ -17,11 +17,11 @@ from pathlib import Path
 import pytest
 from merge_helpers import INT, SR2, commit, git, repin_all, write
 
-import plumb.verify
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.boundary import MergeReport, exit_code, merge_report, render
-from plumb.contracts import Target
+import iaso.verify
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.boundary import MergeReport, exit_code, merge_report, render
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-254")
 
@@ -31,9 +31,9 @@ SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: Both ends are pin
 @pytest.fixture
 def green(repo: Path) -> tuple[Path, str]:
     """A change whose only touched requirement is confirmed: exit 0 with verification."""
-    write(repo, ".plumb/intents/INT-001.md", INT)
-    write(repo, ".plumb/requirements/SR-001.md", SR1)
-    write(repo, ".plumb/requirements/SR-002.md", SR2)
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR1)
+    write(repo, ".iaso/requirements/SR-002.md", SR2)
     write(repo, "src/mod.py", "x = 1\n")
     core = open_core(repo)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
@@ -54,7 +54,7 @@ def broken(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(core):
         raise ValueError("corrupt evidence line 3")
 
-    monkeypatch.setattr(plumb.verify, "open_verify", boom)
+    monkeypatch.setattr(iaso.verify, "open_verify", boom)
 
 
 def test_exit_code_holds_without_verification() -> None:

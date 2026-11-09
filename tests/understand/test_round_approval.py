@@ -13,10 +13,10 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.approvals import approval_items
-from plumb.confirm import checked
-from plumb.understand import judge, verdict
+from iaso.api import open_core
+from iaso.approvals import approval_items
+from iaso.confirm import checked
+from iaso.understand import judge, verdict
 from understand import test_judge_cascade
 from understand.fakes import FakeDispatcher, as_worker
 from understand.test_cascade_fast_track import (
@@ -73,7 +73,7 @@ def problems(root: Path) -> list[str]:
 
 
 def reported(root: Path, record_id: str) -> list[Any]:
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     return [f for f in validate(open_core(root)) if f.subject == record_id
             or record_id in f.message]
@@ -116,7 +116,7 @@ def test_ex4_a_typed_answer_still_counts_once_the_record_is_reworded_to_agree(
     the agent rewords the requirement to agree, so its hash changes; the judge's next round
     is shown that answer with the reworded record and approves citing it, instead of asking
     the same question again."""
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     core = configure(world)
     fast_track_on(core, monkeypatch, 0.93)
@@ -144,7 +144,7 @@ def test_ex9_an_answer_the_record_was_confirmed_on_does_not_carry_a_later_edit(
     """SR-248 EX-9 beside SR-209 EX-4: once the record is confirmed on the owner's answer, an
     edit of it is a new version the answer was never about: the judge's premise holds no
     answer, nothing is approved on it, and a forged approval citing it is refused."""
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     core = configure(world)
     fast_track_on(core, monkeypatch, 0.93)
@@ -268,7 +268,7 @@ def test_ex1_the_validated_requirement_is_approved_citing_the_owners_words(
 def test_ex2_an_auto_jev_approval_at_0_6_is_refused_and_the_record_stays_proposed(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-251 EX-2: a worker wrote a by: auto-jev approval at 0.6, under the 0.9 floor: it is
-    refused, SR-001 counts as proposed and plumb validate reports the inert entry."""
+    refused, SR-001 counts as proposed and iaso validate reports the inert entry."""
     core = configure(world)
     calibrate_to(core, 0.43)
     digest = owner_answers(world, ["SR-001"])
@@ -295,7 +295,7 @@ def test_ex3_an_owner_quoted_approval_written_by_hand_is_not_accepted(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-210 EX-3: the agent writes an approval by hand with an owner quote (on a host that
     cannot mark its session): it is not accepted and validation reports it."""
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     core = open_core(world)
     core.log_append("events", "approval", {
         "records": approval_items(core, ["SR-001"]), "by": "owner",
@@ -312,7 +312,7 @@ def test_ex3_a_study_room_approval_with_no_question_at_that_version_is_not_accep
         world: Path, monkeypatch: pytest.MonkeyPatch, source: dict[str, str]) -> None:
     """SR-210 EX-3: an entry saying the owner answered in the study room, with no question
     put at that version: not accepted, and validation reports it."""
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     core = open_core(world)
     core.log_append("events", "approval", {
         "records": approval_items(core, ["SR-001"]), **source,
@@ -344,7 +344,7 @@ def escalated(repo: Path, write_record) -> Path:
 def test_a_set_with_one_record_unclear_approves_nothing_then_whole(escalated: Path) -> None:
     """A set is approved whole (P6): with SR-002 unclear nothing is approved and the clear
     records wait for their set; once every record is clear, one approval names the set."""
-    from plumb.capture.spec import set_state
+    from iaso.capture.spec import set_state
 
     ids = ["INT-001", "SR-001", "SR-002"]
     owner_answers(escalated, ids)
@@ -371,7 +371,7 @@ def test_an_answer_to_the_agents_own_question_reaches_the_judge_of_the_same_sess
     """Case report-4c7b844d: the owner answered the agent's own question (no judge question,
     so no ``asked``) in the session that spoke the record's message; the judge of the record,
     wherever it runs, is shown that answer instead of asking it again."""
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     digest = open_core(world).log_append("events", "question-answer", {
         "session": SESSION, "question": "Build it now or only review it?",

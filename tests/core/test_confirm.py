@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import approvals
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-206")
 
@@ -34,7 +34,7 @@ def _confirmation(root: Path, record_id: str = "SR-001") -> str:
 
 
 def _edit(root: Path) -> None:
-    path = root / ".plumb" / "requirements" / "SR-001.md"
+    path = root / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("Both ends", "Each end"),
                     encoding="utf-8")
 

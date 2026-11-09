@@ -60,7 +60,7 @@ def is_budget_failure(excinfo: pytest.ExceptionInfo) -> bool:
 
 
 def _case(item: pytest.Item, excinfo: pytest.ExceptionInfo) -> None:
-    from plumb.understand import summary
+    from iaso.understand import summary
 
     key = hashlib.sha256(item.nodeid.encode()).hexdigest()[:8]
     summary.write_cases(SimpleNamespace(root=item.config.rootpath), f"load-bound-{key}", [{

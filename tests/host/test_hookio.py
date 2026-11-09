@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import hookio
+from iaso.hosts.claude_code import hookio
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -28,7 +28,7 @@ def test_internal_error_exits_zero_with_notice(repo: Path, hook_input) -> None:
     code, out = _run(broken, repo, hook_input("Stop"), budget_ms=500)
     assert code == 0
     assert out.strip() == hookio.SKIP_ERROR
-    log = (repo / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8")
+    log = (repo / ".iaso" / "session" / "errors.log").read_text(encoding="utf-8")
     assert "boom in the hook" in log
     assert "test" in log
 
@@ -55,17 +55,17 @@ def test_deadline_skips_with_budget_notice(repo: Path, hook_input) -> None:
 
 def test_block_output_shape(repo: Path, hook_input) -> None:
     def blocking(ctx):
-        return hookio.HookOutput(block_reason="plumb: run the tests")
+        return hookio.HookOutput(block_reason="iaso: run the tests")
 
     code, out = _run(blocking, repo, hook_input("Stop"), budget_ms=500)
     assert code == 0
-    assert json.loads(out) == {"decision": "block", "reason": "plumb: run the tests"}
+    assert json.loads(out) == {"decision": "block", "reason": "iaso: run the tests"}
 
 
 def test_system_message_and_plain_text_outputs(repo: Path, hook_input) -> None:
-    code, out = _run(lambda ctx: hookio.HookOutput(system_message="plumb: ok"), repo,
+    code, out = _run(lambda ctx: hookio.HookOutput(system_message="iaso: ok"), repo,
                      hook_input("Stop"), budget_ms=500)
-    assert json.loads(out) == {"systemMessage": "plumb: ok"}
+    assert json.loads(out) == {"systemMessage": "iaso: ok"}
     code, out = _run(lambda ctx: hookio.HookOutput(text="line 1\nline 2"), repo,
                      hook_input("SessionStart"), budget_ms=500)
     assert out == "line 1\nline 2\n"
@@ -92,7 +92,7 @@ def test_unreadable_input_still_exits_zero(repo: Path) -> None:
     assert out.strip() == "{}"
 
 
-def test_repository_without_plumb_is_left_alone(tmp_path: Path, hook_input,
+def test_repository_without_iaso_is_left_alone(tmp_path: Path, hook_input,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
@@ -121,35 +121,35 @@ def test_kept_lines_survive_a_budget_cut(repo: Path, hook_input) -> None:
     cut by the deadline; only the skipped step is named."""
 
     def partly_slow(ctx):
-        ctx.keep(["plumb: relevant records", "plumb: relay line"])
+        ctx.keep(["iaso: relevant records", "iaso: relay line"])
         time.sleep(0.05)
         ctx.deadline.check("covering tests")
         return hookio.HookOutput(text="never printed")
 
     code, out = _run(partly_slow, repo, hook_input("UserPromptSubmit"), budget_ms=10)
     assert code == 0
-    assert out.splitlines() == ["plumb: relevant records", "plumb: relay line",
-                                "plumb: check skipped (budget): covering tests"]
+    assert out.splitlines() == ["iaso: relevant records", "iaso: relay line",
+                                "iaso: check skipped (budget): covering tests"]
 
 
 def test_kept_lines_survive_in_a_json_hook(repo: Path, hook_input) -> None:
     def partly_slow(ctx):
-        ctx.keep(["plumb: proposed SR-001 read-back"])
+        ctx.keep(["iaso: proposed SR-001 read-back"])
         time.sleep(0.05)
         ctx.deadline.check("fidelity")
 
     code, out = _run(partly_slow, repo, hook_input("Stop"), budget_ms=10, json_output=True)
-    assert json.loads(out) == {"systemMessage": "plumb: proposed SR-001 read-back\n"
-                                                "plumb: check skipped (budget): fidelity"}
+    assert json.loads(out) == {"systemMessage": "iaso: proposed SR-001 read-back\n"
+                                                "iaso: check skipped (budget): fidelity"}
 
 
 def test_kept_lines_survive_an_internal_error(repo: Path, hook_input) -> None:
     def broken_late(ctx):
-        ctx.keep(["plumb: relay line"])
+        ctx.keep(["iaso: relay line"])
         raise RuntimeError("late failure")
 
     code, out = _run(broken_late, repo, hook_input("UserPromptSubmit"), budget_ms=500)
-    assert out.splitlines() == ["plumb: relay line", hookio.SKIP_ERROR]
+    assert out.splitlines() == ["iaso: relay line", hookio.SKIP_ERROR]
 
 
 def test_watchdog_prints_the_kept_lines(repo: Path, hook_input, tmp_path: Path) -> None:
@@ -160,22 +160,22 @@ def test_watchdog_prints_the_kept_lines(repo: Path, hook_input, tmp_path: Path) 
     script = tmp_path / "wd.py"
     script.write_text(
         "import io, sys, time\n"
-        "from plumb.hosts.claude_code import hookio\n"
+        "from iaso.hosts.claude_code import hookio\n"
         "def h(ctx):\n"
-        "    ctx.keep(['plumb: relay line'])\n"
+        "    ctx.keep(['iaso: relay line'])\n"
         "    time.sleep(5)\n"
         f"hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
         "                 budget_ms=100, watchdog=True, start=time.monotonic() - hookio.HARD_LIMIT_S + 2.0)\n",
         encoding="utf-8")
     result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
                             timeout=30, check=False)
-    assert result.stdout.splitlines() == ["plumb: relay line", hookio.SKIP_BUDGET]
+    assert result.stdout.splitlines() == ["iaso: relay line", hookio.SKIP_BUDGET]
 
 
 def test_default_budgets_sit_just_under_the_hard_limit(repo: Path) -> None:
     """Soft budgets generous but under the hard limit (SR-181): a loaded 2-core machine must not cut
     the read-back on a routine turn; the watchdog still bounds the hook."""
-    from plumb.config import HooksConfig
+    from iaso.config import HooksConfig
 
     budgets = HooksConfig().budget_ms
     for name in ("session_start", "prompt", "stop"):
@@ -185,19 +185,19 @@ def test_default_budgets_sit_just_under_the_hard_limit(repo: Path) -> None:
 
 _GRACE_SCRIPT = (
     "import io, sys, time\n"
-    "from plumb.hosts.claude_code import hookio\n"
+    "from iaso.hosts.claude_code import hookio\n"
     "def h(ctx):\n"
     "    time.sleep(0.5)\n"  # the hard limit (0.3 s from start) passes before anything is kept
-    "    ctx.keep(['plumb: read-back'])\n"
+    "    ctx.keep(['iaso: read-back'])\n"
     "    time.sleep(0.3)\n"
-    "    return hookio.HookOutput(text='plumb: read-back')\n"
+    "    return hookio.HookOutput(text='iaso: read-back')\n"
     "hookio.HARD_LIMIT_S = 0.3\n"
     "hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
     "                 budget_ms=100, watchdog=True, start=time.monotonic(), grace_s={grace})\n")
 
 
 @pytest.mark.parametrize(("grace", "expected"), [
-    (1.0, ["plumb: read-back"]),  # nothing kept at the limit: wait for the read-back
+    (1.0, ["iaso: read-back"]),  # nothing kept at the limit: wait for the read-back
     (0.0, [hookio.SKIP_BUDGET]),  # no grace: the bare notice, as before
 ])
 def test_watchdog_grace_waits_for_the_first_kept_line(repo: Path, tmp_path: Path, grace: float,
@@ -217,7 +217,7 @@ def test_watchdog_grace_waits_for_the_first_kept_line(repo: Path, tmp_path: Path
 def test_write_json_atomic_retries_transient_permission_error(tmp_path, monkeypatch):
     import os
 
-    from plumb.hosts.claude_code import hookio
+    from iaso.hosts.claude_code import hookio
     real = os.replace
     calls = []
 

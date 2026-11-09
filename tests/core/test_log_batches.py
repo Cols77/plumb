@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log
-from plumb.api import Core
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.api import Core
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
@@ -39,7 +39,7 @@ def io_counts(monkeypatch, paths):
 
 
 def test_single_append_reads_head_once_and_preserves_other_stream(tmp_path, monkeypatch):
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
     first = log.append(paths, "evidence", "test-run", {})
     counts = io_counts(monkeypatch, paths)
     log.append(paths, "events", "note", {})
@@ -55,8 +55,8 @@ def test_single_append_reads_head_once_and_preserves_other_stream(tmp_path, monk
     ([("note", {}), ("approval", {"by": "owner-words"})], log.LogError),
 ])
 def test_batch_validates_every_entry_before_any_write(tmp_path, monkeypatch, entries, exception):
-    monkeypatch.delenv("PLUMB_WORKER", raising=False)
-    paths = PlumbPaths(tmp_path)
+    monkeypatch.delenv("IASO_WORKER", raising=False)
+    paths = IasoPaths(tmp_path)
     with pytest.raises(exception):
         log.append_many(paths, "events", [("note", {})] * 33 + entries)
     assert list(log.read(paths, "events")) == []
@@ -89,7 +89,7 @@ def test_partial_batch_invalidates_head_and_core_events_before_recovery(tmp_path
 
 
 def test_failed_head_invalidation_prevents_persistence(tmp_path, monkeypatch):
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
     first = log.append(paths, "events", "note", {})
     unlink = Path.unlink
 
@@ -105,7 +105,7 @@ def test_failed_head_invalidation_prevents_persistence(tmp_path, monkeypatch):
 
 
 def test_failed_head_publication_rebuilds_chain(tmp_path, monkeypatch):
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
     log.append(paths, "events", "note", {})
     replace = os.replace
 
@@ -123,7 +123,7 @@ def test_failed_head_publication_rebuilds_chain(tmp_path, monkeypatch):
 
 
 def test_empty_batch_does_no_io_and_unknown_stream_is_rejected(tmp_path, monkeypatch):
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
     counts = io_counts(monkeypatch, paths)
     assert log.append_many(paths, "events", []) == []
     with pytest.raises(ValueError, match="unknown log stream"):
@@ -134,7 +134,7 @@ def test_empty_batch_does_no_io_and_unknown_stream_is_rejected(tmp_path, monkeyp
 def test_concurrent_batches_form_one_chain(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
 
     def append_batch(n):
         return log.append_many(paths, "events", [("note", {"batch": n, "i": i})
@@ -149,8 +149,8 @@ def test_concurrent_batches_form_one_chain(tmp_path):
 
 
 def test_worker_writes_mixed_streams_and_notes_with_fresh_core_events(tmp_path, monkeypatch):
-    from plumb.contracts import Applied
-    from plumb.understand import worker
+    from iaso.contracts import Applied
+    from iaso.understand import worker
 
     core = Core(tmp_path)
     assert core.events() == []

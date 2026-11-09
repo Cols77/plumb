@@ -1,4 +1,4 @@
-"""SP7 slice 4: ``plumb mod hello`` registers the panel's key digest for a session; the first
+"""SP7 slice 4: ``iaso mod hello`` registers the panel's key digest for a session; the first
 registration wins (sp7-owner-surface 5.1, DEC-025; SR-086 EX-3)."""
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from mod.helpers import DIGEST, KEY, SESSION, kinds, mod_json, run_mod
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-209")
 
@@ -39,7 +39,7 @@ def test_the_key_itself_is_never_written(repo: Path, monkeypatch, capsys) -> Non
     run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})
     written = mod_json(repo).read_text(encoding="utf-8")
     logged = "".join(p.read_text(encoding="utf-8")
-                     for p in (repo / ".plumb" / "log").rglob("*.json"))
+                     for p in (repo / ".iaso" / "log").rglob("*.json"))
     assert KEY not in written and KEY not in logged
 
 
@@ -53,11 +53,11 @@ def test_no_key_digest_is_refused_and_nothing_written(repo: Path, monkeypatch, c
 
 
 def test_under_the_session_marker_hello_is_refused(repo: Path, monkeypatch, capsys) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     code, _, err = run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})
     assert code == 3 and "agent" in err
     assert not mod_json(repo).exists()
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    monkeypatch.delenv("IASO_AGENT_SESSION")
     assert "mod-hello" not in kinds(repo)
 
 

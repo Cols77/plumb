@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify, runner
-from plumb.verify.cli import report_lines
+from iaso.api import open_core
+from iaso.verify import open_verify, runner
+from iaso.verify.cli import report_lines
 
 WORKER_TESTS = "".join(
     f"\n\ndef test_w{i}():\n    time.sleep(0.4)\n    with open(SEEN, 'a') as f:\n"
@@ -22,7 +22,7 @@ def _project(repo: Path, workers: int, monkeypatch: pytest.MonkeyPatch) -> Path:
         if name.startswith("PYTEST_XDIST"):
             monkeypatch.delenv(name)
     make_project(repo)
-    write(repo, ".plumb/config.yaml", f"verify:\n  flaky_rerun: false\n  workers: {workers}\n")
+    write(repo, ".iaso/config.yaml", f"verify:\n  flaky_rerun: false\n  workers: {workers}\n")
     write(repo, "tests/test_workers.py",
           "import os\nimport time\n\nSEEN = os.path.join(os.path.dirname(__file__), 'seen.txt')\n"
           + WORKER_TESTS)

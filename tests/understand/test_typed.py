@@ -15,8 +15,8 @@ from understand.test_read_job import (
     state,
 )
 
-from plumb.api import open_core
-from plumb.understand import files, read, typed
+from iaso.api import open_core
+from iaso.understand import files, read, typed
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -36,7 +36,7 @@ def commands_of(core) -> list:
 
 def test_ex10_typed_confirm_with_words_confirms_nothing(core, engine_standins) -> None:
     state(core, ["SR-040", "SR-041"])
-    text = "/plumb confirm the reminder timing"
+    text = "/iaso confirm the reminder timing"
     assert typed.parse(text) is None               # SR-209 EX-6: no approve or confirm verb
     digest = log_prompt(core, text)
     job_id = read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text})
@@ -48,8 +48,8 @@ def test_ex10_typed_confirm_with_words_confirms_nothing(core, engine_standins) -
 
 
 @pytest.mark.parametrize("text,expected", [
-    ("/plumb undo SR-001", ("undo", ("SR-001",), "", "")),
-    ("/plumb go", ("go", (), "", "")),
+    ("/iaso undo SR-001", ("undo", ("SR-001",), "", "")),
+    ("/iaso go", ("go", (), "", "")),
 ])
 def test_grammar_is_exact(text: str, expected: tuple) -> None:
     parsed = typed.parse(text)
@@ -57,10 +57,10 @@ def test_grammar_is_exact(text: str, expected: tuple) -> None:
 
 
 @pytest.mark.parametrize("text", [
-    "plumb approve SR-001", "ok /plumb approve SR-001", "/plumb undo",
-    "/plumb approve SR-001", "/plumb confirm SR-001, DEC-017", "/plumb approve",
-    "/plumb undo SR-001 SR-002", "/plumb go now",
-    "/plumbs go", "/Plumb go", "please /plumb go", "/plumb", "/plumb frobnicate SR-001",
+    "iaso approve SR-001", "ok /iaso approve SR-001", "/iaso undo",
+    "/iaso approve SR-001", "/iaso confirm SR-001, DEC-017", "/iaso approve",
+    "/iaso undo SR-001 SR-002", "/iaso go now",
+    "/iasos go", "/Iaso go", "please /iaso go", "/iaso", "/iaso frobnicate SR-001",
     "turn settling on", "", "yes"])
 def test_grammar_rejects_everything_else(text: str) -> None:
     assert typed.parse(text) is None
@@ -68,7 +68,7 @@ def test_grammar_rejects_everything_else(text: str) -> None:
 
 def test_typed_owner_only_commands_do_not_reach_the_reader(core, engine_standins) -> None:
     state(core, ["SR-040"])
-    for text in ("/plumb go", "/plumb undo SR-040"):
+    for text in ("/iaso go", "/iaso undo SR-040"):
         digest = log_prompt(core, text)
         assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
     assert list(files.jobs_dir(core.root, SESSION).glob("*.json")) == []
@@ -77,8 +77,8 @@ def test_typed_owner_only_commands_do_not_reach_the_reader(core, engine_standins
 def test_a_command_approval_must_be_the_typed_command_for_those_records(core) -> None:
     """The re-check of a past ``via: command`` approval is the parse check, not affirmation
     words (the command is gone; its entries are still re-checked)."""
-    from plumb.confirm import checked
-    from plumb.normalize import sha256_text
+    from iaso.confirm import checked
+    from iaso.normalize import sha256_text
 
     def write(quote: str, record: str) -> None:
         digest = log_prompt(core, quote)
@@ -88,9 +88,9 @@ def test_a_command_approval_must_be_the_typed_command_for_those_records(core) ->
             "by": "agent-relayed", "via": "command", "prompt_digest": digest, "quote": quote,
             "quote_digest": sha256_text(quote), "affirmation": "approve", "stated_set": None})
 
-    write("/plumb approve SR-040", "SR-040")                  # a typed command naming it
+    write("/iaso approve SR-040", "SR-040")                  # a typed command naming it
     write("no, do not approve SR-041", "SR-041")             # words with an affirmation term
-    write("/plumb approve SR-040", "SR-041")                 # a typed command naming another
+    write("/iaso approve SR-040", "SR-041")                 # a typed command naming another
     problems = [p for _, p in checked(open_core(core.root)) if p]
     assert len(problems) == 2
     status = open_core(core.root).status(["SR-040", "SR-041"])

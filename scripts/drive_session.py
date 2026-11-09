@@ -1,6 +1,6 @@
-"""Drive plumb's installed Claude Code hooks the way Claude Code would (plan 4.5).
+"""Drive iaso's installed Claude Code hooks the way Claude Code would (plan 4.5).
 
-Reads the hook and status-line commands that ``plumb hooks install`` wrote into
+Reads the hook and status-line commands that ``iaso hooks install`` wrote into
 ``<root>/.claude/settings.json``, expands ``$CLAUDE_PROJECT_DIR``, and runs each one as its
 own process with the JSON payload Claude Code sends on stdin and the settings' ``env``
 (the session marker). Each step records its stdout and wall time.
@@ -17,16 +17,16 @@ The session it simulates:
 7. ``Stop`` with ``stop_hook_active``: the end-of-turn alignment summary;
 8. the status line.
 
-Usage: ``python scripts/drive_session.py --root . --edit src/plumb/text.py
+Usage: ``python scripts/drive_session.py --root . --edit src/iaso/text.py
 --prompt-change "..." --prompt "..." [--json]``. The edit appends one comment line and
 ``--restore`` puts the file back afterwards.
 
 ``--capture`` drives the capture flow instead (``drive_capture``): the owner's new intent,
-``plumb capture`` (an INT read-back, an SR with proposed examples, a DEC that matters), the
+``iaso capture`` (an INT read-back, an SR with proposed examples, a DEC that matters), the
 decision asked once, the read-back shown as an intent card, and the owner's "ok" answered: the
 prompt hook queues the reading of it and tells the agent to confirm nothing. It writes
 proposed records, so run it on a scratch copy.
-``--merge-check BASE`` runs ``plumb merge-check BASE --no-run --json`` (never the full run).
+``--merge-check BASE`` runs ``iaso merge-check BASE --no-run --json`` (never the full run).
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def installed_commands(root: Path) -> tuple[dict[str, list[str]], list[str], dic
                 # synchronous edit check); this driver runs the tracker
                 if command.rstrip().endswith(" edit-check"):
                     continue
-                if "plumb" in command and " hook " in command:
+                if "iaso" in command and " hook " in command:
                     hooks[event] = _argv(command, root)
     status = _argv(settings["statusLine"]["command"], root)
     env = {k: str(v) for k, v in (settings.get("env") or {}).items()}
@@ -98,12 +98,12 @@ def _run(name: str, argv: list[str], root: Path, env: dict[str, str],
 
 
 def tests_command(stop_stdout: str) -> list[str]:
-    """The ``plumb tests run ...`` arguments a Stop block asks for (after ``plumb``)."""
+    """The ``iaso tests run ...`` arguments a Stop block asks for (after ``iaso``)."""
     try:
         reason = json.loads(stop_stdout).get("reason", "")
     except ValueError:
         reason = ""
-    marker = "run 'plumb "
+    marker = "run 'iaso "
     if marker not in reason:
         return ["tests", "run", "--changed"]
     command = reason.split(marker, 1)[1].split("' (", 1)[0]
@@ -111,13 +111,13 @@ def tests_command(stop_stdout: str) -> list[str]:
 
 
 def drive(root: Path, *, edit: str, prompt_change: str, prompt: str,
-          session_id: str = "plumb-driven-1", restore: bool = False) -> list[Step]:
+          session_id: str = "iaso-driven-1", restore: bool = False) -> list[Step]:
     """Run the simulated session against ``root``; returns every step in order."""
     root = Path(root).resolve()
     hooks, status_argv, env = installed_commands(root)
     missing = [e for e in EVENTS if e not in hooks]
     if missing:
-        raise SystemExit(f"plumb hooks not installed for: {', '.join(missing)}")
+        raise SystemExit(f"iaso hooks not installed for: {', '.join(missing)}")
     base = {"session_id": session_id, "transcript_path": "", "cwd": str(root)}
     steps: list[Step] = []
 
@@ -180,19 +180,19 @@ CAPTURE_DOC: dict = {
 
 
 def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None = None,
-                  affirm: str = "ok", session_id: str = "plumb-driven-capture") -> list[Step]:
+                  affirm: str = "ok", session_id: str = "iaso-driven-capture") -> list[Step]:
     """The capture flow through the installed hooks (sp2, R1, R2, R11):
 
     1. ``SessionStart``, then the owner's new intent (``UserPromptSubmit``, logged by the
        prompt hook);
-    2. the agent records the read-back in one call (``plumb capture --prompt <digest>``):
+    2. the agent records the read-back in one call (``iaso capture --prompt <digest>``):
        an INT, an SR with a proposed example, a DEC that matters, all proposed;
     3. ``Stop``: the decision that matters is asked (one per message);
     4. ``Stop`` with ``stop_hook_active``: the end-of-turn summary shows the read-back as an
        intent card with its proposed examples;
     5. ``Stop`` again in the same turn: the decision is not asked a second time;
     6. the owner answers ``affirm`` (``UserPromptSubmit``): the prompt hook tells the agent
-       to confirm nothing (no relay line); plumb reads the answer itself;
+       to confirm nothing (no relay line); iaso reads the answer itself;
     7. the status line.
     """
     import hashlib
@@ -201,7 +201,7 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
     hooks, status_argv, env = installed_commands(root)
     missing = [e for e in EVENTS if e not in hooks]
     if missing:
-        raise SystemExit(f"plumb hooks not installed for: {', '.join(missing)}")
+        raise SystemExit(f"iaso hooks not installed for: {', '.join(missing)}")
     base = {"session_id": session_id, "transcript_path": "", "cwd": str(root)}
     prefix = hooks["Stop"][: hooks["Stop"].index("hook")]
     steps: list[Step] = []
@@ -211,7 +211,7 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
         steps.append(step)
         return step
 
-    def plumb(name: str, *args: str) -> Step:
+    def iaso(name: str, *args: str) -> Step:
         step = _run(name, [*prefix, *args], root, env, None)
         steps.append(step)
         return step
@@ -219,10 +219,10 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
     hook("SessionStart (capture)", "SessionStart", source="startup")
     hook("UserPromptSubmit (new intent)", "UserPromptSubmit", prompt=prompt)
     digest = "sha256:" + hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    doc_path = root / ".plumb" / "session" / session_id / "capture.json"
+    doc_path = root / ".iaso" / "session" / session_id / "capture.json"
     doc_path.parent.mkdir(parents=True, exist_ok=True)
     doc_path.write_text(json.dumps(CAPTURE_DOC if doc is None else doc), encoding="utf-8")
-    plumb("plumb capture", "capture", "--prompt", digest, "--file", str(doc_path))
+    iaso("iaso capture", "capture", "--prompt", digest, "--file", str(doc_path))
     hook("Stop (asks the decision)", "Stop", stop_hook_active=False)
     hook("Stop (read-back shown)", "Stop", stop_hook_active=True)
     hook("Stop (not asked again)", "Stop", stop_hook_active=False)
@@ -234,7 +234,7 @@ def drive_capture(root: Path, *, prompt: str = CAPTURE_PROMPT, doc: dict | None 
 
 
 def merge_check(root: Path, base: str = "main") -> Step:
-    """``plumb merge-check BASE --no-run --json`` on ``root``: the merge boundary report,
+    """``iaso merge-check BASE --no-run --json`` on ``root``: the merge boundary report,
     without the full run (that belongs to the Integrate phase alone)."""
     root = Path(root).resolve()
     hooks, _, env = installed_commands(root)
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="drive the capture flow instead (writes proposed records and "
                              "answers the owner's 'ok': use a scratch copy)")
     parser.add_argument("--merge-check", metavar="BASE", default=None,
-                        help="also run plumb merge-check BASE --no-run --json")
+                        help="also run iaso merge-check BASE --no-run --json")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     if args.capture:

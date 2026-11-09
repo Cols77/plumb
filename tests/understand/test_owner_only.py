@@ -11,9 +11,9 @@ from understand.fakes import as_worker
 from understand.test_read_apply import entries_of, write_applied
 from understand.test_read_job import SESSION, log_prompt, make_core, open_question, record_text
 
-from plumb.api import open_core
-from plumb.present import owner_text
-from plumb.understand import read
+from iaso.api import open_core
+from iaso.present import owner_text
+from iaso.understand import read
 
 pytestmark = pytest.mark.sr("SR-214")
 

@@ -1,4 +1,4 @@
-"""SR-391: the debug loop in the loop list, one row per problem plumb is fixing itself."""
+"""SR-391: the debug loop in the loop list, one row per problem iaso is fixing itself."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from plumb import debug, selfdebug
-from plumb.api import open_core
-from plumb.understand import loops
-from plumb.understand.repin import Meaning
+from iaso import debug, selfdebug
+from iaso.api import open_core
+from iaso.understand import loops
+from iaso.understand.repin import Meaning
 from debug.staged import ok_stages  # SR-388: the diagnosis and the review, scripted
 
 from debug.test_selffix import (CASE, TEST, Fixer, Judge, Runner, fixes_add,  # noqa: F401
-                                fixes_nothing, no_real_models, plumb_repo)
+                                fixes_nothing, no_real_models, iaso_repo)
 
 pytestmark = pytest.mark.sr("SR-391")
 
@@ -75,7 +75,7 @@ def test_a_live_fix_names_its_round(tmp_path: Path) -> None:
 
 
 def test_known_issue_title_is_the_goal(tmp_path: Path) -> None:
-    reg = tmp_path / ".plumb" / "known-issues.json"
+    reg = tmp_path / ".iaso" / "known-issues.json"
     reg.parent.mkdir(parents=True, exist_ok=True)
     reg.write_text('{"issues": [{"id": "KI-1", "symptom": "x", "title": "The list is blank"}]}',
                    "utf-8")
@@ -93,7 +93,7 @@ def test_a_fix_committed_not_landed_is_listed_as_waiting_to_land(tmp_path: Path)
 
 def test_a_problem_that_came_back_reads_open_fix_not_started(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("plumb.debug._queue_fix", lambda *a: None)
+    monkeypatch.setattr("iaso.debug._queue_fix", lambda *a: None)
     _case(tmp_path, state="resolved", stage="tests", round=1, pid=os.getpid(),
           report="Missing: x", symptom=debug._same("hook-error:stop:ValueError: the list is empty"))
     debug.open_case(tmp_path, id="c1", kind="hook-error", target="stop",
@@ -105,50 +105,50 @@ def test_a_problem_that_came_back_reads_open_fix_not_started(
     assert case["history"][-1]["report"] == "Missing: x" and "report" not in case
 
 
-def test_selfdebug_stamps_tests_stage_before_verify(plumb_repo: Path) -> None:
+def test_selfdebug_stamps_tests_stage_before_verify(iaso_repo: Path) -> None:
     seen: list[dict[str, Any]] = []
     fixer = Fixer(fixes_add)
     runner = Runner(fixer)
 
     def spy(paths: Any) -> Any:
-        seen.append(next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE))
+        seen.append(next(c for c in debug.all_cases(iaso_repo) if c["id"] == CASE))
         return runner(paths)
 
-    case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
-    selfdebug.fix(open_core(plumb_repo), case, fixer=fixer, runner=spy,
+    case = next(c for c in debug.open_cases(iaso_repo) if c["id"] == CASE)
+    selfdebug.fix(open_core(iaso_repo), case, fixer=fixer, runner=spy,
                   judge=Judge(Meaning(True, "same")), **ok_stages())
     assert seen[0]["stage"] == "tests" and seen[0]["round"] == 1 and seen[0]["pid"] == os.getpid()
 
 
-def _after(plumb_repo: Path, fixer: Fixer, answer: Meaning) -> dict[str, Any]:
-    case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
-    selfdebug.fix(open_core(plumb_repo), case, fixer=fixer, runner=Runner(fixer),
+def _after(iaso_repo: Path, fixer: Fixer, answer: Meaning) -> dict[str, Any]:
+    case = next(c for c in debug.open_cases(iaso_repo) if c["id"] == CASE)
+    selfdebug.fix(open_core(iaso_repo), case, fixer=fixer, runner=Runner(fixer),
                   judge=Judge(answer), **ok_stages())
-    return next(c for c in debug.all_cases(plumb_repo) if c["id"] == CASE)
+    return next(c for c in debug.all_cases(iaso_repo) if c["id"] == CASE)
 
 
-def test_fix_end_clears_the_stage(plumb_repo: Path) -> None:
-    fixed = _after(plumb_repo, Fixer(fixes_add), Meaning(True, "same"))
+def test_fix_end_clears_the_stage(iaso_repo: Path) -> None:
+    fixed = _after(iaso_repo, Fixer(fixes_add), Meaning(True, "same"))
     assert fixed["stage"] == "" and fixed["pid"] == 0
 
 
-def test_a_reported_fix_clears_the_stage_and_waits_for_the_owner(plumb_repo: Path) -> None:
-    case = _after(plumb_repo, Fixer(fixes_nothing), Meaning(True, "same"))
+def test_a_reported_fix_clears_the_stage_and_waits_for_the_owner(iaso_repo: Path) -> None:
+    case = _after(iaso_repo, Fixer(fixes_nothing), Meaning(True, "same"))
     assert case["stage"] == "" and case["pid"] == 0
-    assert debug.loop_rows(plumb_repo)[0]["waits"] == "the owner"
+    assert debug.loop_rows(iaso_repo)[0]["waits"] == "the owner"
 
 
-def test_an_owner_outcome_leaves_stage_owner(plumb_repo: Path) -> None:
+def test_an_owner_outcome_leaves_stage_owner(iaso_repo: Path) -> None:
     def rewords(wt: Path) -> None:
         fixes_add(wt)
-        (wt / ".plumb" / "requirements" / "SR-001.md").write_text(
+        (wt / ".iaso" / "requirements" / "SR-001.md").write_text(
             "---\nid: SR-001\ntitle: Adds numbers\nfeature: FEAT-001\n"
             "statement: add returns the sum, rounded.\n---\n", "utf-8")
 
-    case = _after(plumb_repo, Fixer(rewords), Meaning(False, "rounded now"))
+    case = _after(iaso_repo, Fixer(rewords), Meaning(False, "rounded now"))
     assert case["stage"] == "owner" and case["pid"] == 0
 
 
-def test_listing_merges_debug_rows(plumb_repo: Path) -> None:
-    rows = loops.listing(plumb_repo, agents={})["rows"]
+def test_listing_merges_debug_rows(iaso_repo: Path) -> None:
+    rows = loops.listing(iaso_repo, agents={})["rows"]
     assert [r["kind"] for r in rows] == ["debug"]

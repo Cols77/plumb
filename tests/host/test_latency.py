@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 from loadbound import assert_within
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.hosts.claude_code import post_edit, prompt, session_start, stop
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.hosts.claude_code import post_edit, prompt, session_start, stop
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -24,7 +24,7 @@ BUDGET_MS = {"session-start": 900, "prompt": 600, "stop": 800, "post-edit": 300}
 
 @pytest.fixture
 def busy_repo(repo: Path, write_record) -> Path:
-    """About plumb's own size: 15 intents, 25 requirements with examples, 13 decisions."""
+    """About iaso's own size: 15 intents, 25 requirements with examples, 13 decisions."""
     (repo / "src").mkdir()
     for i in range(1, 16):
         write_record(repo, f"---\nid: INT-{i:03d}\ntitle: Intent {i}\nquote: owner words {i}\n"
@@ -49,7 +49,7 @@ def busy_repo(repo: Path, write_record) -> Path:
 
 def _scripted_judge(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     """DEC-088: since DEC-060 / SR-174 the stale check waits without a judge, so the turn end
-    gets a scripted one (``PLUMB_FAKE_DISPATCH``) that says the edit changed the meaning and
+    gets a scripted one (``IASO_FAKE_DISPATCH``) that says the edit changed the meaning and
     brings it to the owner as a card."""
     script = root.parent / "judge.json"
     script.write_text(json.dumps({
@@ -58,7 +58,7 @@ def _scripted_judge(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
                      "options": ["keep the new value", "undo the edit"],
                      "consequences": ["the requirement follows", "the code goes back"],
                      "why": "the owner decides what the value is"}}), "utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
 
 
 def _time_ms(fn) -> float:
@@ -99,7 +99,7 @@ def test_hooks_within_in_process_budget(busy_repo: Path, hook_input,
     timings["stop"] = _time_ms(lambda: run(stop, stop_input, verify=verify, unjudged=None))
     for hook, took in timings.items():
         assert_within(took, BUDGET_MS[hook], f"{hook} hook (ms)")
-    errors = root / ".plumb" / "session" / "errors.log"
+    errors = root / ".iaso" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
 
@@ -110,7 +110,7 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
     _scripted_judge(monkeypatch, busy_repo)
 
     def call(*args: str, payload: str = "") -> str:
-        result = subprocess.run([sys.executable, "-m", "plumb", *args, "--root", root],
+        result = subprocess.run([sys.executable, "-m", "iaso", *args, "--root", root],
                                 input=payload, capture_output=True, text=True,
                                 encoding="utf-8", check=False, timeout=30)
         assert result.returncode == 0, result.stderr
@@ -128,9 +128,9 @@ def test_cli_drives_the_hooks(busy_repo: Path, hook_input,
     stop_out = call("hook", "stop", payload=hook_input("Stop"))
     # SR-373: one next action at most, never a failure (the stop's work for the owner is done)
     assert "check skipped" not in stop_out
-    assert not (busy_repo / ".plumb" / "session" / "errors.log").exists()
+    assert not (busy_repo / ".iaso" / "session" / "errors.log").exists()
     assert "awaits you" not in call("statusline")   # records wait on a judge (SR-263 EX-6)
-    assert call("hook", "--help").startswith("usage: plumb hook")
+    assert call("hook", "--help").startswith("usage: iaso hook")
 
 
 class _CpuContention:
@@ -162,7 +162,7 @@ def test_intent_lines_survive_cpu_contention(busy_repo: Path, hook_input) -> Non
 
     def call(*args: str, payload: str = "") -> tuple[str, float]:
         start = time.perf_counter()
-        result = subprocess.run([sys.executable, "-m", "plumb", *args, "--root", root],
+        result = subprocess.run([sys.executable, "-m", "iaso", *args, "--root", root],
                                 input=payload, capture_output=True, text=True,
                                 encoding="utf-8", check=False, timeout=60)
         assert result.returncode == 0, result.stderr
@@ -177,14 +177,14 @@ def _contended_turn(busy_repo: Path, hook_input, call) -> None:
     brief, _ = call("hook", "session-start", payload=hook_input("SessionStart"))
     assert "check skipped" not in brief and "53" not in brief   # SR-374 EX-9: no counts
     index = open_core(busy_repo).index()
-    stated = busy_repo / ".plumb" / "session" / "stated.json"
+    stated = busy_repo / ".iaso" / "session" / "stated.json"
     stated.write_text(json.dumps({"records": [
         {"id": "SR-002", "hash": index["SR-002"].hash, "shown": True}]}), "utf-8")
     out, _ = call("hook", "prompt", payload=hook_input("UserPromptSubmit",
                                                        prompt="ok, confirm SR-002"))
     assert "SR-002 [proposed]" in out
-    assert "plumb relay" not in out     # the agent is never told to confirm on its own reading
-    record = busy_repo / ".plumb" / "requirements" / "SR-002.md"
+    assert "iaso relay" not in out     # the agent is never told to confirm on its own reading
+    record = busy_repo / ".iaso" / "requirements" / "SR-002.md"
     record.write_text(record.read_text("utf-8").replace("statement 2", "statement two"),
                       "utf-8")
     call("hook", "post-edit", payload=hook_input(  # the Edit tool's PostToolUse

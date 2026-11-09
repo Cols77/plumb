@@ -2,7 +2,7 @@
 
 export const ROOT = '/work/shop'
 export const SESSION = 'sess-1'
-export const PYTHON = '/home/owner/.plumb/env/0.1.0/bin/python'
+export const PYTHON = '/home/owner/.iaso/env/0.1.0/bin/python'
 
 // BEGIN PRESENT
 export const PRESENT = {

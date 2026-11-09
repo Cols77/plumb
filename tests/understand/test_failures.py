@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, confirm, log
-from plumb.api import Core
-from plumb.contracts import Applied, DispatchError, NoModel
-from plumb.understand import dispatch, files, jobs, queue, worker
+from iaso import approvals, confirm, log
+from iaso.api import Core
+from iaso.contracts import Applied, DispatchError, NoModel
+from iaso.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
 pytestmark = pytest.mark.sr("SR-273")
@@ -109,7 +109,7 @@ def test_no_second_route(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(dispatch, "configured", lambda core: Failing(name="claude-code"))
     monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
-    for path in ("plumb.understand.dispatch.hermes", "plumb.understand.dispatch.openrouter"):
+    for path in ("iaso.understand.dispatch.hermes", "iaso.understand.dispatch.openrouter"):
         try:
             module = __import__(path, fromlist=["x"])
         except ImportError:
@@ -221,7 +221,7 @@ def test_retry_and_failures_do_nothing_inside_a_job(repo: Path, fake: FakeDispat
     queue.enqueue(core, _job("a"))
     fake.failing()
     worker.run_once(core, "s1")
-    monkeypatch.setenv("PLUMB_JOB", "read-0123456789abcdef")
+    monkeypatch.setenv("IASO_JOB", "read-0123456789abcdef")
     assert queue.retry_failed(core, "s1") == []
     assert len(queue.failures(core, "s1")) == 1
 
@@ -229,14 +229,14 @@ def test_retry_and_failures_do_nothing_inside_a_job(repo: Path, fake: FakeDispat
 def _core_with(dispatch_name: str):
     from types import SimpleNamespace
 
-    from plumb.config import UnderstandConfig
+    from iaso.config import UnderstandConfig
 
     return SimpleNamespace(config=SimpleNamespace(
         understand=UnderstandConfig(dispatch=dispatch_name)), root=Path("."))
 
 
 def test_configured_returns_exactly_one_dispatcher(monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
+    from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
     with pytest.raises(NoModel, match="no model configured"):
         dispatch.configured(_core_with("auto"))              # neither host: an error
@@ -245,7 +245,7 @@ def test_configured_returns_exactly_one_dispatcher(monkeypatch: pytest.MonkeyPat
     assert isinstance(dispatch.configured(_core_with("claude-code")), ClaudeCodeDispatcher)
     with pytest.raises(NoModel, match="no model configured"):
         dispatch.configured(_core_with("carrier-pigeon"))
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", "script.json")
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", "script.json")
     assert dispatch.configured(_core_with("claude-code")).name == "fake"
 
 

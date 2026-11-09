@@ -8,7 +8,7 @@ import { shot } from './helpers';
 test('a study is drawn as Markdown with its mermaid diagram', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto('/?study=how-plumb-s-background-jobs-run#token=e2e-token');
+  await page.goto('/?study=how-iaso-s-background-jobs-run#token=e2e-token');
   const body = page.locator('.study-body');
   await expect(body.locator('h2')).toHaveText('The dispatcher');
   await expect(body.locator('strong')).toHaveText('dispatcher');
@@ -49,8 +49,8 @@ function rebuild(dir: string) {
 test('a study opened after a rebuild under the open tab still draws its diagram', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8767/#token=e2e-token');
   await expect(page.getByRole('navigation', { name: 'Studies' })).toBeVisible();
-  rebuild(process.env.PLUMB_E2E_SWAP!);
-  await page.getByText("How plumb's background jobs run").first().click();
+  rebuild(process.env.IASO_E2E_SWAP!);
+  await page.getByText("How iaso's background jobs run").first().click();
   const svg = page.locator('figure.study-diagram svg');
   await expect(svg).toBeVisible();
   await expect(svg).toContainText('dispatcher');

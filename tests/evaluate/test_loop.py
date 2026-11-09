@@ -5,16 +5,16 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from plumb.evaluate import loop
+from iaso.evaluate import loop
 
-ISSUE = {"command": "plumb x", "expected": "a", "got": "b"}
+ISSUE = {"command": "iaso x", "expected": "a", "got": "b"}
 
 
 @pytest.fixture(autouse=True)
 def _doubles(monkeypatch):
-    from plumb.evaluate import issues
-    monkeypatch.setattr("plumb.api.open_core", lambda root: object())
-    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [])
+    from iaso.evaluate import issues
+    monkeypatch.setattr("iaso.api.open_core", lambda root: object())
+    monkeypatch.setattr("iaso.debug.all_cases", lambda root: [])
     monkeypatch.setattr(issues, "open_cases", lambda root, found: ["eval-1"] * bool(found))
 
 
@@ -137,7 +137,7 @@ def test_a_run_whose_turns_failed_stops_with_the_reason(tmp_path, capsys):
 def test_an_issue_carried_from_an_earlier_run_is_fixed_too(tmp_path, monkeypatch, capsys):
     """An open eval-issue case from an earlier run is fixed in the next round; a reported one
     (three failed rounds) is not tried again."""
-    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [
+    monkeypatch.setattr("iaso.debug.all_cases", lambda root: [
         {"id": "eval-old", "kind": "eval-issue", "state": "open"},
         {"id": "eval-gave-up", "kind": "eval-issue", "state": "open", "report": "tried"}])
     fixed = []
@@ -154,7 +154,7 @@ def test_a_case_settled_elsewhere_or_crashing_does_not_end_the_loop(tmp_path, mo
     """Background self-debug may settle a case first; a fix that raises is reported and the
     loop goes on to the next case and the rerun."""
     state = {"eval-a": "open", "eval-c": "open"}
-    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [
+    monkeypatch.setattr("iaso.debug.all_cases", lambda root: [
         {"id": i, "kind": "eval-issue", "state": s} for i, s in state.items()])
     tried = []
 

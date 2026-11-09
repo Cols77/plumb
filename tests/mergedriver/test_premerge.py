@@ -17,14 +17,14 @@ from mergedriver.mdhelpers import (
     ex,
     install_driver,
     make_repo,
-    plumb,
+    iaso,
     record,
     run_git,
     write_record,
 )
-from plumb import cli
-from plumb.api import open_core
-from plumb.boundary.premerge import HOOK_MARKER, check, install_hook, uninstall_hook
+from iaso import cli
+from iaso.api import open_core
+from iaso.boundary.premerge import HOOK_MARKER, check, install_hook, uninstall_hook
 
 FOREIGN = "#!/bin/sh\necho foreign\n"
 
@@ -48,7 +48,7 @@ def _diverged(tmp_path: Path, *, theirs_statement: str = THEIRS_STATEMENT,
     commit_all(root, "ours")
     write_record(other, record(statement=theirs_statement, examples=[ex(1)]))
     if approve_theirs:
-        from plumb.approvals import approve
+        from iaso.approvals import approve
 
         approve(open_core(other), ["SR-005"])
     # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
@@ -62,18 +62,18 @@ def _diverged(tmp_path: Path, *, theirs_statement: str = THEIRS_STATEMENT,
 def test_merge_check_exits_4_with_card(repo: Path, argv: list[str]) -> None:
     """SR-077 EX-1: a merge result with IC-001 open: exit 4 and the card."""
     conflicted(repo, theirs=record(statement=THEIRS_STATEMENT, examples=[ex(1)]))
-    out = plumb(repo, *argv)
+    out = iaso(repo, *argv)
     assert out.returncode == 4, out.stdout + out.stderr
-    assert "intent conflicts wait for your choice (/plumb conflicts):" in out.stdout
+    assert "intent conflicts wait for your choice (/iaso conflicts):" in out.stdout
     assert "Conflict IC-001 on \"relay checks\"" in out.stdout
-    data = json.loads(plumb(repo, *argv, "--json").stdout)
+    data = json.loads(iaso(repo, *argv, "--json").stdout)
     data = data.get("merge", data)  # check --merge --json: {validate, merge}
     assert data["intent_conflicts"][0]["ic"] == "IC-001"
 
 
 @pytest.mark.sr("SR-260")
 def test_hook_refuses_merge_commit_on_ic(tmp_path: Path) -> None:
-    """SR-077 EX-2: git does not record the merge commit; the output names /plumb conflicts."""
+    """SR-077 EX-2: git does not record the merge commit; the output names /iaso conflicts."""
     root, _ = _diverged(tmp_path)
     head = run_git(root, "rev-parse", "HEAD").stdout
     merged = run_git(root, "merge", "--no-edit", "feat-x", check=False)
@@ -81,7 +81,7 @@ def test_hook_refuses_merge_commit_on_ic(tmp_path: Path) -> None:
     assert merged.returncode != 0
     assert run_git(root, "rev-parse", "HEAD").stdout == head
     assert run_git(root, "rev-parse", "-q", "--verify", "MERGE_HEAD").stdout.strip()
-    assert "/plumb conflicts" in output and "finish the merge" in output
+    assert "/iaso conflicts" in output and "finish the merge" in output
     assert "no test run" in output
 
 
@@ -93,7 +93,7 @@ def test_commit_completes_after_choice(tmp_path: Path) -> None:
     run_git(root, "merge", "--no-edit", "feat-x", check=False)
     assert cli.main(["conflict", "choose", "IC-001", "--take", "feat-x",
                      "--root", str(root)]) == 0
-    assert run_git(root, "diff", "--name-only", "--", ".plumb").stdout == ""  # all staged
+    assert run_git(root, "diff", "--name-only", "--", ".iaso").stdout == ""  # all staged
     report = check(open_core(root))
     assert report.exit == 0, report.lines
     run_git(root, "commit", "-q", "-m", "Merge branch feat-x")
@@ -132,8 +132,8 @@ def test_quick_check_prints_only_what_holds_not_unconfirmed_or_undeclared(tmp_pa
 def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-077 EX-4 (R17): the merge-time check never starts the test suite (that runs once,
     at push); it reads the recorded evidence only (SR-260 EX-10, EX-19)."""
-    import plumb.boundary.fullrun as fullrun
-    from plumb.verify.api import Verify
+    import iaso.boundary.fullrun as fullrun
+    from iaso.verify.api import Verify
 
     def boom(*_a, **_k):
         raise AssertionError("the quick merge check started a test run")
@@ -148,16 +148,16 @@ def test_quick_check_runs_no_tests(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.sr("SR-260")
 def test_foreign_hook_untouched(repo: Path, capsys) -> None:
-    """SR-077 EX-3: the foreign hook is untouched; the output says how to call plumb."""
+    """SR-077 EX-3: the foreign hook is untouched; the output says how to call iaso."""
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
     _hook(repo).write_text(FOREIGN, encoding="utf-8")
     assert cli.main(["merge-check", "--install-pre-merge-commit", "--root", str(repo)]) == 1
-    assert "call plumb from my merge hook" in capsys.readouterr().out
+    assert "call iaso from my merge hook" in capsys.readouterr().out
     assert cli.main(["merge-check", "--install-pre-merge-commit", "--json",
                      "--root", str(repo)]) == 1
     data = json.loads(capsys.readouterr().out)
     assert data["foreign"] is True
-    assert data["hook_line"].endswith("-m plumb merge-check --hook pre-merge-commit || exit $?")
+    assert data["hook_line"].endswith("-m iaso merge-check --hook pre-merge-commit || exit $?")
     assert _hook(repo).read_text(encoding="utf-8") == FOREIGN
     assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
     assert _hook(repo).read_text(encoding="utf-8") == FOREIGN
@@ -166,7 +166,7 @@ def test_foreign_hook_untouched(repo: Path, capsys) -> None:
 @pytest.mark.sr("SR-260")
 def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
     """SR-077 EX-3: a foreign prepare-commit-msg hook is kept; --json names the line that
-    calls plumb from it; the pre-merge-commit hook is still installed."""
+    calls iaso from it; the pre-merge-commit hook is still installed."""
     hook = repo / ".git" / "hooks" / "prepare-commit-msg"
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text(FOREIGN, encoding="utf-8")
@@ -175,7 +175,7 @@ def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
     data = json.loads(capsys.readouterr().out)
     assert data["foreign_hooks"] == ["prepare-commit-msg"]
     assert data["hook_lines"]["prepare-commit-msg"].endswith(
-        "-m plumb merge-check --hook prepare-commit-msg || exit $?")
+        "-m iaso merge-check --hook prepare-commit-msg || exit $?")
     assert hook.read_text(encoding="utf-8") == FOREIGN
     assert HOOK_MARKER in _hook(repo).read_text(encoding="utf-8")
     assert cli.main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
@@ -184,7 +184,7 @@ def test_foreign_commit_hook_untouched(repo: Path, capsys) -> None:
 
 
 @pytest.mark.sr("SR-260")
-def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
+def test_uninstall_removes_only_iaso_hook(repo: Path) -> None:
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
     _hook(repo).write_text(FOREIGN, encoding="utf-8")
     assert uninstall_hook(repo) is False
@@ -203,7 +203,7 @@ def test_uninstall_removes_only_plumb_hook(repo: Path) -> None:
 @pytest.mark.parametrize("argv", [["hooks", "install"], ["init"]])
 def test_adoption_keeps_a_foreign_pre_push_hook(repo: Path, argv: list[str],
                                                 capsys: pytest.CaptureFixture) -> None:
-    """A pre-push hook plumb did not write is left byte-identical and named in plain words;
+    """A pre-push hook iaso did not write is left byte-identical and named in plain words;
     the quick merge check is still installed."""
     push = repo / ".git" / "hooks" / "pre-push"
     push.parent.mkdir(parents=True, exist_ok=True)
@@ -224,7 +224,7 @@ class _CountingJev:
         self.calls = 0
 
     def contradiction(self, prompt: str, rec: object):
-        from plumb.contracts import Judgment
+        from iaso.contracts import Judgment
 
         self.calls += 1
         return Judgment(action="intent_change", subject="SR-005", verdict="benign",
@@ -233,7 +233,7 @@ class _CountingJev:
 
 
 def _jev_configured(monkeypatch: pytest.MonkeyPatch) -> _CountingJev:
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
     backend = _CountingJev()
     monkeypatch.setattr(judgment, "get_backend", lambda core, hook: backend)
@@ -245,7 +245,7 @@ def test_quick_check_never_calls_a_judgment_backend(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """R17 CHEAP: with JEV configured, the pre-merge-commit check shows the card without a
     backend call and writes nothing to the log."""
-    import plumb.boundary.premerge as premerge
+    import iaso.boundary.premerge as premerge
 
     backend = _jev_configured(monkeypatch)
     conflicted(repo)
@@ -267,11 +267,11 @@ def test_quick_check_never_calls_a_judgment_backend(
 def test_pre_push_hook_never_calls_a_judgment_backend(
         repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
     """The pre-push hook's report shows conflict cards from logged judgments only; the
-    owner's /plumb merge-check still judges live."""
+    owner's /iaso merge-check still judges live."""
     import io
 
-    from plumb.boundary import merge_report
-    from plumb.boundary.cli import _hook_pre_push
+    from iaso.boundary import merge_report
+    from iaso.boundary.cli import _hook_pre_push
 
     backend = _jev_configured(monkeypatch)
     conflicted(repo)
@@ -293,7 +293,7 @@ def _branch_pair(tmp_path: Path) -> tuple[Path, Path]:
     write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
     (root / "src").mkdir()
     (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    assert iaso(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
     commit_all(root, "SR-005")
     other = tmp_path / "feat"
     run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
@@ -332,7 +332,7 @@ def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path)
     _one_test(other)   # a project with tests: a file none covers is untested
     (other / "docs").mkdir()
     (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
-    assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
+    assert iaso(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
     commit_all(other, "link\n\nSR: SR-005")
     report = _merge_report(root)
     assert report.exit == 1 and any("docs/x.md" in line for line in report.untested_links)
@@ -343,7 +343,7 @@ def test_merge_check_names_a_link_added_to_a_file_no_test_covers(tmp_path: Path)
 def test_merge_check_asks_about_contradicting_requirements(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-165 EX-2: a branch adds a requirement a live one contradicts: exit 4, both named."""
-    from plumb.contracts import Judgment
+    from iaso.contracts import Judgment
 
     class Judge:
         name = "jev"
@@ -352,7 +352,7 @@ def test_merge_check_asks_about_contradicting_requirements(
             return Judgment(action="contradiction", subject=rec.id, verdict="contradicts",
                             confidence=0.9, tier="act", backend="jev", fingerprint="f")
 
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
     monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: Judge())
     root, other = _branch_pair(tmp_path)
@@ -383,7 +383,7 @@ class _Counting:
         self.confidence = confidence
 
     def contradiction(self, prompt: str, rec: object):
-        from plumb.contracts import Judgment
+        from iaso.contracts import Judgment
 
         self.calls += 1
         return Judgment(action="contradiction", subject=rec.id, verdict="contradicts",
@@ -397,7 +397,7 @@ def test_merge_check_does_not_hold_on_links_already_stale_at_base(tmp_path: Path
     write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
     (root / "src").mkdir()
     (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    assert iaso(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
     commit_all(root, "SR-005")
     (root / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
     commit_all(root, "stale before the fork")
@@ -415,13 +415,13 @@ def test_merge_check_does_not_hold_on_links_already_stale_at_base(tmp_path: Path
 def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdicts(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A repin (links only) is not judged; an unsure 'contradicts' is a note, not a hold."""
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
     judge = _Counting(confidence=0.4)
     monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: judge)
     root, other = _branch_pair(tmp_path)
     (other / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
-    assert plumb(other, "repin", "SR-005").returncode == 0     # SR-005's file: pins only
+    assert iaso(other, "repin", "SR-005").returncode == 0     # SR-005's file: pins only
     commit_all(other, "repin\n\nSR: SR-005")
     report = _merge_report(root)
     assert judge.calls == 0
@@ -438,15 +438,15 @@ def test_merge_check_judges_only_reworded_requirements_and_holds_on_sure_verdict
 @pytest.mark.sr("SR-198")
 def test_merge_check_cli_report_names_untested_links_and_contradictions(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
-    """``plumb merge-check`` prints the pre-merge hook's sections, with its exit code."""
-    import plumb.judgment as judgment
+    """``iaso merge-check`` prints the pre-merge hook's sections, with its exit code."""
+    import iaso.judgment as judgment
 
     monkeypatch.setattr(judgment, "optional_backend", lambda core, hook: _Counting())
     _, other = _branch_pair(tmp_path)
     _one_test(other)
     (other / "docs").mkdir()
     (other / "docs" / "x.md").write_text("notes\n", encoding="utf-8")
-    assert plumb(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
+    assert iaso(other, "link", "SR-005", "implemented_by", "docs/x.md").returncode == 0
     write_record(other, record("SR-006", "relay pins nothing",
                                statement="A relay pins no stated record.", examples=[ex(1)]))
     commit_all(other, "link and SR-006\n\nSR: SR-005, SR-006")
@@ -465,7 +465,7 @@ def test_dec436_the_stale_header_says_repin_and_a_refused_repin_goes_to_the_owne
     question itself)."""
     from types import SimpleNamespace
 
-    from plumb.boundary.premerge import drift_lines
+    from iaso.boundary.premerge import drift_lines
 
     report = SimpleNamespace(contradictions=(), contradiction_notes=(), judge_note="",
                              validate_errors=(), stale_links=("SR-005#1",), untested_links=())

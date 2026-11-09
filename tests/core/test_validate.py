@@ -1,4 +1,4 @@
-"""K6: plumb validate (spec 5.10) and SR trailer parsing (spec 5.9)."""
+"""K6: iaso validate (spec 5.10) and SR trailer parsing (spec 5.9)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 from logutil import tamper
 
-from plumb import approvals, cli, log
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.normalize import sha256_text
-from plumb.trailers import invalid_ids, parse_sr_trailer
-from plumb.validate import validate
+from iaso import approvals, cli, log
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.normalize import sha256_text
+from iaso.trailers import invalid_ids, parse_sr_trailer
+from iaso.validate import validate
 
 pytestmark = pytest.mark.sr("SR-231")
 
@@ -66,7 +66,7 @@ def test_errors_exit_one(clean: Path, write_record) -> None:
 def test_warnings_for_stale_unconfirmed_uncovered(clean: Path, write_record) -> None:
     approvals.approve(open_core(clean), ["SR-001", "INT-001"])
     assert "uncovered" in _codes(clean, "warning")
-    path = clean / ".plumb" / "intents" / "INT-001.md"
+    path = clean / ".iaso" / "intents" / "INT-001.md"
     path.write_text(INT.replace("readback: r", "readback: r2"), encoding="utf-8")
     write_record(clean, "---\nid: SR-002\ntitle: t\nstatement: s\nlinks:\n"
                  "  - {kind: derives_from, to: INT-001}\n---\n")
@@ -92,11 +92,11 @@ def test_matters_false_dec_deciding_confirmed_record_warns(clean: Path, write_re
 def test_owner_approval_under_marker_is_error(clean: Path,
                                               monkeypatch: pytest.MonkeyPatch) -> None:
     core = open_core(clean)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     record = core.index()["SR-001"]
     log.append(core.paths, "events", "approval",
                {"records": [{"id": "SR-001", "hash": record.hash}], "by": "owner"})
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    monkeypatch.delenv("IASO_AGENT_SESSION")
     assert "approval" in _codes(clean, "error")
     assert open_core(clean).status(["SR-001"])["SR-001"].confirmation == "proposed"
 
@@ -133,7 +133,7 @@ def test_supersedes_a_newer_record_warns(clean: Path, write_record) -> None:
                  "  - {kind: derives_from, to: INT-001}\n---\n")
     write_record(clean, "---\nid: SR-003\ntitle: t3\nstatement: s3\nlinks:\n"
                  "  - {kind: derives_from, to: INT-001}\n---\n")
-    from plumb.links import add_link
+    from iaso.links import add_link
 
     add_link(open_core(clean), "SR-003", "supersedes", Target(record="SR-002"))
     assert "supersedes" not in _codes(clean, "warning")

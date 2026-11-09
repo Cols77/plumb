@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from plumb.contracts import (
+from iaso.contracts import (
     EscalationRequest,
     FidelityPacket,
     FullPending,
@@ -19,7 +19,7 @@ from plumb.contracts import (
     Record,
     Selection,
 )
-from plumb.text import CHANGE_WORDS
+from iaso.text import CHANGE_WORDS
 
 
 @dataclass
@@ -41,7 +41,7 @@ class FakeVerify:
         self.select_calls.append(changed)
         doc_only = self.doc_only
         if doc_only is None:
-            doc_only = bool(changed) and all(p.endswith(".md") and not p.startswith(".plumb/")
+            doc_only = bool(changed) and all(p.endswith(".md") and not p.startswith(".iaso/")
                                              for p in changed)
         nodes = () if doc_only else self.nodes
         return Selection(changed=changed, nodes=nodes,
@@ -103,9 +103,9 @@ def agent_notes(repo, session: str = "s1") -> str:
     import json
     from pathlib import Path
 
-    from plumb.understand.summary import ASK_OWNER
+    from iaso.understand.summary import ASK_OWNER
 
-    path = Path(repo) / ".plumb" / "session" / session / "agent_notes.json"
+    path = Path(repo) / ".iaso" / "session" / session / "agent_notes.json"
     notes = json.loads(path.read_text("utf-8")) if path.exists() else []
     path.unlink(missing_ok=True)
     return "\n\n".join(str(n).removeprefix(ASK_OWNER + "\n") for n in notes)

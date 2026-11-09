@@ -22,17 +22,17 @@ from awareness.gitrepo import commit_all, requirement, run_git
 from awareness.scenario import change, setup
 from awareness.test_claim_check import _start_turn as start_turn
 from awareness.test_claim_check import _turn as turn
-from plumb import cli
-from plumb.api import open_core
-from plumb.awareness import inflight
-from plumb.hosts.claude_code import prompt
-from plumb.understand.summary import ASK_OWNER
+from iaso import cli
+from iaso.api import open_core
+from iaso.awareness import inflight
+from iaso.hosts.claude_code import prompt
+from iaso.understand.summary import ASK_OWNER
 
 pytestmark = pytest.mark.sr("SR-259")
 
 MAIN = "A relay pins only the records the owner's words affirm."
 FEAT_X = "A relay pins the stated group, named by its title."
-SINCE = 'plumb: SR-005 "relay checks" was changed on main after this branch started'
+SINCE = 'iaso: SR-005 "relay checks" was changed on main after this branch started'
 
 
 def _main_landed(tmp_path: Path) -> tuple[Path, Path]:
@@ -89,7 +89,7 @@ def test_capture_raises_the_card_and_one_decision(tmp_path: Path) -> None:
 
 def test_the_owner_keeps_mains_and_the_lane_is_told(tmp_path: Path, hook_input: Any) -> None:
     from awareness.test_claim_check import _answer as answer
-    from plumb.awareness.lines import status_section
+    from iaso.awareness.lines import status_section
 
     _main, other = _main_landed(tmp_path)
     start_turn(other)
@@ -121,13 +121,13 @@ def test_capture_after_taking_main_or_of_another_record_raises_nothing(tmp_path:
 def test_clarify_read_back_shows_the_card_before_anything_is_written(tmp_path: Path
                                                                        ) -> None:
     _main, other = _main_landed(tmp_path)
-    before = sorted(p.name for p in (other / ".plumb").rglob("*.md"))
+    before = sorted(p.name for p in (other / ".iaso").rglob("*.md"))
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         assert cli.main(["clarify", "change SR-005 relay checks so the stated group is "
                          "pinned by its title", "--root", str(other)]) == 0
     _note(out.getvalue())
-    assert sorted(p.name for p in (other / ".plumb").rglob("*.md")) == before
+    assert sorted(p.name for p in (other / ".iaso").rglob("*.md")) == before
 
 
 # -- the stop hook's claim
@@ -147,12 +147,12 @@ def test_direct_edit_then_stop_hook_asks(tmp_path: Path, hook_input: Any) -> Non
 
 
 def test_status_and_brief_name_the_change_on_main(tmp_path: Path) -> None:
-    from plumb.awareness.lines import brief_lines, status_section
-    from plumb.awareness.turn import at_session_start, at_stop
+    from iaso.awareness.lines import brief_lines, status_section
+    from iaso.awareness.turn import at_session_start, at_stop
 
     main, other = _main_landed(tmp_path)
     change(other, FEAT_X)
-    at_stop(open_core(other), [".plumb/requirements/SR-005.md"], ["SR-005"])
+    at_stop(open_core(other), [".iaso/requirements/SR-005.md"], ["SR-005"])
     status = status_section(open_core(other))
     assert any(line.strip().startswith(SINCE) for line in status), status
     assert not any(line.startswith("also being changed elsewhere: nothing")
@@ -177,7 +177,7 @@ def _prompt(root: Path, hook_input: Any, words: str) -> str:
 
 
 def test_prompt_delta_names_the_change_on_main(tmp_path: Path, hook_input: Any) -> None:
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness.turn import at_session_start
 
     _main, other = _main_landed(tmp_path)
     at_session_start(open_core(other))         # the session start learns it (git, cached)

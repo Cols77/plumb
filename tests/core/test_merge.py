@@ -1,7 +1,7 @@
-"""K6: the merge boundary's full report, ``plumb validate --merge <base>`` (spec 5.11, R1, R2).
+"""K6: the merge boundary's full report, ``iaso validate --merge <base>`` (spec 5.11, R1, R2).
 
 This is the report-only form that lists everything, held or not (SR-260 EX-2, EX-4, EX-8); the
-merge check at git's merge step and ``plumb merge-check`` print only what holds (SR-374 EX-6,
+merge check at git's merge step and ``iaso merge-check`` print only what holds (SR-374 EX-6,
 tests/merge/test_merge_check_cli.py)."""
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 from logutil import legacy_relay, tamper
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.merge import merge_check as full_report
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.merge import merge_check as full_report
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -60,7 +60,7 @@ def base(repo: Path, write_record) -> tuple[Path, str]:
 def _repin(root: Path) -> None:
     """The reviewed link ends pinned again: a stale link of a touched requirement holds the
     merge with exit 1 (sp3 5, tests/merge/test_gates.py), before what these tests check."""
-    from plumb.links import repin
+    from iaso.links import repin
 
     repin(open_core(root), all_stale=True)
 
@@ -74,14 +74,14 @@ def _check(root: Path, sha: str, capsys: pytest.CaptureFixture[str]) -> tuple[in
 def test_merge_lists_unconfirmed_touched_requirement(base, capsys) -> None:
     """SR-260 EX-8: listed as waiting on a judge, counted, never held on."""
     root, sha = base
-    path = root / ".plumb" / "requirements" / "SR-001.md"
+    path = root / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("Both ends", "Each end"),
                     encoding="utf-8")
     _commit(root, "edit SR-001")
     code, out = _check(root, sha, capsys)
     assert code == 0
     assert "SR-001" in out and "INT-001" in out and "SR-002" not in out
-    assert "plumb: waiting on a judge: 2 records" in out   # counted (SR-267)
+    assert "iaso: waiting on a judge: 2 records" in out   # counted (SR-267)
     assert "given a link" in out
 
 
@@ -123,7 +123,7 @@ def test_merge_with_nothing_touched_passes(base, capsys) -> None:
 def test_merge_lists_approvals_in_range_with_relayed_marked(base, capsys) -> None:
     root, sha = base
     approvals.approve(open_core(root), ["INT-001"])
-    prompts = root / ".plumb" / "session" / "prompts.jsonl"
+    prompts = root / ".iaso" / "session" / "prompts.jsonl"
     prompts.parent.mkdir(parents=True, exist_ok=True)
     text = "SR-001 looks good, approved"
     digest = approvals.prompt_digest(text)
@@ -168,8 +168,8 @@ def test_merge_detects_rewritten_log_line(base, capsys) -> None:
 
 def test_merge_reports_fidelity_and_verification_unavailable(base, capsys, monkeypatch) -> None:
     root, sha = base
-    monkeypatch.setitem(sys.modules, "plumb.judgment.fidelity", None)
-    monkeypatch.setitem(sys.modules, "plumb.verify", None)
+    monkeypatch.setitem(sys.modules, "iaso.judgment.fidelity", None)
+    monkeypatch.setitem(sys.modules, "iaso.verify", None)
     _, out = _check(root, sha, capsys)
     assert "fidelity: unavailable" in out
     assert "verification: unavailable" in out
@@ -256,7 +256,7 @@ def test_merge_untraced_change_cleared_by_a_link_or_an_exemption(base, capsys) -
     root, sha = base
     (root / "src" / "mul.py").write_text("x = 1\n", "utf-8")
     (root / "src" / "gen.py").write_text("x = 1\n", "utf-8")
-    (root / ".plumb" / "config.yaml").write_text("trace:\n  exempt: [src/gen.py]\n", "utf-8")
+    (root / ".iaso" / "config.yaml").write_text("trace:\n  exempt: [src/gen.py]\n", "utf-8")
     open_core(root).add_link("SR-002", "implemented_by", Target(path="src/mul.py"))
     approvals.approve(open_core(root), ["SR-002", "INT-001"])
     code, out = _check(root, sha, capsys)
@@ -293,7 +293,7 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
         confirmed_base, capsys, monkeypatch) -> None:
     root, sha = confirmed_base
     _untraced_waits(root, sha, capsys)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     assert cli.main(["link", "SR-001", "implemented_by", "src/z.py", "--root",
                      str(root)]) == 0
     capsys.readouterr()
@@ -308,7 +308,7 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
     data = json.loads(capsys.readouterr().out)
     assert [{k: a[k] for k in ("id", "state", "new_ends")} for a in data["awaiting"]] == [
         {"id": "SR-001", "state": "extended", "new_ends": ["implemented_by src/z.py"]}]
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    monkeypatch.delenv("IASO_AGENT_SESSION")
     approvals.approve(open_core(root), ["SR-001"])  # the owner confirms the wider scope
     code, out = _check(root, sha, capsys)
     assert code == 0, out
@@ -317,7 +317,7 @@ def test_link_command_widening_a_confirmed_requirement_waits_for_the_owner(
 @pytest.mark.sr("SR-260")
 def test_frontmatter_edit_adding_a_link_waits_for_the_owner(confirmed_base, capsys) -> None:
     root, sha = confirmed_base
-    path = root / ".plumb" / "requirements" / "SR-001.md"
+    path = root / ".iaso" / "requirements" / "SR-001.md"
     text = path.read_text(encoding="utf-8")
     head, _, rest = text.partition("links:\n")
     path.write_text(head + "links:\n- kind: implemented_by\n  path: src/z.py\n" + rest,
@@ -333,7 +333,7 @@ def test_trace_exempt_added_in_range_is_accepted_by_the_judge(confirmed_base, ca
     """SR-288 EX-1..EX-3: the judge accepts a new glob like any record (SR-372); the merge is
     not held for the owner and the glob is listed as added in the range."""
     root, sha = confirmed_base
-    (root / ".plumb" / "config.yaml").write_text('trace:\n  exempt: ["src/**"]\n', "utf-8")
+    (root / ".iaso" / "config.yaml").write_text('trace:\n  exempt: ["src/**"]\n', "utf-8")
     code, out = _check(root, sha, capsys)
     assert code == 0, out
     assert "untraced" not in out                                                 # SR-288 EX-1
@@ -351,7 +351,7 @@ def test_trace_exempt_added_in_range_is_accepted_by_the_judge(confirmed_base, ca
 @pytest.mark.sr("SR-260")
 def test_narrowing_the_layout_in_the_range_hides_no_change(confirmed_base, capsys) -> None:
     root, sha = confirmed_base
-    (root / ".plumb" / "config.yaml").write_text("test_dirs: [src, tests]\n", "utf-8")
+    (root / ".iaso" / "config.yaml").write_text("test_dirs: [src, tests]\n", "utf-8")
     _untraced_waits(root, sha, capsys)
 
 

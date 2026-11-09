@@ -10,11 +10,11 @@ vi.mock('mermaid', () => ({ default: { initialize, render } }));
 import { DIAGRAM_FAILED, drawDiagrams, studyHtml } from '../lib/markdown';
 
 const BODY = [
-  '# How plumb\'s background jobs run', '',
+  '# How iaso\'s background jobs run', '',
   'A **dispatcher** hands each job to a *worker*.', '',
   '- one job at a time', '- retried once', '',
-  '| | plumb | cron |', '|---|---|---|', '| runs | **6** | 5 |', '',
-  'Run `plumb jobs`.', '',
+  '| | iaso | cron |', '|---|---|---|', '| runs | **6** | 5 |', '',
+  'Run `iaso jobs`.', '',
   '```mermaid', 'flowchart LR', '  D[dispatcher] --> W[worker]', '```', '',
   '<img src=x onerror="alert(1)"><script>alert(2)</script>',
 ].join('\n');
@@ -31,12 +31,12 @@ beforeEach(() => { render.mockReset(); initialize.mockReset(); });
 describe('a study page (SR-293 EX-1)', () => {
   it('draws headings, emphasis, lists, tables and code, not raw Markdown', () => {
     const el = mount(BODY);
-    expect(el.querySelector('h1')?.textContent).toBe("How plumb's background jobs run");
+    expect(el.querySelector('h1')?.textContent).toBe("How iaso's background jobs run");
     expect(el.querySelector('strong')?.textContent).toBe('dispatcher');
     expect(el.querySelector('em')?.textContent).toBe('worker');
     expect(el.querySelectorAll('ul > li')).toHaveLength(2);
     expect(el.querySelectorAll('table td')).toHaveLength(3);
-    expect(el.querySelector('p code')?.textContent).toBe('plumb jobs');
+    expect(el.querySelector('p code')?.textContent).toBe('iaso jobs');
     expect(el.textContent).not.toContain('**');
     expect(el.textContent).not.toContain('|---|');
   });

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, cli
-from plumb.api import open_core
+from iaso import approvals, cli
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-208")
 
@@ -28,7 +28,7 @@ def setup(repo: Path, write_record) -> Path:
 def log_prompt(root: Path, text: str, at: str = "2026-10-06T03:00:00Z",
                session: str = "s1") -> str:
     digest = approvals.prompt_digest(text)
-    prompts = root / ".plumb" / "session" / "prompts.jsonl"
+    prompts = root / ".iaso" / "session" / "prompts.jsonl"
     prompts.parent.mkdir(parents=True, exist_ok=True)
     with prompts.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"digest": digest, "session": session, "at": at,
@@ -38,7 +38,7 @@ def log_prompt(root: Path, text: str, at: str = "2026-10-06T03:00:00Z",
 
 def state_set(root: Path, ids: list[str], at: str = "2026-10-06T02:59:00Z") -> None:
     index = open_core(root).index()
-    stated = root / ".plumb" / "session" / "stated.json"
+    stated = root / ".iaso" / "session" / "stated.json"
     stated.parent.mkdir(parents=True, exist_ok=True)
     stated.write_text(json.dumps({"at": at, "session": "s1", "reply_after_prompt": None,
                                   "records": [{"id": i, "hash": index[i].hash} for i in ids]}),
@@ -51,7 +51,7 @@ def _confirmation(root: Path, record_id: str) -> str:
 
 def test_approve_refused_under_marker(setup: Path, monkeypatch: pytest.MonkeyPatch,
                                       capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     with pytest.raises(approvals.Refused):
         approvals.approve(open_core(setup), ["SR-001"])
     with pytest.raises(approvals.Refused):
@@ -81,7 +81,7 @@ def test_approve_proposed_pins_all_listed(setup: Path) -> None:
 
 @pytest.mark.sr("SR-260")
 def test_approval_records_the_ends_a_requirement_owns(setup: Path) -> None:
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     (setup / "src").mkdir()
     (setup / "src" / "a.py").write_text("x = 1\n", "utf-8")

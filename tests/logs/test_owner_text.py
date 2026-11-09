@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from logutil import legacy_entry, write_legacy
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.present.owner_text import LEGACY_LOG, bare_cli_verbs
+from iaso import cli
+from iaso.api import open_core
+from iaso.present.owner_text import LEGACY_LOG, bare_cli_verbs
 
 pytestmark = pytest.mark.sr("SR-232")
 
@@ -31,7 +31,7 @@ def test_validate_warning(repo: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
 
 def test_merge_report_warning(repo: Path) -> None:
-    from plumb.boundary import merge_report, render
+    from iaso.boundary import merge_report, render
 
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True,
                          capture_output=True).stdout.strip()
@@ -42,7 +42,7 @@ def test_merge_report_warning(repo: Path) -> None:
     assert LEGACY_LOG.format(n=2) in text
     warning = next(x for x in text.splitlines() if "old format" in x)
     assert bare_cli_verbs(warning) == []
-    (repo / ".plumb" / "log" / "events.jsonl").write_bytes(b"")
+    (repo / ".iaso" / "log" / "events.jsonl").write_bytes(b"")
     again = merge_report(open_core(repo), sha, run_full=False)
     assert again.legacy_log_lines == 0
     assert again.exit == report.exit  # the warning never changes the exit code
@@ -50,7 +50,7 @@ def test_merge_report_warning(repo: Path) -> None:
 
 
 def test_bare_cli_verbs_for_this_lane() -> None:
-    assert bare_cli_verbs("uv run plumb log migrate") == ["plumb log"]
-    assert bare_cli_verbs("/plumb migrate the logs") == []
-    assert bare_cli_verbs("plumb log: no legacy log line remains") == []
+    assert bare_cli_verbs("uv run iaso log migrate") == ["iaso log"]
+    assert bare_cli_verbs("/iaso migrate the logs") == []
+    assert bare_cli_verbs("iaso log: no legacy log line remains") == []
     assert bare_cli_verbs(LEGACY_LOG.format(n=3)) == []

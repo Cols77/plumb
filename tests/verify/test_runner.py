@@ -9,16 +9,16 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
-from plumb.verify.runner import build_command, run_pytest, run_selection
+from iaso.api import open_core
+from iaso.verify import open_verify
+from iaso.verify.runner import build_command, run_pytest, run_selection
 
 
 @pytest.mark.sr("SR-255")
 def test_run_never_passes_n_by_default() -> None:
     cmd = build_command(["tests/test_a.py"], workers=0)
     assert cmd[:3] == [sys.executable, "-m", "pytest"]
-    assert "-p" in cmd and "plumb.verify.pytest_plugin" in cmd
+    assert "-p" in cmd and "iaso.verify.pytest_plugin" in cmd
     assert "-n" not in cmd
     assert "-n" not in build_command(["tests/test_a.py"], workers=5, xdist=True)
     assert "-n" not in build_command(["tests/test_a.py"], workers=2, xdist=False)
@@ -79,9 +79,9 @@ def test_collection_error_does_not_stop_other_files(repo: Path) -> None:
 
 
 def test_the_tests_run_in_the_repositorys_venv_when_it_has_one(tmp_path: Path) -> None:
-    """Under the plugin, sys.executable is plumb's private environment, which has no pytest:
-    a repository's .venv runs its tests; verify.python names another one; else plumb's."""
-    from plumb.verify.runner import test_interpreter
+    """Under the plugin, sys.executable is iaso's private environment, which has no pytest:
+    a repository's .venv runs its tests; verify.python names another one; else iaso's."""
+    from iaso.verify.runner import test_interpreter
 
     assert test_interpreter(tmp_path) == sys.executable
     venv = tmp_path / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
@@ -95,7 +95,7 @@ def test_the_tests_run_in_the_repositorys_venv_when_it_has_one(tmp_path: Path) -
 def test_an_interpreter_without_pytest_aborts_the_run_saying_so(repo: Path, monkeypatch) -> None:
     """No pytest in the interpreter is no test failure: nothing runs, no node is marked failed,
     and the report says what is missing (the plugin's own environment has no pytest)."""
-    from plumb.verify import runner
+    from iaso.verify import runner
 
     make_project(repo)
     commit_all(repo)

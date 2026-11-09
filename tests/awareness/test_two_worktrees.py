@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 from awareness.gitrepo import add_worktree, commit_all, listing, make_repo, requirement
-from plumb import awareness
-from plumb.api import open_core
-from plumb.awareness import publish as pub
-from plumb.present.delta import Emitter
+from iaso import awareness
+from iaso.api import open_core
+from iaso.awareness import publish as pub
+from iaso.present.delta import Emitter
 
 
 def _pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -28,7 +28,7 @@ def _pair(tmp_path: Path) -> tuple[Path, Path]:
 def _edit(root: Path, statement: str, record: str = "SR-005", title: str = "relay checks"
           ) -> None:
     requirement(root, record, title, statement)
-    pub.publish(open_core(root), [f".plumb/requirements/{record}.md"])
+    pub.publish(open_core(root), [f".iaso/requirements/{record}.md"])
 
 
 @pytest.mark.sr("SR-258")
@@ -39,7 +39,7 @@ def test_brief_names_record_and_branch(tmp_path: Path) -> None:
     _edit(other, "A relay pins the stated group, named by its title.")
     _edit(main, "A relay pins only the records the owner's words affirm.")
     lines = awareness.brief_lines(open_core(main))
-    assert lines == ['plumb: SR-005 "relay checks" is also being changed on branch feat-x']
+    assert lines == ['iaso: SR-005 "relay checks" is also being changed on branch feat-x']
 
 
 @pytest.mark.sr("SR-258")
@@ -56,7 +56,7 @@ def test_delta_line_once_then_again_after_other_side_changes(tmp_path: Path) -> 
         return out
 
     first = prompt()
-    assert first == ['plumb: SR-005 "relay checks" is also being changed on branch feat-x']
+    assert first == ['iaso: SR-005 "relay checks" is also being changed on branch feat-x']
     assert prompt() == []
     time.sleep(0.02)
     _edit(other, "second version on feat-x")
@@ -97,7 +97,7 @@ def test_stale_changing_json_ignored(tmp_path: Path) -> None:
     old = time.time() - 8 * 86400
     path = pub.changing_path(other)
     os.utime(path, (old, old))
-    record_file = other / ".plumb" / "requirements" / "SR-005.md"
+    record_file = other / ".iaso" / "requirements" / "SR-005.md"
     os.utime(record_file, (old, old))
     assert awareness.overlaps(open_core(main), ["SR-005"]) == ()
 
@@ -106,7 +106,7 @@ def test_stale_changing_json_ignored(tmp_path: Path) -> None:
 def test_reader_maps_paths_with_own_index(tmp_path: Path) -> None:
     """A stale ``records`` map does not hide a changed end: the reader maps the paths."""
     main, other = _pair(tmp_path)
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     (main / "src").mkdir()
     (main / "src" / "relay.py").write_text("x = 1\n", encoding="utf-8")

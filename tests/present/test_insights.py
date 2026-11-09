@@ -1,5 +1,5 @@
-"""SR-374: what plumb tells the coding agent is one table, condition to insight, said once per
-session per state, with the full picture of a condition on demand (plumb context)."""
+"""SR-374: what iaso tells the coding agent is one table, condition to insight, said once per
+session per state, with the full picture of a condition on demand (iaso context)."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli, stale, trace
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.hosts.claude_code import edit_check, hookio, prompt, session_start
-from plumb.understand import cmd_intent
+from iaso import cli, stale, trace
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.hosts.claude_code import edit_check, hookio, prompt, session_start
+from iaso.understand import cmd_intent
 
 pytestmark = pytest.mark.sr("SR-374")
 
@@ -73,7 +73,7 @@ def looped(repo: Path, write_record) -> Path:
     return repo
 
 
-INTENT_LINE = "plumb: working on INT-001 Faster merges: step clarify; now building: P7 6/9; left: P8"
+INTENT_LINE = "iaso: working on INT-001 Faster merges: step clarify; now building: P7 6/9; left: P8"
 
 
 def test_ex1_after_compaction_the_intent_line_comes_back_once(looped: Path, hook_input) -> None:
@@ -113,7 +113,7 @@ def test_ex3_an_edit_names_the_requirement_examples_tests_and_stale_link(
                          tool_input={"file_path": str(linked / "src" / "x.py")})
     assert edit_check.main(stdin=io.StringIO(payload), stdout=out, root=linked) == 0
     text = json.loads(out.getvalue())["hookSpecificOutput"]["additionalContext"]
-    assert ("plumb: src/x.py serves SR-005 Relay checks the quote; examples EX-1; tests "
+    assert ("iaso: src/x.py serves SR-005 Relay checks the quote; examples EX-1; tests "
             "tests/test_x.py::test_f") in text
     assert "SR-005's link to src/x.py is stale" in text
 
@@ -122,7 +122,7 @@ def test_ex4_a_test_that_never_passed_is_not_yet_passing_and_names_its_example(
         linked: Path) -> None:
     from types import SimpleNamespace
 
-    from plumb.verify.cli import report_lines
+    from iaso.verify.cli import report_lines
 
     report = SimpleNamespace(
         selection=None, run_id="r1", outcomes={"tests/test_x.py::test_f": "failed"},
@@ -131,17 +131,17 @@ def test_ex4_a_test_that_never_passed_is_not_yet_passing_and_names_its_example(
         aborted=None, discarded=None, collection_errors=[], flaky=[],
         removed_after_passing=[], notes=[], full_pending=None)
     text = "\n".join(report_lines(report, open_core(linked)))
-    assert ("plumb: not yet passing: tests/test_x.py::test_f (it never passed); it proves "
+    assert ("iaso: not yet passing: tests/test_x.py::test_f (it never passed); it proves "
             "SR-005/EX-1") in text
     assert "regression" not in text
 
 
 def test_ex5_a_symptom_of_an_open_known_issue_is_said_once(repo: Path, hook_input) -> None:
-    (repo / ".plumb" / "known-issues.json").write_text(json.dumps({"issues": [{
+    (repo / ".iaso" / "known-issues.json").write_text(json.dumps({"issues": [{
         "id": "KI-9", "title": "stop hook times out", "symptom": "stop hook .*timed? ?out",
         "cause": "the full check runs inside the hook", "fix": "update the plugin"}]}), "utf-8")
     first = _prompt(repo, hook_input, "the stop hook timed out again")
-    assert ("plumb: known issue KI-9 stop hook times out; cause: the full check runs inside "
+    assert ("iaso: known issue KI-9 stop hook times out; cause: the full check runs inside "
             "the hook; fix or workaround: update the plugin") in first
     assert "KI-9" not in _prompt(repo, hook_input, "the stop hook timed out again")
 
@@ -153,7 +153,7 @@ def test_ex6_the_merge_check_prints_only_what_holds(repo: Path, capsys) -> None:
     (repo / "src" / "m.py").write_text("x = 1\n", encoding="utf-8")      # untraced: listed only
     code = cli.main(["merge-check", base, "--no-run", "--root", str(repo)])
     out = capsys.readouterr().out
-    assert out.startswith(f"plumb merge-check: {base}..HEAD: ")
+    assert out.startswith(f"iaso merge-check: {base}..HEAD: ")
     for info in ("untraced", "approvals in range", "log integrity: ok", "touched requirements",
                  "fidelity", "full run:"):
         assert info not in out
@@ -162,7 +162,7 @@ def test_ex6_the_merge_check_prints_only_what_holds(repo: Path, capsys) -> None:
 
 def test_ex7_a_cut_names_the_skipped_step_once_per_session(repo: Path, hook_input) -> None:
     def cut(ctx: hookio.HookContext) -> None:
-        ctx.keep(["plumb: a kept line"])
+        ctx.keep(["iaso: a kept line"])
         raise hookio.BudgetExceeded("tests")
 
     said = []
@@ -171,11 +171,11 @@ def test_ex7_a_cut_names_the_skipped_step_once_per_session(repo: Path, hook_inpu
         hookio.run_hook("session-start", cut, stdin=io.StringIO(hook_input(
             "SessionStart", session_id=SESSION)), stdout=out, root=repo)
         said.append(out.getvalue())
-    assert "plumb: check skipped (budget): tests" in said[0]
-    assert "check skipped" not in said[1] and "plumb: a kept line" in said[1]
+    assert "iaso: check skipped (budget): tests" in said[0]
+    assert "check skipped" not in said[1] and "iaso: a kept line" in said[1]
 
 
-def test_ex8_plumb_context_edit_prints_the_full_picture(linked: Path, capsys) -> None:
+def test_ex8_iaso_context_edit_prints_the_full_picture(linked: Path, capsys) -> None:
     (linked / "src" / "x.py").write_text(CODE.replace("a + b", "a - b"), encoding="utf-8")
     assert cli.main(["context", "edit", "src/x.py", "--root", str(linked)]) == 0
     out = capsys.readouterr().out
@@ -183,7 +183,7 @@ def test_ex8_plumb_context_edit_prints_the_full_picture(linked: Path, capsys) ->
     assert "example EX-1: given a quote, when relay runs, then it checks it" in out
     assert "test tests/test_x.py::test_f" in out                             # tests
     assert "link SR-005#0 implemented_by src/x.py::f" in out                 # links
-    assert "stale: plumb: SR-005's link to src/x.py is stale" in out         # drift
+    assert "stale: iaso: SR-005's link to src/x.py is stale" in out         # drift
 
 
 def test_ex9_the_brief_says_what_changed_and_what_blocks_and_no_counts(
@@ -200,13 +200,13 @@ def test_ex9_the_brief_says_what_changed_and_what_blocks_and_no_counts(
     second = _start(repo, hook_input, session="b")
     for out in (first, second):
         assert "400" not in out and "stale" not in out and "waiting on a judge" not in out
-        assert "plumb brief:" not in out
+        assert "iaso brief:" not in out
     assert "changed since" not in first                         # nothing seen before
-    assert "plumb: changed since you last looked: SR-007 Rule seven, reworded" in second
+    assert "iaso: changed since you last looked: SR-007 Rule seven, reworded" in second
 
 
 def test_ex10_vendored_example_files_are_traced_like_any_copied_file(repo: Path) -> None:
-    vendored = "src/plumb/hosts/claude_code/templates/skills/x/vendor/scene.py"
+    vendored = "src/iaso/hosts/claude_code/templates/skills/x/vendor/scene.py"
     beside = vendored.replace("/vendor/", "/own/")
     core = open_core(repo)
     assert trace.is_source_path(core.config, beside)

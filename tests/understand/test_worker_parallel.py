@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from plumb.api import Core
-from plumb.contracts import Applied, DispatchError
-from plumb.understand import dispatch, files, jobs, queue, worker
+from iaso.api import Core
+from iaso.contracts import Applied, DispatchError
+from iaso.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
 pytestmark = pytest.mark.sr("SR-387")
@@ -46,7 +46,7 @@ class Recording(FakeDispatcher):
 
 
 def _setup(repo: Path, monkeypatch: pytest.MonkeyPatch, limit: int, **kind: Any):
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         f"understand:\n  parallel_calls: {limit}\n", encoding="utf-8")
     dispatcher = Recording()
     monkeypatch.setattr(dispatch, "configured", lambda core: dispatcher)
@@ -70,7 +70,7 @@ def _enqueue(core: Core, count: int) -> list[Any]:
 
 
 def test_parallel_calls_default_is_three_and_below_one_is_refused() -> None:
-    from plumb.config import UnderstandConfig
+    from iaso.config import UnderstandConfig
 
     assert UnderstandConfig().parallel_calls == 3      # DEC-427: the owner, from the wall times
     for bad in (0, -2):

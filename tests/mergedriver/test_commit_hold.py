@@ -18,21 +18,21 @@ from mergedriver.mdhelpers import (
     ex,
     install_driver,
     make_repo,
-    plumb,
+    iaso,
     record,
     run_git,
     write_record,
 )
-from plumb import cli
-from plumb.boundary.premerge import COMMIT_HOOK_MARKER, install_commit_hook, install_hook
+from iaso import cli
+from iaso.boundary.premerge import COMMIT_HOOK_MARKER, install_commit_hook, install_hook
 
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 BASE = "A relay pins every stated record."
 OURS = "A relay pins only what the owner affirms."
 
 
 def _git_env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     env.update(PYTHONUTF8="1", GIT_EDITOR="true")
     return env
 
@@ -65,8 +65,8 @@ def _diverged(tmp_path: Path, *, text_conflict: bool = False) -> Path:
     write_record(other, record(statement=THEIRS_STATEMENT, examples=[ex(1)]))
     if text_conflict:
         (other / "notes.txt").write_text("feat\n", encoding="utf-8")
-    from plumb.api import open_core
-    from plumb.approvals import approve
+    from iaso.api import open_core
+    from iaso.approvals import approve
 
     approve(open_core(other), ["SR-005"])
     # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
@@ -93,23 +93,23 @@ def _relay_theirs(root: Path) -> None:
 
 @pytest.mark.sr("SR-260")
 def test_template_steps_commit_the_choice(tmp_path: Path) -> None:
-    """SR-077 EX-6, following the /plumb template exactly: the held merge, the relayed
-    choice, then "finish the merge" (stage .plumb, the check, git commit). The merge commit
+    """SR-077 EX-6, following the /iaso template exactly: the held merge, the relayed
+    choice, then "finish the merge" (stage .iaso, the check, git commit). The merge commit
     carries the chosen record and its resolution entry; nothing is left behind."""
     root = _diverged(tmp_path)
     held = _git(root, "merge", "--no-edit", "feat-x")
     assert held.returncode != 0 and "IC-001" in held.stdout + held.stderr
     _relay_theirs(root)
-    _git(root, "add", ".plumb", check=True)
-    assert plumb(root, "merge-check", "--hook", "pre-merge-commit").returncode == 0
+    _git(root, "add", ".iaso", check=True)
+    assert iaso(root, "merge-check", "--hook", "pre-merge-commit").returncode == 0
     done = _git(root, "commit", "-m", "Merge feat-x\n\nSR: SR-005")
     assert done.returncode == 0, done.stdout + done.stderr
     assert "conflict:" not in _committed(root) and THEIRS_STATEMENT in _committed(root)
     # the resolution is an entry file of its own (sp6 6.1), committed with the merge
     assert run_git(root, "ls-tree", "-r", "--name-only", "HEAD", "--",
-                   ".plumb/log/conflict-resolution").stdout.strip()
+                   ".iaso/log/conflict-resolution").stdout.strip()
     assert run_git(root, "status", "--porcelain", "--untracked-files=all", "--",
-                   ".plumb").stdout == ""
+                   ".iaso").stdout == ""
 
 
 @pytest.mark.sr("SR-260")
@@ -118,14 +118,14 @@ def test_choice_left_unstaged_holds_the_commit(tmp_path: Path,
     """The bug's own steps: the choice is written to the work tree but not staged, so the
     staged record still carries the block. The check holds (it judges what git will record)
     and git commit is refused; the merge stays in progress."""
-    import plumb.mergedriver.conflicts as conflicts
+    import iaso.mergedriver.conflicts as conflicts
 
     root = _diverged(tmp_path)
     _git(root, "merge", "--no-edit", "feat-x")
     monkeypatch.setattr(conflicts, "stage_choice", lambda *_a, **_k: None)
     _relay_theirs(root)
     head = _head(root)
-    check = plumb(root, "merge-check", "--hook", "pre-merge-commit")
+    check = iaso(root, "merge-check", "--hook", "pre-merge-commit")
     assert check.returncode == 1
     assert f"{SR} is left out" in check.stdout and "finish the merge" in check.stdout
     refused = _git(root, "commit", "-m", "Merge feat-x\n\nSR: SR-005")
@@ -158,7 +158,7 @@ def test_merge_finished_by_hand_is_held(tmp_path: Path, how: str) -> None:
     output = finished.stdout + finished.stderr
     assert finished.returncode != 0, output
     assert _head(root) == head
-    assert "IC-001" in output and "/plumb conflicts" in output and "finish the merge" in output
+    assert "IC-001" in output and "/iaso conflicts" in output and "finish the merge" in output
 
 
 @pytest.mark.sr("SR-260")
@@ -195,11 +195,11 @@ def test_git_pull_is_held(tmp_path: Path) -> None:
 
 @pytest.mark.sr("SR-260")
 def test_hold_can_be_switched_off_for_one_commit(tmp_path: Path) -> None:
-    """``git -c plumb.mergeHold=false commit`` records a merge the owner wants recorded as
+    """``git -c iaso.mergeHold=false commit`` records a merge the owner wants recorded as
     it is (prepare-commit-msg has no --no-verify)."""
     root = _diverged(tmp_path)
     _git(root, "merge", "--no-commit", "feat-x")
-    done = _git(root, "-c", "plumb.mergeHold=false", "commit", "-m", "Merge feat-x")
+    done = _git(root, "-c", "iaso.mergeHold=false", "commit", "-m", "Merge feat-x")
     assert done.returncode == 0, done.stdout + done.stderr
 
 
@@ -253,4 +253,4 @@ def test_ordinary_commit_skips_the_check(tmp_path: Path) -> None:
     (root / "a.txt").write_text("a\n", encoding="utf-8")
     _git(root, "add", "a.txt", check=True)
     done = _git(root, "commit", "-m", "a")
-    assert done.returncode == 0 and "plumb" not in done.stdout + done.stderr
+    assert done.returncode == 0 and "iaso" not in done.stdout + done.stderr

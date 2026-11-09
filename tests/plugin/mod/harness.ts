@@ -1,5 +1,5 @@
-// The world beneath plumb's panel in its tests (SP7 5.10): the repository's files, the
-// `plumb mod ...` answers, the clock, and what the panel showed (toasts, the status line, log
+// The world beneath iaso's panel in its tests (SP7 5.10): the repository's files, the
+// `iaso mod ...` answers, the clock, and what the panel showed (toasts, the status line, log
 // lines, panes). Every process call is
 // recorded with its argv and stdin, so a test can say the key never reaches argv.
 import type { On } from 'claude-code'
@@ -50,7 +50,7 @@ export type World = {
   submits: { text: string; asUser?: unknown }[]
   /** The surface draws no `Input` (SR-395 EX-6). */
   noInput?: boolean
-  /** What `plumb mod <action>` answers: its exit code and JSON, by action and argv. */
+  /** What `iaso mod <action>` answers: its exit code and JSON, by action and argv. */
   answer: (action: string, argv: string[]) => { exitCode: number; data: unknown; stderr?: string }
   /** Every process call and file write is refused: a hook of the panel fails. */
   broken?: boolean
@@ -59,15 +59,15 @@ export type World = {
 const MOD_JSON = { active: true, since: '2026-10-11T12:00:00Z', key_digest: 'd'.repeat(64), heartbeat: '2026-10-11T12:00:00Z' }
 
 export function world(over: Partial<World> = {}): World {
-  const sessionDir = `${ROOT}/.plumb/session/${SESSION}`
+  const sessionDir = `${ROOT}/.iaso/session/${SESSION}`
   return {
     files: {
-      [`${ROOT}/.plumb/config.yaml`]: '',
+      [`${ROOT}/.iaso/config.yaml`]: '',
       [`${sessionDir}/host.json`]: JSON.stringify({ python: PYTHON }),
       [PYTHON]: '',
       [`${sessionDir}/mod.json`]: JSON.stringify(MOD_JSON),
       [`${sessionDir}/present.json`]: JSON.stringify(PRESENT),
-      [`${ROOT}/.plumb/session/status.json`]: JSON.stringify({ state: 'awaits you', intent_summary: 'invoices · late fees', awaiting: 2 }),
+      [`${ROOT}/.iaso/session/status.json`]: JSON.stringify({ state: 'awaits you', intent_summary: 'invoices · late fees', awaiting: 2 }),
     },
     writes: [],
     runs: [],

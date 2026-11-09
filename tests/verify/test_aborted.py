@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
-from plumb.verify.evidence import load_index
+from iaso.api import open_core
+from iaso.verify import open_verify
+from iaso.verify.evidence import load_index
 
 BROKEN_CONFTEST = "import does_not_exist_xyz\n"
 
@@ -93,12 +93,12 @@ def test_index_rebuilds_when_log_prefix_changes(repo: Path) -> None:
 @pytest.mark.sr("SR-255")
 def test_cli_run_exits_nonzero_when_pytest_aborts(project: Path,
                                                   capsys: pytest.CaptureFixture[str]) -> None:
-    from plumb import cli
+    from iaso import cli
 
     write(project, "tests/conftest.py", BROKEN_CONFTEST)
     assert cli.main(["tests", "run", "--nodes", "tests/test_mod.py",
                      "--root", str(project)]) != 0
-    assert "plumb: run aborted" in capsys.readouterr().out
+    assert "iaso: run aborted" in capsys.readouterr().out
 
 
 @pytest.mark.sr("SR-255")
@@ -120,7 +120,7 @@ def test_runnable_targets_keep_known_ids_and_absorb_into_file(project: Path) -> 
     {"exit_status": 0, "nodes": []},  # nothing ran
 ], ids=["exit-5", "collection-error", "no-nodes"])
 def test_full_run_without_a_clean_collection_never_clears_full_pending(payload) -> None:
-    from plumb.verify.evidence import apply_entry
+    from iaso.verify.evidence import apply_entry
 
     index = {"nodes": {}, "full": None}
     apply_entry(index, {"run_id": "r1", "full": True, "env": {"env_key": "E"},

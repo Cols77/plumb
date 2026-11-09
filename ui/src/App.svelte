@@ -12,6 +12,6 @@
 </script>
 
 <header class="workspace-header">
-  <div class="brand"><span class="plumb-mark" aria-hidden="true">◈</span><strong>plumb</strong><span class="brand-divider">/</span><span class="project-name" title={workspace?.project.root}>{workspace?.project.name ?? 'Study room'}</span></div>
+  <div class="brand"><span class="iaso-mark" aria-hidden="true">◈</span><strong>iaso</strong><span class="brand-divider">/</span><span class="project-name" title={workspace?.project.root}>{workspace?.project.name ?? 'Study room'}</span></div>
 </header>
 <main id="study-room" tabindex="-1"><Studies {capability}/></main>

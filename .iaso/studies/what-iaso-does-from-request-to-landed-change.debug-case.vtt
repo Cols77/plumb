@@ -1,0 +1,30 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.000
+A failing judge job is retried; the third failure in a row becomes a debug case.
+
+2
+00:00:06.000 --> 00:00:11.000
+The case runs in the background, so your work is never stopped.
+
+3
+00:00:11.000 --> 00:00:16.000
+It reruns the failed step once, in case the failure was momentary.
+
+4
+00:00:16.000 --> 00:00:22.000
+If the rerun passes, the case is resolved. If not, iaso is fixed on a branch.
+
+5
+00:00:22.000 --> 00:00:29.000
+The fix needs a cause, a failing test, the fix, green tests, nothing stale, and a passed judge review.
+
+6
+00:00:29.000 --> 00:00:35.000
+Main waits for your word. The workflow never approves anything or changes what a record means.
+
+7
+00:00:35.000 --> 00:00:41.000
+Recap: iaso's own failures stay with iaso, fixed on a branch, and you decide what lands.
+

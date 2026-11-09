@@ -11,20 +11,20 @@ import pytest
 from capture_helpers import JevStub, run, use_jev
 from jev_fixtures import calibrated
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-244")
 
 
 def set_form(repo: Path, stub: JevStub, form: str | None) -> None:
     out = f", output: {form}" if form else ""
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  hook_timeout_ms: 2000\n"
         f"  jev: {{base_url: '{stub.url}'{out}}}\n", encoding="utf-8")
 
 
 def ask(repo: Path):
-    from plumb.judgment import get_backend
+    from iaso.judgment import get_backend
 
     core = open_core(repo)
     return core, get_backend(core, hook=False).entailment(
@@ -68,8 +68,8 @@ def test_ex3_a_calibration_of_another_question_form_does_not_serve_approval(
         repo: Path, write_record, monkeypatch) -> None:
     """SR-372: calibration measures the approval question; one of the entailment forms is
     never served to auto-approval."""
-    from plumb.capture.autoapprove import auto_approve_state
-    from plumb.capture.jevcmd import jev_status, status_lines
+    from iaso.capture.autoapprove import auto_approve_state
+    from iaso.capture.jevcmd import jev_status, status_lines
 
     stub = calibrated(repo, write_record, monkeypatch)
     assert run(repo, "config", "auto-approve", "on") == 0      # the owner's terminal (test)
@@ -87,8 +87,8 @@ def test_the_verdict_cascade_does_not_use_a_calibration_of_the_other_form(
         repo: Path, write_record, monkeypatch) -> None:
     """JEV is still asked and its score kept; the other form's threshold is not used, the
     floor is 0.9 (DEC-143)."""
-    from plumb.judgment import get_backend
-    from plumb.understand import verdict
+    from iaso.judgment import get_backend
+    from iaso.understand import verdict
 
     stub = calibrated(repo, write_record, monkeypatch)
     stub.noul = lambda state: 0.9                   # JEV now answers benign at 0.9

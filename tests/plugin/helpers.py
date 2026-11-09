@@ -1,5 +1,5 @@
 """Shared helpers of the plugin's tests (SP7 4.8): run the plugin's sh scripts with a controlled
-PATH, fake interpreters that record how they were called, and a plumb home."""
+PATH, fake interpreters that record how they were called, and a iaso home."""
 
 from __future__ import annotations
 
@@ -13,10 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from iaso.paths import state_dir
+
 REPO = Path(__file__).resolve().parents[2]
 PLUGIN = REPO / "plugin"
-HOOK = PLUGIN / "bin" / "plumb-hook"
-LAUNCHER = PLUGIN / "bin" / "plumb"
+HOOK = PLUGIN / "bin" / "iaso-hook"
+LAUNCHER = PLUGIN / "bin" / "iaso"
 SH = shutil.which("sh")
 needs_sh = pytest.mark.skipif(SH is None, reason="no POSIX sh on this machine")
 EVENTS = ("session-start", "prompt", "pre-tool", "post-edit", "edit-check", "stop")
@@ -45,7 +47,7 @@ def write_script(path: Path, body: str) -> Path:
 
 
 def sentinel_bin(folder: Path, sentinel: Path, names: Sequence[str] = (
-        "python", "python3", "python3.12", "plumb", "uv", "py")) -> Path:
+        "python", "python3", "python3.12", "iaso", "uv", "py")) -> Path:
     """Programs that must never run: each appends its name to ``sentinel``."""
     for name in names:
         write_script(folder / name, f'echo "{name} $*" >> "{slashes(sentinel)}"\nexit 0')
@@ -57,12 +59,12 @@ def recording_python(path: Path, log: Path) -> Path:
     root it was given, and reads its stdin."""
     return write_script(path, (
         f'printf "argv:%s\\n" "$*" >> "{slashes(log)}"\n'
-        f'printf "root:%s\\n" "$PLUMB_PLUGIN_ROOT" >> "{slashes(log)}"\n'
+        f'printf "root:%s\\n" "$IASO_PLUGIN_ROOT" >> "{slashes(log)}"\n'
         "cat > /dev/null\n"))
 
 
 def real_python(path: Path) -> Path:
-    """An interpreter script that runs this checkout's plumb (the bundled environment, real)."""
+    """An interpreter script that runs this checkout's iaso (the bundled environment, real)."""
     src = slashes(REPO / "src")
     return write_script(path, f'export PYTHONPATH="{src}"\nexec "{slashes(sys.executable)}" "$@"')
 
@@ -77,11 +79,11 @@ def ready_home(home: Path, python: Path) -> Path:
 
 
 def user_launcher(home: Path) -> Path:
-    """``home/bin/plumb`` as the bootstrap writes it, running this checkout's plumb."""
+    """``home/bin/iaso`` as the bootstrap writes it, running this checkout's iaso."""
     src = slashes(REPO / "src")
-    return write_script(home / "bin" / "plumb", (
-        f'export PLUMB_HOME="{slashes(home)}" PLUMB_PLUGIN_ROOT="{slashes(PLUGIN)}" '
-        f'PYTHONPATH="{src}"; exec "{slashes(sys.executable)}" -m plumb "$@"'))
+    return write_script(home / "bin" / "iaso", (
+        f'export IASO_HOME="{slashes(home)}" IASO_PLUGIN_ROOT="{slashes(PLUGIN)}" '
+        f'PYTHONPATH="{src}"; exec "{slashes(sys.executable)}" -m iaso "$@"'))
 
 
 def env_with(path: Sequence[Path | str] = (), **values: str) -> dict[str, str]:
@@ -120,7 +122,7 @@ def git_repo(root: Path) -> Path:
 def guard_off(root: Path) -> None:
     """SR-384: these tests drive the real hooks on a repository that sits on its default branch;
     the main-checkout guard has its own tests (tests/host/test_main_guard.py)."""
-    config = Path(root) / ".plumb" / "config.yaml"
+    config = state_dir(Path(root)) / "config.yaml"
     text = config.read_text(encoding="utf-8") if config.exists() else ""
     if "guard_main" not in text:
         config.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +131,7 @@ def guard_off(root: Path) -> None:
 
 
 def adopted_repo(root: Path) -> Path:
-    from plumb.commands import init_repo
+    from iaso.commands import init_repo
 
     git_repo(root)
     init_repo(root)
@@ -142,7 +144,7 @@ def hook_data(event: str, **fields: object) -> dict[str, object]:
     if event == "session-start":
         data["source"] = "startup"
     if event == "pre-tool":
-        data.update(tool_name="Bash", tool_input={"command": "plumb status"})
+        data.update(tool_name="Bash", tool_input={"command": "iaso status"})
     if event in ("post-edit", "edit-check"):
         data.update(tool_name="Edit", tool_input={"file_path": "src/app.py"})
     data.update(fields)

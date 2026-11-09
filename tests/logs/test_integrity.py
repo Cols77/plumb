@@ -8,16 +8,16 @@ import pytest
 from logutil import delete, legacy_entry, tamper, write_legacy
 
 from logs.gitrepo import commit_all, make_repo, run_git
-from plumb import log
-from plumb.api import open_core
-from plumb.merge import log_integrity
-from plumb.normalize import canonical_json
-from plumb.verify.evidence import load_index
+from iaso import log
+from iaso.api import open_core
+from iaso.merge import log_integrity
+from iaso.normalize import canonical_json
+from iaso.verify.evidence import load_index
 
 
 @pytest.fixture
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     return make_repo(tmp_path / "r")
 
 
@@ -36,7 +36,7 @@ def test_modified_entry_file_since_fork_reported(root: Path) -> None:
     base = _forked(root)
     name = tamper(root, "events", -1, lambda t: t.replace("SR-001", "SR-002"))
     problems, digests = log_integrity(open_core(root), base)
-    assert any(p.startswith(f".plumb/log/{name}: entry modified since merge-base")
+    assert any(p.startswith(f".iaso/log/{name}: entry modified since merge-base")
                for p in problems), problems
     open_core(root).log_append("events", "mod-hello", {"new": True})  # an addition is fine
     commit_all(root, "tamper committed")
@@ -49,7 +49,7 @@ def test_deleted_entry_file_since_fork_reported(root: Path) -> None:
     base = _forked(root)
     name = delete(root, "events", 0)
     problems, digests = log_integrity(open_core(root), base)
-    assert problems == [f".plumb/log/{name}: entry deleted since merge-base "
+    assert problems == [f".iaso/log/{name}: entry deleted since merge-base "
                         f"{run_git(root, 'merge-base', base, 'HEAD').stdout.strip()[:12]}"]
     assert len(digests["events"]) == 1  # the surviving entry present at the fork
 
@@ -62,7 +62,7 @@ def _untracked(root: Path, kind: str) -> str:
     run_git(root, "commit", "-q", "--no-verify", "-m", "tracked")
     run_git(root, "branch", "trunk")
     run_git(root, "checkout", "-q", "-b", "feat")
-    run_git(root, "rm", "-q", "-r", "--cached", f".plumb/log/{kind}")
+    run_git(root, "rm", "-q", "-r", "--cached", f".iaso/log/{kind}")
     run_git(root, "commit", "-q", "--no-verify", "-m", "stop tracking")
     return "trunk"
 

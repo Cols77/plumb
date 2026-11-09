@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mergedriver.mdhelpers import conflicted
-from plumb import cli
+from iaso import cli
 
 pytestmark = pytest.mark.sr("SR-267")
 IDS = re.compile(r"\b(IC|SR|INT|DEC)-\d+")

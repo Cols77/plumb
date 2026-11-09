@@ -1,4 +1,4 @@
-"""CAPTURE C1: plumb new, intent, example and decide (sp2 5.2, SR-035)."""
+"""CAPTURE C1: iaso new, intent, example and decide (sp2 5.2, SR-035)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.cli import main
+from iaso.api import open_core
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-236")
 
@@ -37,7 +37,7 @@ def test_new_uses_next_id_and_is_proposed(repo: Path, write_record, capsys) -> N
     assert run(repo, "new", "requirement", "--title", "multiply returns the product",
                "--statement", "multiply(a, b) returns a * b") == 0
     out = capsys.readouterr().out
-    assert "SR-005" in out and ".plumb/requirements/SR-005.md" in out
+    assert "SR-005" in out and ".iaso/requirements/SR-005.md" in out
     core = open_core(repo)
     record = core.index()["SR-005"]
     assert record.fields["statement"] == "multiply(a, b) returns a * b"
@@ -91,20 +91,20 @@ def test_decide_writes_alternatives_and_matters(repo: Path, write_record, capsys
 
 
 def test_supersede_never_edits_confirmed_dec(repo: Path, write_record) -> None:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     write_record(repo, SR_004)
     assert run(repo, "decide", "--question", "Floats too?", "--chosen", "integers only",
                "--alt", "floats too", "--decides", "SR-004") == 0
     core = open_core(repo)
     approve(core, ["DEC-001"])  # the owner (the test stands in for the owner's terminal)
-    old_bytes = (repo / ".plumb" / "decisions" / "DEC-001.md").read_bytes()
+    old_bytes = (repo / ".iaso" / "decisions" / "DEC-001.md").read_bytes()
     assert run(repo, "decide", "--supersede", "DEC-001", "--chosen", "floats too") == 0
     core = open_core(repo)
     new = core.index()["DEC-002"]
     assert ("supersedes", "DEC-001") in [(lk.kind, lk.target.record) for lk in new.links]
     assert ("decides", "SR-004") in [(lk.kind, lk.target.record) for lk in new.links]
     assert new.fields["alternatives"] == ["integers only"]
-    assert (repo / ".plumb" / "decisions" / "DEC-001.md").read_bytes() == old_bytes
+    assert (repo / ".iaso" / "decisions" / "DEC-001.md").read_bytes() == old_bytes
     assert core.status(["DEC-001"])["DEC-001"].confirmation == "confirmed"
     assert core.status(["DEC-001"])["DEC-001"].superseded_by == "DEC-002"

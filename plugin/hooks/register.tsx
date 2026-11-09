@@ -1,52 +1,52 @@
-// plumb's mod (SP7 5 as re-aligned by sp7-realign-sp8; SR-085, SR-087, SR-116, SR-337): the
-// band above the prompt (plumb's status with the count of questions waiting, SP8's progress, the
+// iaso's mod (SP7 5 as re-aligned by sp7-realign-sp8; SR-085, SR-087, SR-116, SR-337): the
+// band above the prompt (iaso's status with the count of questions waiting, SP8's progress, the
 // intent loop's and the studies' lines, the known problems' one line; no card), the loop pane, the
-// known problems pane, the owner's notice after a press, and the fallback. plumb's command hooks keep doing the work (DEC-024): while this panel
+// known problems pane, the owner's notice after a press, and the fallback. iaso's command hooks keep doing the work (DEC-024): while this panel
 // is active the stop hook writes present.json instead of printing.
 //
-// The engine wants every `$` call spelled at its hook's call site: each hook hands plumb.ts an
+// The engine wants every `$` call spelled at its hook's call site: each hook hands iaso.ts an
 // `Io` of closures over its own `$`, and every Button is answered by the `ui.press` hook below.
 //
-// Linking (SR-125, SR-126): the session's start says hello as soon as plumb's interpreter is
+// Linking (SR-125, SR-126): the session's start says hello as soon as iaso's interpreter is
 // known; the session-start command hook names it in host.json, maybe a moment after this mod
 // starts, so the start keeps trying for a few seconds, and each turn's start tries again. The
-// same holds while plumb still keeps a resumed session's old panel registered (the hook retires
-// it) and while only the repository's .venv was there to try. When the panel cannot reach plumb
-// it says why in one dim line, once per session; in a repository plumb has not adopted it stays
+// same holds while iaso still keeps a resumed session's old panel registered (the hook retires
+// it) and while only the repository's .venv was there to try. When the panel cannot reach iaso
+// it says why in one dim line, once per session; in a repository iaso has not adopted it stays
 // silent.
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { PlumbBand, PlumbKnown, PlumbLink, PlumbLoop, PlumbLoopPane, PlumbLoopRow, PlumbLoops, PlumbLoopsPane, PlumbPane, PlumbStatus, PlumbTold, PlumbView } from '../types'
-import * as plumb from './plumb'
-import type { Hello, Io, Unlinked } from './plumb'
-import { brassColor, GLYPHS, plumbColor, RED, T } from './text'
+import type { IasoBand, IasoKnown, IasoLink, IasoLoop, IasoLoopPane, IasoLoopRow, IasoLoops, IasoLoopsPane, IasoPane, IasoStatus, IasoTold, IasoView } from '../types'
+import * as iaso from './iaso'
+import type { Hello, Io, Unlinked } from './iaso'
+import { brassColor, GLYPHS, iasoColor, RED, T } from './text'
 
 /** The surface's element table, as `$.ui.resolve(e)` answers it. */
 type Ui = { Box: any; Text: any; Button: any; Input: any }
 
 const uiOf = ($: any, e: any): Ui => $.ui.resolve(e)
 
-const PANE = 'plumb-pane' // the one docked pane (SR-410)
+const PANE = 'iaso-pane' // the one docked pane (SR-410)
 const LOOP_TYPES = ['intent', 'debug', 'evaluate']
-const EMPTY_VIEW: PlumbView = { present: null, status: null, line: '' }
-const BAND: PlumbBand = { isHidden: false }
+const EMPTY_VIEW: IasoView = { present: null, status: null, line: '' }
+const BAND: IasoBand = { isHidden: false }
 
-const linkAtom = atom({ plugin: 'plumb', key: 'link' } as const, null)
-const degradedAtom = atom({ plugin: 'plumb', key: 'degraded' } as const, false)
-const toldAtom = atom({ plugin: 'plumb', key: 'told' } as const, null as PlumbTold | null)
-const viewAtom = atom({ plugin: 'plumb', key: 'view' } as const, EMPTY_VIEW)
-const bandAtom = atom({ plugin: 'plumb', key: 'band' } as const, BAND)
-const paneAtom = atom({ plugin: 'plumb', key: 'pane' } as const,
-  { loop: null as PlumbLoopPane | null, known: false as boolean | undefined, loops: null as PlumbLoopsPane | null | undefined,
+const linkAtom = atom({ plugin: 'iaso', key: 'link' } as const, null)
+const degradedAtom = atom({ plugin: 'iaso', key: 'degraded' } as const, false)
+const toldAtom = atom({ plugin: 'iaso', key: 'told' } as const, null as IasoTold | null)
+const viewAtom = atom({ plugin: 'iaso', key: 'view' } as const, EMPTY_VIEW)
+const bandAtom = atom({ plugin: 'iaso', key: 'band' } as const, BAND)
+const paneAtom = atom({ plugin: 'iaso', key: 'pane' } as const,
+  { loop: null as IasoLoopPane | null, known: false as boolean | undefined, loops: null as IasoLoopsPane | null | undefined,
     cls: undefined as string | undefined, row: undefined as string | undefined, step: undefined as string | undefined })
-const loopsAtom = atom({ plugin: 'plumb', key: 'loops' } as const, plumb.NO_LOOPS)
-const knownAtom = atom({ plugin: 'plumb', key: 'known' } as const, plumb.NO_KNOWN)
+const loopsAtom = atom({ plugin: 'iaso', key: 'loops' } as const, iaso.NO_LOOPS)
+const knownAtom = atom({ plugin: 'iaso', key: 'known' } as const, iaso.NO_KNOWN)
 
 // the width the pane asks for when it docks beside the conversation
 const PANE_COLUMNS = 80
 
-function statusLine(view: PlumbView): string {
+function statusLine(view: IasoView): string {
   const waiting = view.status?.awaiting ?? 0 // SR-337 EX-1: status.json's count, never a card
   const state = view.status?.state ?? ''
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
@@ -57,31 +57,31 @@ function statusLine(view: PlumbView): string {
 
 /** The band's status read again (files only, no process): null when nothing moved (SR-291).
  * A new study gets no toast: the band's line announces it (SR-294 EX-1). */
-async function reread(io: Io, link: PlumbLink, view: PlumbView) {
-  const status = await plumb.readStatus(io, link)
+async function reread(io: Io, link: IasoLink, view: IasoView) {
+  const status = await iaso.readStatus(io, link)
   return JSON.stringify(status) === JSON.stringify(view.status) ? null : { status }
 }
 
 /** SR-367: the known problems read again when the register or one of its cases moved (files
- * only); plumb runs only then. */
-async function refreshKnown($: any, io: Io, link: PlumbLink) {
-  const seen = await plumb.knownSeen(io, link)
+ * only); iaso runs only then. */
+async function refreshKnown($: any, io: Io, link: IasoLink) {
+  const seen = await iaso.knownSeen(io, link)
   if (seen === (await read($, knownAtom)).seen) return
-  const known = seen ? await plumb.known(io, link, seen) : plumb.NO_KNOWN
+  const known = seen ? await iaso.known(io, link, seen) : iaso.NO_KNOWN
   if (known !== null) await update($, knownAtom, () => known)
 }
 
 /** SR-393: the project's loops read again at link and when the pane opens (`force`), and
- * otherwise (the poll, each turn's end) only when the one change stamp moved; plumb runs only then,
+ * otherwise (the poll, each turn's end) only when the one change stamp moved; iaso runs only then,
  * and never while no stamp exists: no loop was ever written. */
-async function refreshLoops($: any, io: Io, link: PlumbLink, force = false) {
+async function refreshLoops($: any, io: Io, link: IasoLink, force = false) {
   const have = await read($, loopsAtom)
-  const stamp = have.stamp || await plumb.loopsStamp(io, link.root)
-  const seen = await plumb.loopsSeen(io, stamp)
+  const stamp = have.stamp || await iaso.loopsStamp(io, link.root)
+  const seen = await iaso.loopsSeen(io, stamp)
   if (!force && seen === have.seen) return
   // SR-375: a listing costs seconds; the band says it is updating and keeps the last list meanwhile
   if (seen) await update($, loopsAtom, l => ({ ...l, updating: true }))
-  const loops = seen ? await plumb.loops(io, link, stamp, seen) : { ...plumb.NO_LOOPS, stamp }
+  const loops = seen ? await iaso.loops(io, link, stamp, seen) : { ...iaso.NO_LOOPS, stamp }
   await update($, loopsAtom, l => loops ?? { ...l, updating: false })
 }
 
@@ -106,7 +106,7 @@ const HELD_RETRIES = 160
 let helloing: Promise<Hello> | null = null
 function helloOnce(io: Io): Promise<Hello> {
   if (helloing === null) {
-    helloing = plumb.hello(io).finally(() => {
+    helloing = iaso.hello(io).finally(() => {
       helloing = null
     })
   }
@@ -133,7 +133,7 @@ function stepMark(loop: { step: string; stopped: string }, i: number): string {
  * current, to come; a refused gate marks the current one stopped and names what it waits for),
  * then the current step's task, a brass fill of done over total, or the elapsed time with no
  * fill when the total is unknown. A step's press opens the pane on this loop at that step. */
-function loopLines(ui: Ui, loop: PlumbLoop, title: string, folded: boolean, color: string, brass: string) {
+function loopLines(ui: Ui, loop: IasoLoop, title: string, folded: boolean, color: string, brass: string) {
   const { Box, Button, Text } = ui
   const task = folded ? null : loop.task
   const filled = task?.total ? Math.round(BAR_CELLS * Math.min(task.done, task.total) / task.total) : 0
@@ -164,7 +164,7 @@ function loopLines(ui: Ui, loop: PlumbLoop, title: string, folded: boolean, colo
 
 /** A loop row's steps with their marks, each pressable, and the shown step's details (SR-305,
  * DEC-512): its gate, the low findings left and, for the current step, the tasks done and left. */
-function stepsOf(ui: Ui, r: PlumbLoopRow, shown: string | undefined, color: string): any[] {
+function stepsOf(ui: Ui, r: IasoLoopRow, shown: string | undefined, color: string): any[] {
   const { Button, Text } = ui
   const mark = (m: string) => (m === 'done' ? '✓' : m === 'current' ? '●' : '○')
   return (r.steps ?? []).flatMap(st => {
@@ -190,7 +190,7 @@ const CLASSES = ['loops', 'studies', 'problems', 'judge', 'build']
 const cutTo = (t: string, n = PANE_COLUMNS) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
 
 /** The pane's class counts, as its switch names them (SR-410). */
-function classCounts(view: PlumbView, loops: PlumbLoops, known: PlumbKnown): Record<string, number> {
+function classCounts(view: IasoView, loops: IasoLoops, known: IasoKnown): Record<string, number> {
   const st = view.status
   return { loops: loops.live + loops.idle,
     studies: (st?.ideas?.length ?? 0) + (st?.studies?.length ?? 0) + (st?.writing ? 1 : 0) + (st?.outdated?.length ?? 0),
@@ -199,7 +199,7 @@ function classCounts(view: PlumbView, loops: PlumbLoops, known: PlumbKnown): Rec
 }
 
 /** The problems class's rows (SR-412): open ones first, fixed dim below; expanded, symptom, cause, fix, history. */
-function problemRows(known: PlumbKnown): Row[] {
+function problemRows(known: IasoKnown): Row[] {
   return [...known.issues].sort((a, b) => Number(b.state === 'open') - Number(a.state === 'open')).map(i => ({
     id: i.id, glyph: i.state === 'open' ? '●' : '○', title: i.title, live: i.state === 'open',
     state: T.knownState(i.state, i.fixed),
@@ -209,14 +209,14 @@ function problemRows(known: PlumbKnown): Row[] {
 }
 
 /** The build class's rows (SR-413): each misalignment red, expanded to the fix; "could not check" in plain colour. */
-function buildRows(st: PlumbStatus | undefined): Row[] {
+function buildRows(st: IasoStatus | undefined): Row[] {
   const row = (id: string, line: string, color?: string): Row =>
     ({ id, glyph: '●', title: line, state: '', live: true, details: [line], actions: [], color })
   return [...(st?.buildLines ?? []).map((l, i) => row(`build:${i}`, l, RED)), ...(st?.unchecked ? [row('build:unchecked', st.unchecked)] : [])]
 }
 
 /** The judge class's rows (SR-413): a judge that cannot settle red with its cause; a set-aside question in plum, expanded to why. */
-function judgeRows(st: PlumbStatus | undefined, plum: string): Row[] {
+function judgeRows(st: IasoStatus | undefined, plum: string): Row[] {
   const row = (id: string, line: string, color: string): Row => {
     const m = /^(.*?) \((.*)\)$/.exec(line)
     return { id, glyph: '●', title: m ? m[1]! : line, state: '', live: true, details: [m ? m[2]! : line], actions: [], color }
@@ -225,7 +225,7 @@ function judgeRows(st: PlumbStatus | undefined, plum: string): Row[] {
 }
 
 /** The loops class's rows (SR-410): the type shown, this session's loop first, live before idle. */
-function loopRows(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, session: string, color: string, step?: string): Row[] {
+function loopRows(ui: Ui, loops: IasoLoops, state: IasoLoopsPane, session: string, color: string, step?: string): Row[] {
   const { Button, Input, Text } = ui
   return loops.rows.filter(r => r.kind === state.type)
     .sort((a, b) => Number(b.live) - Number(a.live) || Number(b.session === session) - Number(a.session === session))
@@ -253,7 +253,7 @@ function loopRows(ui: Ui, loops: PlumbLoops, state: PlumbLoopsPane, session: str
 /** The one docked pane (SR-410): the class switch with counts (the shown one bold), the loops
  * class's type switch, then the class's rows, live first, the rest dim; an Enter expands one row.
  * Never an agent or tokens. */
-function classPane(ui: Ui, view: PlumbView, loops: PlumbLoops, known: PlumbKnown, pane: PlumbPane, session: string, color: string,
+function classPane(ui: Ui, view: IasoView, loops: IasoLoops, known: IasoKnown, pane: IasoPane, session: string, color: string,
                    brass: string) {
   const { Box, Button, Text } = ui
   const cls = pane.cls ?? CLASSES[0]!
@@ -308,7 +308,7 @@ function classPane(ui: Ui, view: PlumbView, loops: PlumbLoops, known: PlumbKnown
 
 /** The studies class of the pane (SR-411): sections ideas, new, writing (its bar), out of date and
  * read (dim), each row folded by the pane's `fold`; an action acts on the expanded row only. */
-function studiesClass(ui: Ui, st: PlumbStatus | undefined, fold: (r: Row) => any, brass: string) {
+function studiesClass(ui: Ui, st: IasoStatus | undefined, fold: (r: Row) => any, brass: string) {
   const { Button, Text } = ui
   const act = (k: string, label: string) => <Button key={`act:${k}`} label={label} onPress={() => {}} />
   const row = (s: { slug: string; title: string }, glyph: string, state: string, live: boolean, details: string[], actions: any[]): Row =>
@@ -342,7 +342,7 @@ function writingBar(done: number, total: number): string {
 
 /** The band: one line of status, then the loop's and the studies' lines; no card (SR-337). The
  * known problems are one line when any is open, never one per problem (SR-367). */
-function drawBand(ui: Ui, view: PlumbView, band: PlumbBand, known: number, loops: PlumbLoops, columns: number, color: string,
+function drawBand(ui: Ui, view: IasoView, band: IasoBand, known: number, loops: IasoLoops, columns: number, color: string,
                   brass: string, session: string) {
   const { Box, Button, Text } = ui
   const head = statusLine(view)
@@ -400,7 +400,7 @@ export const register: Register = on => {
       id: () => $.session.id(),
       now: () => $.clock.now(),
       env: async () => ({
-        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        IASO_HOME: await $.env.get('IASO_HOME'),
         CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
@@ -437,17 +437,17 @@ export const register: Register = on => {
         reading = false
       }
     })
-    // SR-126: why the panel cannot reach plumb, said once per session
+    // SR-126: why the panel cannot reach iaso, said once per session
     const tell = async (u: Unlinked) => {
       const session = await $.session.id()
       const told = await read($, toldAtom)
       if (told !== null && told.session === session) return
-      await update($, toldAtom, () => ({ session, why: u.why, retry: plumb.mayLinkLater(u) }))
+      await update($, toldAtom, () => ({ session, why: u.why, retry: iaso.mayLinkLater(u) }))
       $.ui.log(unlinkedLine(u))
     }
-    const linked = async (link: PlumbLink) => {
+    const linked = async (link: IasoLink) => {
       await update($, linkAtom, () => link)
-      const view = await plumb.snapshot(io, link, await read($, viewAtom), false)
+      const view = await iaso.snapshot(io, link, await read($, viewAtom), false)
       await update($, viewAtom, () => view)
       await refreshKnown($, io, link)
       await refreshLoops($, io, link, true)
@@ -458,8 +458,8 @@ export const register: Register = on => {
       await linked(said.link)
       return started
     }
-    if (said.unlinked === null) return started // a repository plumb has not adopted: silent
-    if (!plumb.mayLinkLater(said.unlinked)) {
+    if (said.unlinked === null) return started // a repository iaso has not adopted: silent
+    if (!iaso.mayLinkLater(said.unlinked)) {
       await tell(said.unlinked)
       return started
     }
@@ -484,7 +484,7 @@ export const register: Register = on => {
           await linked(again.link)
         } else if (again.unlinked === null) {
           retry.cancel()
-        } else if (!plumb.mayLinkLater(again.unlinked)
+        } else if (!iaso.mayLinkLater(again.unlinked)
             || tries >= (again.unlinked.why === 'refused' ? HELD_RETRIES : RETRIES)) {
           retry.cancel()
           await tell(again.unlinked)
@@ -518,7 +518,7 @@ export const register: Register = on => {
       id: () => $.session.id(),
       now: () => $.clock.now(),
       env: async () => ({
-        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        IASO_HOME: await $.env.get('IASO_HOME'),
         CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
@@ -539,13 +539,13 @@ export const register: Register = on => {
     const settled = told !== null && told.session === session && told.why !== 'no-python' &&
       told.retry !== true
     if (link === null && !settled) {
-      // the session-start hook may only now have said which interpreter runs plumb
+      // the session-start hook may only now have said which interpreter runs iaso
       const said = await helloOnce(io)
       if (said.link !== null) {
         const held = said.link
         await update($, linkAtom, () => held)
-        // the band draws from now on: plumb's status at once (no process)
-        const view = { ...(await read($, viewAtom)), status: await plumb.readStatus(io, held) }
+        // the band draws from now on: iaso's status at once (no process)
+        const view = { ...(await read($, viewAtom)), status: await iaso.readStatus(io, held) }
         await update($, viewAtom, () => view)
         link = held
       } else if (said.unlinked !== null) {
@@ -554,21 +554,21 @@ export const register: Register = on => {
         const now = await read($, toldAtom)
         if (now === null || now.session !== session) {
           const why = said.unlinked
-          await update($, toldAtom, () => ({ session, why: why.why, retry: plumb.mayLinkLater(why) }))
+          await update($, toldAtom, () => ({ session, why: why.why, retry: iaso.mayLinkLater(why) }))
           $.ui.log(unlinkedLine(why))
         }
       }
     }
     if (link !== null) {
-      // the plugin's environment may have been built after the link (a first run): run plumb with
-      // the interpreter now named, or the panel keeps an older plumb that lacks the newer fields
-      const now = (await plumb.findPython(io, link.root, link.session)).python
+      // the plugin's environment may have been built after the link (a first run): run iaso with
+      // the interpreter now named, or the panel keeps an older iaso that lacks the newer fields
+      const now = (await iaso.findPython(io, link.root, link.session)).python
       if (now !== null && now !== link.python) {
         link = { ...link, python: now }
         const relinked = link
         await update($, linkAtom, () => relinked)
       }
-      await plumb.heartbeat(io, link)
+      await iaso.heartbeat(io, link)
     }
     return next(e)
   }).catch(async ($, e, next) => {
@@ -595,7 +595,7 @@ export const register: Register = on => {
       id: () => $.session.id(),
       now: () => $.clock.now(),
       env: async () => ({
-        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        IASO_HOME: await $.env.get('IASO_HOME'),
         CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
@@ -605,7 +605,7 @@ export const register: Register = on => {
     const link = await read($, linkAtom)
     if (link === null) return result
     // SR-337 EX-2: a hidden band stays hidden, whatever arrives, until the owner presses Show
-    const view = await plumb.snapshot(io, link, await read($, viewAtom), true)
+    const view = await iaso.snapshot(io, link, await read($, viewAtom), true)
     await update($, viewAtom, () => view)
     await refreshKnown($, io, link)
     loopsDue = true // SR-375: the next period (2 s) reads the loops if the stamp moved; never inline
@@ -621,9 +621,9 @@ export const register: Register = on => {
     return result
   })
 
-  // SR-291: `plumb intent progress` runs in the agent's shell (Bash, PowerShell or any tool that
+  // SR-291: `iaso intent progress` runs in the agent's shell (Bash, PowerShell or any tool that
   // runs a command); the band's status (files only, no process) is read again after each, so the
-  // strip and the bar move within the turn, and a `plumb study add` is announced at once (SR-294)
+  // strip and the bar move within the turn, and a `iaso study add` is announced at once (SR-294)
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     try {
@@ -654,7 +654,7 @@ export const register: Register = on => {
 
   // every Button the panel draws: what it does, by its key
   on('ui.press', async ($, e, next) => {
-    if (e.plugin !== 'plumb') return next(e)
+    if (e.plugin !== 'iaso') return next(e)
     // the pressed Button's handler first, while its drawing still holds it: the work below
     // redraws the band, and a Button it takes away (an idea's depths) frees its handle
     const pressed = await next(e)
@@ -703,7 +703,7 @@ export const register: Register = on => {
       id: () => $.session.id(),
       now: () => $.clock.now(),
       env: async () => ({
-        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        IASO_HOME: await $.env.get('IASO_HOME'),
         CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
@@ -711,10 +711,10 @@ export const register: Register = on => {
     }
     // the chips, the loop's strip and the old known/loops buttons all open the one pane on their class
     if (key.startsWith('step:')) {
-      // SR-305: the band's step opens the pane on this session's loop at that step; plumb lists
+      // SR-305: the band's step opens the pane on this session's loop at that step; iaso lists
       // the loops now, stamp or none, for the row to expand
-      const stamp = (await read($, loopsAtom)).stamp || await plumb.loopsStamp(io, link.root)
-      const listed = await plumb.loops(io, link, stamp, await plumb.loopsSeen(io, stamp))
+      const stamp = (await read($, loopsAtom)).stamp || await iaso.loopsStamp(io, link.root)
+      const listed = await iaso.loops(io, link, stamp, await iaso.loopsSeen(io, stamp))
       if (listed !== null) await update($, loopsAtom, () => listed)
       const mine = (listed ?? await read($, loopsAtom)).rows.find(r => r.kind === 'intent' && r.session === link.session)
       await refreshKnown($, io, link)
@@ -738,19 +738,19 @@ export const register: Register = on => {
       const act = key.slice('act:'.length)
       const outdated = (view.status?.outdated ?? []).some(s => s.slug === slug)
       if (act === 'room') {
-        const ran = await plumb.room(io, link, slug) // EX-3: marked opened, the row moves to read
+        const ran = await iaso.room(io, link, slug) // EX-3: marked opened, the row moves to read
         line = ran.ok ? '' : T.roomFailed
       } else if (act === 'rewrite' || (act === 'notnow' && outdated)) {
-        const ran = await plumb.refreshStudy(io, link, slug, act === 'rewrite') // EX-4: not now leaves it marked
+        const ran = await iaso.refreshStudy(io, link, slug, act === 'rewrite') // EX-4: not now leaves it marked
         line = ran.ok ? '' : T.refreshFailed
       } else {
-        const ran = await plumb.chooseStudy(io, link, slug, act === 'notnow' ? 'none' : act === 'text' ? 'md' : act) // EX-2
+        const ran = await iaso.chooseStudy(io, link, slug, act === 'notnow' ? 'none' : act === 'text' ? 'md' : act) // EX-2
         line = ran.ok ? '' : T.chooseFailed
       }
     } else if (key === 'act:reopen' && pane.cls === 'loops' && pane.row) {
-      // SR-394: the press opens a new session on the expanded idle loop; plumb's line says it or gives the command
+      // SR-394: the press opens a new session on the expanded idle loop; iaso's line says it or gives the command
       const loop = pane.row
-      const opening = <P extends { loops?: PlumbLoopsPane | null }>(p: P, add: boolean) => ({ ...p, loops: {
+      const opening = <P extends { loops?: IasoLoopsPane | null }>(p: P, add: boolean) => ({ ...p, loops: {
         type: p.loops?.type ?? LOOP_TYPES[0]!, open: p.loops?.open ?? [],
         opening: [...(p.loops?.opening ?? []).filter(o => o !== loop), ...(add ? [loop] : [])] } })
       // SR-414: on a live loop the same press only brings its window forward: nothing opens, so no 'opening' state
@@ -760,8 +760,8 @@ export const register: Register = on => {
         $.ui.toast(T.reopenStarted) // at once: the window takes seconds and a second press would open two
         await update($, paneAtom, p => opening(p, true))
       }
-      const ran = await plumb.reopen(io, link, loop)
-      line = String(ran.data?.line ?? '') || plumb.refusal(ran) || T.reopenFailed
+      const ran = await iaso.reopen(io, link, loop)
+      line = String(ran.data?.line ?? '') || iaso.refusal(ran) || T.reopenFailed
       // shortcut: an opened loop stays 'opening' until it turns live or the pane is opened again
       if (!live && (!ran.ok || ran.data?.opened !== true)) await update($, paneAtom, p => opening(p, false))
     } else {
@@ -773,15 +773,15 @@ export const register: Register = on => {
       $.ui.toast(line)
       await $.session.append({ message: { type: 'system', content: [{ type: 'text', text: line }] } })
     }
-    const drawn = await plumb.snapshot(io, link, { ...view, line }, false)
+    const drawn = await iaso.snapshot(io, link, { ...view, line }, false)
     await update($, viewAtom, () => drawn)
     return pressed
   })
 
-  // SR-395: the owner typed a message on a working loop's row: plumb queues it for that session
+  // SR-395: the owner typed a message on a working loop's row: iaso queues it for that session
   on('ui.input', async ($, e, next) => {
     const result = await next(e)
-    if (e.plugin !== 'plumb' || e.kind !== 'submit' || !e.element.startsWith('loops:say:')) return result
+    if (e.plugin !== 'iaso' || e.kind !== 'submit' || !e.element.startsWith('loops:say:')) return result
     const link = await read($, linkAtom)
     if (link === null || (await read($, degradedAtom)) || !e.value.trim()) return result
     const io: Io = {
@@ -794,14 +794,14 @@ export const register: Register = on => {
       id: () => $.session.id(),
       now: () => $.clock.now(),
       env: async () => ({
-        PLUMB_HOME: await $.env.get('PLUMB_HOME'),
+        IASO_HOME: await $.env.get('IASO_HOME'),
         CLAUDE_PLUGIN_DATA: await $.env.get('CLAUDE_PLUGIN_DATA'),
         HOME: await $.env.get('HOME'),
         USERPROFILE: await $.env.get('USERPROFILE'),
       }),
     }
-    const ran = await plumb.send(io, link, e.element.slice('loops:say:'.length), e.value)
-    if (!ran.ok) $.ui.toast(plumb.refusal(ran) || T.sendFailed)
+    const ran = await iaso.send(io, link, e.element.slice('loops:say:'.length), e.value)
+    if (!ran.ok) $.ui.toast(iaso.refusal(ran) || T.sendFailed)
     await refreshLoops($, io, link, true) // the row now reads sent, not read yet
     return result
   }).catch(($, e, next) => next(e))
@@ -818,12 +818,12 @@ export const register: Register = on => {
       // a surface without the settings rows: the dark shade
     }
     return drawBand(ui, view, await read($, bandAtom), (await read($, knownAtom)).open, await read($, loopsAtom), e.props.bodyColumns,
-      plumbColor(theme), brassColor(theme), (await read($, linkAtom))?.session ?? '')
+      iasoColor(theme), brassColor(theme), (await read($, linkAtom))?.session ?? '')
   }).catch(($, e, next) => next(e))
 
   // SR-410 EX-4: the arrows move the ring across the switch; landing on a class shows it
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    if (e.plugin === 'plumb' && e.origin.kind === 'person' && e.element?.startsWith('class:')) {
+    if (e.plugin === 'iaso' && e.origin.kind === 'person' && e.element?.startsWith('class:')) {
       const cls = e.element.slice('class:'.length)
       await update($, paneAtom, p => (p.cls === cls ? p : { ...p, row: undefined, cls }))
     }
@@ -840,6 +840,6 @@ export const register: Register = on => {
     }
     const link = await read($, linkAtom)
     return classPane(ui, await read($, viewAtom), await read($, loopsAtom), await read($, knownAtom), await read($, paneAtom),
-      link?.session ?? '', plumbColor(theme), brassColor(theme))
+      link?.session ?? '', iasoColor(theme), brassColor(theme))
   })
 }

@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 import yaml
 
-from plumb.api import open_core
-from plumb.contracts import DispatchError, Job
-from plumb.present import owner_text
+from iaso.api import open_core
+from iaso.contracts import DispatchError, Job
+from iaso.present import owner_text
 from understand.fakes import FakeDispatcher, owner_level
 from understand.test_judge_job import SESSION, intent_text, log_prompt, requirement_text
 
@@ -76,10 +76,10 @@ def answering(score: float = 0.95, verdicts: dict[str, str] | None = None):
 
 
 def run_pass(repo: Path, box: Any, jobs: int | None = None) -> list[str]:
-    from plumb.understand import worker
+    from iaso.understand import worker
 
     ran: list[str] = []
-    from plumb.understand import files
+    from iaso.understand import files
 
     if jobs is None:
         return worker.run_once(open_core(repo), SESSION)
@@ -92,10 +92,10 @@ def run_pass(repo: Path, box: Any, jobs: int | None = None) -> list[str]:
 @pytest.mark.sr("SR-232")
 def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, judge, worker
+    from iaso.understand import backlog, judge, worker
 
     # one at a time (understand.parallel_calls: 1): what this test is about
-    with (repo / ".plumb" / "config.yaml").open("a", encoding="utf-8") as fh:
+    with (repo / ".iaso" / "config.yaml").open("a", encoding="utf-8") as fh:
         fh.write("\nunderstand:\n  parallel_calls: 1\n")
     ids = bulk(repo, write_record, {"alpha": 3, "beta": 3, "gamma": 3})
     backlog.start(open_core(repo), SESSION)
@@ -120,18 +120,18 @@ def test_one_worker_pass_sees_prior_verdicts_and_finishes_all_jobs(
 
 def no_cards(repo: Path) -> bool:
     """No card file is written in the session folder: nothing to read and press."""
-    return not (repo / ".plumb" / "session" / SESSION / "cards.json").exists()
+    return not (repo / ".iaso" / "session" / SESSION / "cards.json").exists()
 
 
 def progress(repo: Path):
-    from plumb.understand import files
+    from iaso.understand import files
 
     return files.progress_from_json(files.read_json(files.progress_path(repo, SESSION)))
 
 
 def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, files
+    from iaso.understand import backlog, files
 
     plan = {f"feature {n}": 4 for n in range(1, 31)}              # 30 intents x 5 = 150 records
     bulk(repo, write_record, plan)
@@ -149,7 +149,7 @@ def test_sr107_ex1_150_records_one_pass_no_per_turn_limit_done_jobs_not_rerun(
     assert again.jobs == [] and run_pass(repo, engine_standins) == []
     assert len(engine_standins.dispatcher.jobs) == before         # done jobs are not rerun
     # a record that changed is judged again, and only its intent's job runs
-    path = repo / ".plumb" / "requirements" / "SR-007.md"
+    path = repo / ".iaso" / "requirements" / "SR-007.md"
     path.write_text(path.read_text(encoding="utf-8").replace("rule 7", "rule seven"),
                     encoding="utf-8")
     changed = backlog.start(open_core(repo), SESSION)
@@ -163,7 +163,7 @@ def test_sr107_ex2_fragment_premise_takes_the_question_route(
         repo: Path, write_record, engine_standins) -> None:
     """SR-248 EX-6: a record judged on a fragment of the owner's words is asked about through
     the question tool, not on a trial card."""
-    from plumb.understand import backlog, judge
+    from iaso.understand import backlog, judge
 
     bulk(repo, write_record, {"the checks": 0}, prompt=False)    # a quote, no logged message
     backlog.start(open_core(repo), SESSION)
@@ -178,7 +178,7 @@ def test_sr107_ex2_fragment_premise_takes_the_question_route(
 
 def test_sr107_ex3_18_supported_take_one_question_and_no_trial_card(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, judge
+    from iaso.understand import backlog, judge
 
     bulk(repo, write_record, {"the merge check": 17})        # and their intent: 18 records
     backlog.start(open_core(repo), SESSION)
@@ -192,7 +192,7 @@ def test_sr107_ex3_18_supported_take_one_question_and_no_trial_card(
 
 def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     ids = bulk(repo, write_record, {"the merge check": 7})["the merge check"]
     backlog.start(open_core(repo), SESSION)
@@ -204,7 +204,7 @@ def test_sr107_ex5_three_flagged_are_not_trial_cards_and_raise_no_card(
 
 
 def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     bulk(repo, write_record, {f"feature {n}": 4 for n in range(1, 33)})   # 32 x 5 = 160
     started = backlog.start(open_core(repo), SESSION)
@@ -220,7 +220,7 @@ def test_sr107_ex6_progress_10_of_160(repo: Path, write_record, engine_standins)
 def test_backlog_end_line_counts_judged_and_questions_awaiting(
         repo: Path, write_record, engine_standins) -> None:
     """Spec 8: when the pass ends the progress file is done, with the end line."""
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     plan = {"alpha": 38, "beta": 37, "gamma": 37, "delta": 44}   # 4 intents + 156 = 160
     ids = bulk(repo, write_record, plan)
@@ -237,7 +237,7 @@ def test_backlog_end_line_counts_judged_and_questions_awaiting(
 
 def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, files
+    from iaso.understand import backlog, files
 
     bulk(repo, write_record, {f"feature {n}": 4 for n in range(1, 7)})        # 6 jobs
     backlog.start(open_core(repo), SESSION)
@@ -272,7 +272,7 @@ def test_sr107_ex7_model_unreachable_midway_resumes_without_rejudging(
 
 
 def test_a_pass_that_is_not_started_is_not_resumed(repo: Path, write_record) -> None:
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     bulk(repo, write_record, {"feature": 2})
     assert backlog.resume(open_core(repo), SESSION).jobs == []
@@ -283,7 +283,7 @@ def test_a_pass_that_is_not_started_is_not_resumed(repo: Path, write_record) -> 
 
 def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_record,
                                                           engine_standins) -> None:
-    from plumb.understand import backlog, judge
+    from iaso.understand import backlog, judge
     from understand.test_judge_job import decision_text
 
     bulk(repo, write_record, {"alpha": 2})
@@ -299,7 +299,7 @@ def test_a_decision_in_the_backlog_takes_the_question_route(repo: Path, write_re
 
 def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write_record,
                                                               engine_standins) -> None:
-    from plumb.understand import backlog, judge
+    from iaso.understand import backlog, judge
 
     ids = bulk(repo, write_record, {"alpha": 5})["alpha"]
 
@@ -321,7 +321,7 @@ def test_a_record_below_the_threshold_is_asked_like_the_others(repo: Path, write
 
 def test_the_turns_end_continues_a_started_pass_and_only_a_started_one(
         repo: Path, write_record, engine_standins) -> None:
-    from plumb.understand import backlog, files, summary
+    from iaso.understand import backlog, files, summary
 
     bulk(repo, write_record, {"alpha": 2, "beta": 2})
     turn = {"turn_start": time.time() - 60}

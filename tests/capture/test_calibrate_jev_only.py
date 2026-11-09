@@ -11,8 +11,8 @@ import pytest
 from capture_helpers import JevStub, use_jev
 from jev_fixtures import owner_decisions
 
-from plumb.api import open_core
-from plumb.capture.calibrate import calibrate, labelled_set, logged_scores
+from iaso.api import open_core
+from iaso.capture.calibrate import calibrate, labelled_set, logged_scores
 
 pytestmark = pytest.mark.sr("SR-242")
 

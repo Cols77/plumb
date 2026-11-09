@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify
 
-from plumb.api import open_core
-from plumb.contracts import FullPending, NodeEvidence, StatusSnapshot
-from plumb.hosts.claude_code import snapshot, statusline
+from iaso.api import open_core
+from iaso.contracts import FullPending, NodeEvidence, StatusSnapshot
+from iaso.hosts.claude_code import snapshot, statusline
 
 pytestmark = pytest.mark.sr("SR-263")
 
@@ -36,9 +36,9 @@ def _line(repo: Path, snap: StatusSnapshot | None) -> str:
 
 def test_renders_line_from_snapshot(repo: Path) -> None:
     """The status line is the status card (sp5 4.1, SR-061)."""
-    assert _line(repo, _snap()) == "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale"
+    assert _line(repo, _snap()) == "iaso ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale"
     assert _line(repo, _snap(tests="regression", regressions=("t::a",), ask=1)) == (
-        "plumb ✗ regression · SR 12/14 ok · 2 waiting on a judge · 1 stale · 1 question")
+        "iaso ✗ regression · SR 12/14 ok · 2 waiting on a judge · 1 stale · 1 question")
     assert "✗ failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
     assert "2 failing" in _line(repo, _snap(tests="failing", failing=("a", "b")))
 
@@ -46,14 +46,14 @@ def test_renders_line_from_snapshot(repo: Path) -> None:
 def test_full_pending_shown_only_when_pending(repo: Path) -> None:
     assert "full pending" not in _line(repo, _snap(full_pending=False))
     assert _line(repo, _snap(full_pending=True, full_pending_reasons=("uv.lock",))) == (
-        "plumb ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale · full pending")
+        "iaso ▲ drift · SR 12/14 ok · 2 waiting on a judge · 1 stale · full pending")
 
 
 def test_missing_snapshot(repo: Path) -> None:
-    assert _line(repo, None) == "plumb | no status yet"
-    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (repo / ".plumb" / "session" / "status.json").write_text("{broken", encoding="utf-8")
-    assert _line(repo, None) == "plumb | no status yet"
+    assert _line(repo, None) == "iaso | no status yet"
+    (repo / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".iaso" / "session" / "status.json").write_text("{broken", encoding="utf-8")
+    assert _line(repo, None) == "iaso | no status yet"
 
 
 def test_root_from_status_line_input(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,12 +62,12 @@ def test_root_from_status_line_input(repo: Path, monkeypatch: pytest.MonkeyPatch
     out = io.StringIO()
     stdin = io.StringIO(json.dumps({"workspace": {"project_dir": str(repo)}}))
     statusline.main(stdin=stdin, stdout=out)
-    assert out.getvalue().startswith("plumb ▲ drift · SR 12/14 ok")
+    assert out.getvalue().startswith("iaso ▲ drift · SR 12/14 ok")
 
 
 def test_snapshot_written_with_version(repo: Path) -> None:
     snapshot.write_snapshot(repo, _snap(failing=("x",)))
-    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    data = json.loads((repo / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["v"] == 1 and data["failing"] == ["x"] and data["requirements_total"] == 14
 
 
@@ -107,8 +107,8 @@ def test_snapshot_tests_states() -> None:
 def test_awaiting_counts_questions_and_no_card(repo: Path, write_record) -> None:
     """SR-337: ``awaiting`` in status.json, the band's "N await you": a judge question not
     answered on an unconfirmed record, in any session. A card left in a store counts for
-    nothing (report-ec092f5e: the band said 73 while /plumb status said 29)."""
-    from plumb.understand import judge
+    nothing (report-ec092f5e: the band said 73 while /iaso status said 29)."""
+    from iaso.understand import judge
 
     write_record(repo, SR1)
     core = open_core(repo)
@@ -116,15 +116,15 @@ def test_awaiting_counts_questions_and_no_card(repo: Path, write_record) -> None
     asked.parent.mkdir(parents=True)
     asked.write_text(json.dumps([{"key": "k1", "question": "Which one?", "records": [
         {"id": "SR-001", "hash": core.index()["SR-001"].hash}]}]), encoding="utf-8")
-    cards = repo / ".plumb" / "session" / "s2" / "cards.json"
+    cards = repo / ".iaso" / "session" / "s2" / "cards.json"
     cards.parent.mkdir(parents=True)
     cards.write_text(json.dumps({"cards": [{"id": "clarify:SR-001", "status": "open"},
                                            {"id": "clarify:SR-002", "status": "closed"}]}),
                      encoding="utf-8")
     assert snapshot.build_snapshot(core).awaiting == 1
-    from plumb.present.cards import awaiting_lines
-    assert "1 question" in awaiting_lines(core, core.status())[0]    # the same as /plumb status
+    from iaso.present.cards import awaiting_lines
+    assert "1 question" in awaiting_lines(core, core.status())[0]    # the same as /iaso status
     snapshot.write_snapshot(repo, _snap())
     snapshot.refresh_counts(open_core(repo))  # the worker after a turn brings it up to date
-    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    data = json.loads((repo / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["awaiting"] == 1

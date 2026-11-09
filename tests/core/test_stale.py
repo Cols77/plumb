@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import stale
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import stale
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -71,7 +71,7 @@ def test_ex1_function_edit_names_sr005_link(project: Path) -> None:
     found = stale.stale_after_edit(project, "src/x.py")
     assert [(s.record, s.link, s.path) for s in found] == [("SR-005", "SR-005#0", "src/x.py")]
     assert stale.notice(found[0]) == (
-        "plumb: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
+        "iaso: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
         "repin, reword SR-005, or ask the owner with the question tool")
 
 
@@ -90,14 +90,14 @@ def test_unrelated_file_nothing(project: Path) -> None:
 
 
 def test_missing_cache_silent(project: Path) -> None:
-    (project / ".plumb" / "cache" / "linkmap.json").unlink()
+    (project / ".iaso" / "cache" / "linkmap.json").unlink()
     (project / "src" / "x.py").write_text(CODE.replace("a + b", "a - b"), encoding="utf-8")
     assert stale.links_touching(project, "src/x.py") == []
     assert stale.stale_after_edit(project, "src/x.py") == []
 
 
 def test_linkmap_rebuilt_on_index_change(project: Path, write_record) -> None:
-    path = project / ".plumb" / "cache" / "linkmap.json"
+    path = project / ".iaso" / "cache" / "linkmap.json"
     before = path.read_bytes()
     core = open_core(project)
     assert stale.ensure_linkmap(core) is False          # same index: no rewrite
@@ -123,7 +123,7 @@ def test_ex2_reword_names_derived_record(repo: Path, write_record) -> None:
 
 
 def test_ex2_through_capture(repo: Path, write_record, tmp_path: Path, capsys) -> None:
-    from plumb.cli import main
+    from iaso.cli import main
 
     _derived(repo, write_record)
     doc = tmp_path / "c.json"
@@ -138,7 +138,7 @@ def test_ex2_through_capture(repo: Path, write_record, tmp_path: Path, capsys) -
 def test_direct_record_edit_notice(repo: Path, write_record) -> None:
     _derived(repo, write_record)
     stale.ensure_linkmap(open_core(repo))
-    assert stale.record_for_path(repo, ".plumb/intents/INT-016.md") == "INT-016"
+    assert stale.record_for_path(repo, ".iaso/intents/INT-016.md") == "INT-016"
     write_record(repo, INT16.replace("Add multiply beside add", "Add multiply and divide"))
     assert stale.derived_lines(open_core(repo), ["INT-016"])
 

@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import Core
-from plumb.understand import jobs, queue, worker
+from iaso.api import Core
+from iaso.understand import jobs, queue, worker
 
 pytestmark = pytest.mark.sr("SR-273")
 
@@ -24,8 +24,8 @@ def _tree(root: Path) -> dict[str, int]:
 
 
 def _env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("PLUMB_", "CLAUDE_"))}
-    env.update(PLUMB_JOB="read-0123456789abcdef", PYTHONUTF8="1")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("IASO_", "CLAUDE_"))}
+    env.update(IASO_JOB="read-0123456789abcdef", PYTHONUTF8="1")
     return env
 
 
@@ -36,19 +36,19 @@ def test_ex2_hooks_exit_in_a_job_session(repo: Path) -> None:
                    "prompt": "yes, that is right", "tool_name": "Edit",
                    "tool_input": {"file_path": str(repo / "x.py")}, "source": "startup"}
         done = subprocess.run(
-            [sys.executable, "-m", "plumb", "hook", name, "--root", str(repo)],
+            [sys.executable, "-m", "iaso", "hook", name, "--root", str(repo)],
             input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8",
             cwd=repo, env=_env(), timeout=60)
         assert done.returncode == 0, name
         assert done.stdout == "", name
     assert _tree(repo) == before                            # nothing written
-    assert not (repo / ".plumb" / "session" / "s1" / "jobs").exists()   # nothing queued
+    assert not (repo / ".iaso" / "session" / "s1" / "jobs").exists()   # nothing queued
 
 
 def test_queue_refuses_inside_a_job(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     started: list[str] = []
     monkeypatch.setattr(worker, "start_detached", lambda root, session: started.append(session))
-    monkeypatch.setenv("PLUMB_JOB", "read-0123456789abcdef")
+    monkeypatch.setenv("IASO_JOB", "read-0123456789abcdef")
     core = Core(repo)
     job = jobs.new_job("read", "s1", "read.v1", {"n": 1})
     assert queue.enqueue(core, job) is None

@@ -1,11 +1,11 @@
-"""The line `plumb repin --after-tests` prints for each diagnosis, one per outcome."""
+"""The line `iaso repin --after-tests` prints for each diagnosis, one per outcome."""
 
 from __future__ import annotations
 
 import pytest
 
-from plumb.commands import _diagnosis_line
-from plumb.understand.repin import OUTCOMES
+from iaso.commands import _diagnosis_line
+from iaso.understand.repin import OUTCOMES
 
 
 def _item(outcome: str) -> dict[str, object]:
@@ -16,7 +16,7 @@ def _item(outcome: str) -> dict[str, object]:
 
 @pytest.mark.parametrize("outcome", OUTCOMES)
 def test_every_outcome_has_a_line(outcome: str) -> None:
-    assert _diagnosis_line(_item(outcome), dry_run=False).startswith("plumb: SR-279#2")
+    assert _diagnosis_line(_item(outcome), dry_run=False).startswith("iaso: SR-279#2")
 
 
 @pytest.mark.sr("SR-198")

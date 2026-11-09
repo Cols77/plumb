@@ -15,18 +15,18 @@ def main() -> int:
 
     manager = PluginManager()
     plugins._plugin_manager = manager
-    manifest = PluginManifest(name="plumb", source="project", path=str(plugin_dir))
+    manifest = PluginManifest(name="iaso", source="project", path=str(plugin_dir))
     context = PluginContext(manifest, manager)
-    spec = importlib.util.spec_from_file_location("probe_plumb_plugin", plugin_dir / "plugin.py")
+    spec = importlib.util.spec_from_file_location("probe_iaso_plugin", plugin_dir / "plugin.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     module.register(context)
     result = {
         "registered": sorted(manager._plugin_skills),
-        "plumb": json.loads(skill_view("plumb:plumb-records", preprocess=False)),
-        "clarify": json.loads(skill_view("plumb:plumb-clarify", preprocess=False)),
-        "flat": json.loads(skill_view("plumb" , preprocess=False)),
+        "iaso": json.loads(skill_view("iaso:iaso-records", preprocess=False)),
+        "clarify": json.loads(skill_view("iaso:iaso-clarify", preprocess=False)),
+        "flat": json.loads(skill_view("iaso" , preprocess=False)),
     }
     print(json.dumps(result, sort_keys=True))
     return 0

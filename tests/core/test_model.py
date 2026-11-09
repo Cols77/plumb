@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from plumb.model import RecordError, parse_record
+from iaso.model import RecordError, parse_record
 
 pytestmark = pytest.mark.sr("SR-230")
 
@@ -17,18 +17,18 @@ KINDS = {
 @pytest.mark.parametrize("record_id,kind", sorted(KINDS.items()))
 def test_parses_each_kind_from_frontmatter(record_id: str, kind: str) -> None:
     text = f"---\nid: {record_id}\ntitle: A title\nstatus_note: n\n---\nBody text\n"
-    record = parse_record(text, ".plumb/x/file.md")
+    record = parse_record(text, ".iaso/x/file.md")
     assert record.id == record_id
     assert record.kind == kind
     assert record.title == "A title"
     assert record.fields == {"status_note": "n"}
     assert record.body == "Body text\n"
-    assert record.path == ".plumb/x/file.md"
+    assert record.path == ".iaso/x/file.md"
     assert record.hash.startswith("sha256:")
 
 
 def test_identity_comes_from_frontmatter_not_filename() -> None:
-    record = parse_record("---\nid: SR-007\ntitle: t\n---\n", ".plumb/requirements/SR-001.md")
+    record = parse_record("---\nid: SR-007\ntitle: t\n---\n", ".iaso/requirements/SR-001.md")
     assert record.id == "SR-007"
 
 

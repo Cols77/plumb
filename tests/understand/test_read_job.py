@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import files, judge
+from iaso.api import open_core
+from iaso.understand import files, judge
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -33,7 +33,7 @@ def make_core(repo: Path, write_record, texts: list[str]):
 
 
 def log_prompt(core, text: str, *, at: str = "2026-10-10T10:00:00Z", via: str = "hook") -> str:
-    from plumb.approvals import prompt_digest
+    from iaso.approvals import prompt_digest
 
     digest = prompt_digest(text)
     path = core.paths.prompts
@@ -72,7 +72,7 @@ def five(repo: Path, write_record):
 
 def test_ex12_five_records_and_a_question_one_job_one_entry_each(
         five, engine_standins, monkeypatch) -> None:
-    from plumb.understand import read
+    from iaso.understand import read
 
     ids = [f"SR-{n:03d}" for n in range(1, 6)]
     state(five, ids)
@@ -92,7 +92,7 @@ def test_ex12_five_records_and_a_question_one_job_one_entry_each(
     entries.append({"id": question_item["id"], "hash": "", "answer": "accepted",
                     "evidence": "CSV", "confidence": 0.9})
     engine_standins.dispatcher.script = {"read": {"entries": entries}}
-    from plumb.understand import queue, worker
+    from iaso.understand import queue, worker
 
     queue.enqueue(five, job)
     # the judge job the read queues runs in the same pass (the queue is read before each job)
@@ -106,13 +106,13 @@ def test_ex12_five_records_and_a_question_one_job_one_entry_each(
 def test_one_job_per_turn_six_items(five, engine_standins) -> None:
     """SR-104 EX-8: one read job covers the five records and the question; a retried hook
     queues nothing twice."""
-    from plumb.understand import read
+    from iaso.understand import read
 
     state(five, [f"SR-{n:03d}" for n in range(1, 6)])
     open_question(five)
     message = "yes to all of it, CSV"
     log_prompt(five, message)
-    entry = {"digest": __import__("plumb.approvals", fromlist=["x"]).prompt_digest(message),
+    entry = {"digest": __import__("iaso.approvals", fromlist=["x"]).prompt_digest(message),
              "text": message}
     first = read.on_prompt(ctx_for(five), five, entry)
     second = read.on_prompt(ctx_for(five), five, entry)
@@ -124,7 +124,7 @@ def test_one_job_per_turn_six_items(five, engine_standins) -> None:
 
 
 def test_no_job_when_nothing_stated(five, engine_standins) -> None:
-    from plumb.understand import read
+    from iaso.understand import read
 
     message = "ok"
     digest = log_prompt(five, message)
@@ -135,7 +135,7 @@ def test_no_job_when_nothing_stated(five, engine_standins) -> None:
 
 
 def test_unshown_records_are_not_in_the_shown_set(five) -> None:
-    from plumb.understand import read
+    from iaso.understand import read
 
     state(five, ["SR-001"], shown=False)
     message = "ok"
@@ -144,7 +144,7 @@ def test_unshown_records_are_not_in_the_shown_set(five) -> None:
 
 
 def test_schema_has_only_four_answers() -> None:
-    from plumb.understand import read
+    from iaso.understand import read
 
     schema = json.loads((Path(read.__file__).parent / "schemas" / "read.json")
                         .read_text(encoding="utf-8"))
@@ -159,7 +159,7 @@ def test_schema_has_only_four_answers() -> None:
 
 
 def test_evalset_reader_cases_load_and_run_on_the_fake() -> None:
-    from plumb.understand import evalrun, read
+    from iaso.understand import evalrun, read
 
     cases = evalrun.load_cases("read")
     names = {c["name"] for c in cases}

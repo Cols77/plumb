@@ -10,9 +10,9 @@ import pytest
 from capture.capture_helpers import log_prompt
 from understand.fakes import FakeDispatcher, owner_level
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.understand import clarify, files, gate, worker
+from iaso import approvals
+from iaso.api import open_core
+from iaso.understand import clarify, files, gate, worker
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -113,7 +113,7 @@ def _flag(repo: Path, text: str, subject: str = "SR-001") -> str:
     import hashlib
 
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = repo / ".plumb" / "session" / "intent_flags.jsonl"
+    path = repo / ".iaso" / "session" / "intent_flags.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"session": SESSION, "prompt_digest": digest,
@@ -200,7 +200,7 @@ def test_sr131_many_gaps_with_a_recommendation_are_assumed_not_asked(
 
 
 def test_ex4_a_question_carries_no_intent_no_card(repo: Path, engine_standins: Any) -> None:
-    core, digest = _asked("what does plumb status show?",
+    core, digest = _asked("what does iaso status show?",
                           {"intent": "no", "gaps": [_gap("x", "Ignored?")]}, repo,
                           engine_standins)
     assert not gate.is_closed(repo, SESSION)
@@ -254,7 +254,7 @@ def test_fake_dispatcher_is_the_one_in_use(engine_standins: Any) -> None:
 
 
 def test_evalset_clarify_cases_load_and_run_on_the_fake() -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     cases = evalrun.load_cases("clarify")
     assert len(cases) >= 12
@@ -292,7 +292,7 @@ class _AlwaysAsks:
 
 def test_ex12_false_gap_rate_measured_and_reported_with_calibration_results(
         repo: Path) -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     cases = evalrun.load_cases("clarify")
     quiet = sum(1 for c in cases if not c["expect"]["gap"])
@@ -327,10 +327,10 @@ def test_sr223_ex22_a_loop_asking_questions_holds_no_unrelated_edit(
         repo: Path, engine_standins: Any) -> None:
     """SR-223 EX-22: the intent loop's check leaves questions waiting, yet an edit no confirmed
     record covers goes ahead (owner, 2026-11-06: only related edits wait)."""
-    from plumb.hosts.claude_code import pretool
+    from iaso.hosts.claude_code import pretool
 
     gaps = [_gap("a", "First?", blocking=True), _gap("b", "Second?", blocking=True)]
-    core, _ = _asked("/plumb intent rebuild the billing system",
+    core, _ = _asked("/iaso intent rebuild the billing system",
                      {"intent": "yes", "topic": "billing", "gaps": gaps}, repo, engine_standins)
     assert len(clarify.gap_questions(core, SESSION)) == 2
     assert not gate.is_closed(repo, SESSION)

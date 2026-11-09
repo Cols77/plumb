@@ -12,42 +12,42 @@ from pathlib import Path
 import pytest
 from hosts.hosts_helpers import QuietVerify
 
-from plumb import build, debug
-from plumb.hosts.claude_code import session_start
+from iaso import build, debug
+from iaso.hosts.claude_code import session_start
 
-REGISTER = Path(__file__).resolve().parents[2] / ".plumb" / "known-issues.json"
+REGISTER = Path(__file__).resolve().parents[2] / ".iaso" / "known-issues.json"
 CASE = "field-answers-dropped-after-upgrade"
 
 
 @pytest.fixture
 def plugin(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """``plugin(same)``: Claude Code runs a plugin whose build is plumb's repository's (or an
+    """``plugin(same)``: Claude Code runs a plugin whose build is iaso's repository's (or an
     older one)."""
     monkeypatch.setattr(build, "_latest", lambda url: "main")  # its main
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
-    for name in ("CLAUDE_PLUGIN_ROOT", "PLUMB_PLUGIN_ROOT"):
+    monkeypatch.setenv("IASO_SESSION_ID", "s2")
+    for name in ("CLAUDE_PLUGIN_ROOT", "IASO_PLUGIN_ROOT"):
         monkeypatch.delenv(name, raising=False)
 
     def run(same: bool) -> None:
-        loaded = tmp_path / "cache" / "plumb" / "vendor"
+        loaded = tmp_path / "cache" / "iaso" / "vendor"
         loaded.mkdir(parents=True, exist_ok=True)
         (loaded / "MANIFEST.json").write_text(json.dumps(
             {"source_digest": "main" if same else "old"}), "utf-8")
         (loaded.parent / ".claude-plugin").mkdir(exist_ok=True)
         (loaded.parent / ".claude-plugin" / "plugin.json").write_text(json.dumps(
-            {"repository": "https://github.com/Cols77/plumb"}), "utf-8")
+            {"repository": "https://github.com/Cols77/iaso"}), "utf-8")
         monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(loaded.parent))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
         (tmp_path / "claude" / "plugins").mkdir(parents=True, exist_ok=True)
         (tmp_path / "claude" / "plugins" / "installed_plugins.json").write_text(json.dumps(
-            {"plugins": {"plumb@plumb": [{"scope": "user", "installPath": str(loaded.parent),
+            {"plugins": {"iaso@iaso": [{"scope": "user", "installPath": str(loaded.parent),
                                           "gitCommitSha": "main" if same else "old"}]}}), "utf-8")
     return run
 
 
 @pytest.fixture
 def register(repo: Path) -> Path:
-    shutil.copy(REGISTER, repo / ".plumb" / "known-issues.json")
+    shutil.copy(REGISTER, repo / ".iaso" / "known-issues.json")
     return repo
 
 
@@ -94,9 +94,9 @@ def test_ex1_done_from_a_plain_bash_reads_the_plugin_the_session_started_with(
     """The agent's Bash has no plugin variable: the session's host.json names the plugin."""
     plugin(False)
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT")
-    host = repo / ".plumb" / "session" / "s2" / "host.json"
+    host = repo / ".iaso" / "session" / "s2" / "host.json"
     host.parent.mkdir(parents=True, exist_ok=True)
-    host.write_text(json.dumps({"plugin": str(tmp_path / "cache" / "plumb")}), "utf-8")
+    host.write_text(json.dumps({"plugin": str(tmp_path / "cache" / "iaso")}), "utf-8")
     debug.open_case(repo, id=CASE, kind="report", target="flagged",
                     detail="answers dropped after the upgrade", session="s2")
     debug._update(repo, [CASE], branch="debug/x", state="resolved", landed="a15e6bbcd")
@@ -129,7 +129,7 @@ def test_ex1_a_fresh_session_is_told_the_open_known_issue(register: Path, hook_i
     assert session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="startup")),
                               stdout=out, root=register, verify=QuietVerify()) == 0
     said = [line for line in out.getvalue().splitlines() if "known issues" in line]
-    assert said[0].startswith("plumb: known issues open: KI-4 judge line shown while the "
+    assert said[0].startswith("iaso: known issues open: KI-4 judge line shown while the "
                               "judge answered") and len(said) <= 2
 
 
@@ -137,7 +137,7 @@ def test_ex1_a_fresh_session_is_told_the_open_known_issue(register: Path, hook_i
 def test_ex2_on_an_older_plugin_a_fixed_issue_says_reload_and_reopens_nothing(
         register: Path, plugin, capsys) -> None:
     plugin(False)
-    out = _report(register, "plumb re-asks the answered questions", capsys)
+    out = _report(register, "iaso re-asks the answered questions", capsys)
     assert "fixed in main, reload plugins" in out
     assert debug.open_cases(register) == []
 
@@ -146,7 +146,7 @@ def test_ex2_on_an_older_plugin_a_fixed_issue_says_reload_and_reopens_nothing(
 def test_ex3_on_mains_build_a_fixed_issue_seen_again_reopens_it(register: Path, plugin,
                                                                  capsys) -> None:
     plugin(True)
-    out = _report(register, "plumb re-asks the answered questions", capsys)
+    out = _report(register, "iaso re-asks the answered questions", capsys)
     (row,) = debug.open_cases(register)
     assert row["id"] == "KI-5" and row["history"] == [{"state": "fixed",
                                                        "landed": "3a1d16d2f"}]
@@ -170,13 +170,13 @@ def test_ex4_the_session_owning_a_case_is_told_when_it_is_proven(repo: Path, plu
 def test_ex4_the_owning_session_is_told_its_problem_came_back_elsewhere(
         repo: Path, plugin, monkeypatch: pytest.MonkeyPatch) -> None:
     plugin(True)
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     debug.hook_error(repo, "stop", 'File "a.py", in answer\nKeyError: \'answer\'')
     (first,) = debug.open_cases(repo)
     debug._update(repo, [first["id"]], state="resolved", branch="debug/x", landed="abc",
                   proven="2026-10-20")
     assert first["session"] == "s1"
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s2")
+    monkeypatch.setenv("IASO_SESSION_ID", "s2")
     debug.hook_error(repo, "stop", 'File "b.py", in record\nKeyError: \'answer\'')
     ((key, text),) = debug.lines(repo, "s1")
     assert key.startswith("back:") and "came back in another session" in text

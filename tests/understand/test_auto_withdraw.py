@@ -1,4 +1,4 @@
-"""SR-216: a question that no longer stands is withdrawn by plumb right after the link it holds
+"""SR-216: a question that no longer stands is withdrawn by iaso right after the link it holds
 is settled (the withdrawal is logged), and a judge question whose records are superseded or all approved is no longer
 asked; never told in an owner line (SR-373)."""
 
@@ -18,9 +18,9 @@ from core.test_stale_resolve import (  # noqa: F401
     project,
 )
 
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.understand import judge
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.understand import judge
 from understand.test_judge_job import SESSION, requirement_text
 
 pytestmark = pytest.mark.sr("SR-216")

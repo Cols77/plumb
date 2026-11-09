@@ -1,0 +1,112 @@
+"""Where iaso keeps its files (spec 4.2, 12.4)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def state_dir(root: Path) -> Path:
+    """``<root>/.iaso``: the only records folder iaso supports (an old project is converted, SR-432)."""
+    return Path(root) / ".iaso"
+
+
+def holds_records(candidate: Path) -> bool:
+    """Whether ``candidate``'s ``.iaso/`` is a repository's. iaso's own home (``~/.iaso``: the
+    plugin's environments under ``env/`` and ``current.json``) never is, whatever else was
+    left in it, so a folder under the user's home is never taken for an adopted repository."""
+    iaso = state_dir(candidate)
+    if not iaso.is_dir():
+        return False
+    return not ((iaso / "env").is_dir() or (iaso / "current.json").is_file())
+
+
+def find_root(start: Path) -> Path:
+    """The first directory upward holding ``.iaso/``, else ``.git``, else ``start``."""
+    start = start.resolve()
+    chain = [start, *start.parents]
+    for candidate in chain:
+        if holds_records(candidate):
+            return candidate
+    for candidate in chain:
+        if (candidate / ".git").exists():
+            return candidate
+    return start
+
+
+class IasoPaths:
+    """Every path iaso reads or writes under its records folder (``state_dir``)."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        p = state_dir(self.root)
+        self.iaso = p
+        self.config = p / "config.yaml"
+        self.claims = p / "claims.yaml"
+        self.log_dir = p / "log"
+        self.log_events = p / "log" / "events.jsonl"
+        self.log_evidence = p / "log" / "evidence.jsonl"
+        self.cache = p / "cache"
+        self.session = p / "session"
+        self.test_map_txt = p / "test_map.txt"
+        self.test_map_json = self.cache / "test_map.json"
+        self.index_cache = self.cache / "index.json"
+        self.hash_cache = self.cache / "hashes.json"
+        self.evidence_index = self.cache / "evidence_index.json"
+        self.env_identity = self.cache / "env_identity.json"
+        self.config_cache = self.cache / "config.json"
+        self.lock = self.cache / "log.lock"
+        self.prompts = self.session / "prompts.jsonl"
+        self.status = self.session / "status.json"
+        self.stated = self.session / "stated.json"
+        self.escalations = self.session / "escalations.jsonl"
+        self.errors = self.session / "errors.log"
+
+    @property
+    def prompt_logs(self) -> list[Path]:
+        """The prompt logs to read, oldest source first: a worktree's ``.git`` file names
+        ``<main>/.git/worktrees/<name>``, and the hook logs in the main checkout (SR-189)."""
+        logs = [self.prompts]
+        try:
+            gitdir = Path((self.root / ".git").read_text(encoding="utf-8").split(":", 1)[1].strip())
+        except (OSError, IndexError):  # not a worktree: ``.git`` is a folder, or absent
+            return logs
+        if gitdir.parent.name == "worktrees":
+            main = state_dir(gitdir.parent.parent.parent) / "session" / "prompts.jsonl"
+            if main.resolve() != self.prompts.resolve():
+                logs.insert(0, main)
+        return logs
+
+    def prompt_lines(self) -> list[str]:
+        """Every line of the prompt logs, the checkout's own last so its entries win."""
+        lines: list[str] = []
+        for log in self.prompt_logs:
+            try:
+                lines.extend(log.read_text(encoding="utf-8").splitlines())
+            except (OSError, UnicodeDecodeError):
+                pass
+        return lines
+
+    def session_dir(self, session_id: str) -> Path:
+        return self.session / session_id
+
+    # SP6 6.1: one file per entry under .iaso/log/<kind>/ (SR-073); the head pointer and
+    # the per-stream pack caches are gitignored and rebuilt by a scan when missing.
+    def log_kind_dir(self, kind: str) -> Path:
+        return self.log_dir / kind
+
+    @property
+    def log_head(self) -> Path:
+        return self.cache / "log-head.json"
+
+    def log_pack(self, stream: str) -> Path:
+        if stream not in ("events", "evidence"):
+            raise ValueError(f"unknown log stream: {stream}")
+        return self.cache / f"log-{stream}.json"
+
+    def log_path(self, stream: str) -> Path:
+        """The legacy JSONL file of a stream (read during the transition, SR-074)."""
+        if stream == "events":
+            return self.log_events
+        if stream == "evidence":
+            return self.log_evidence
+        raise ValueError(f"unknown log stream: {stream}")

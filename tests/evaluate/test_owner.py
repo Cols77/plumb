@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from plumb.contracts import DispatchError
-from plumb.evaluate.owner import OWNER_SCHEMA, ScriptedOwner
+from iaso.contracts import DispatchError
+from iaso.evaluate.owner import OWNER_SCHEMA, ScriptedOwner
 
 BRIEF = "The board is 3 by 3, always."
 

@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from fakes import FakeBackend, FakeVerify
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.hosts.claude_code import prompt
-from plumb.understand import cmd_clarify, gate
+from iaso import approvals
+from iaso.api import open_core
+from iaso.hosts.claude_code import prompt
+from iaso.understand import cmd_clarify, gate
 
 pytestmark = pytest.mark.sr("SR-208")
 
@@ -35,7 +35,7 @@ def _run(repo: Path, hook_input, text: str) -> None:
 
 
 def _logged(repo: Path) -> list[dict]:
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
 
 

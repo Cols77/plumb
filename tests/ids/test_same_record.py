@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 
 from ids.gitrepo import commit_all, make_repo, record_text, run_git, write
-from plumb import ids
-from plumb.api import open_core
-from plumb.cli import main
+from iaso import ids
+from iaso.api import open_core
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -43,14 +43,14 @@ def test_unmerged_add_add_differing_only_in_links_is_not(tmp_path: Path) -> None
     assert ids.collisions(open_core(root)) == ()
     result = ids.merge_fix(open_core(root))
     assert result.renumbered == () and result.remaining == ()
-    assert sorted(p.name for p in (root / ".plumb" / "requirements").glob("*.md")) == \
+    assert sorted(p.name for p in (root / ".iaso" / "requirements").glob("*.md")) == \
         ["SR-009.md"]
 
 
 def test_duplicate_files_differing_only_in_links_are_not(tmp_path: Path) -> None:
     root = make_repo(tmp_path / "r")
     write(root, "SR-009", TITLE)
-    (root / ".plumb" / "requirements" / "SR-009-copy.md").write_text(
+    (root / ".iaso" / "requirements" / "SR-009-copy.md").write_text(
         record_text("SR-009", TITLE, links=LINKS), encoding="utf-8")
     assert ids.collisions(open_core(root)) == ()
 

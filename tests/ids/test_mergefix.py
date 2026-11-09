@@ -1,4 +1,4 @@
-"""IDS I5: ``plumb merge-fix`` renumbers the incoming record of a clone collision and
+"""IDS I5: ``iaso merge-fix`` renumbers the incoming record of a clone collision and
 rewrites every reference the incoming side introduced, never history (sp6 5; SR-071).
 
 The real-git tests run the shared clone scenario (``scenario.py``); the per-place tests of
@@ -13,10 +13,10 @@ import pytest
 
 from ids import scenario
 from ids.gitrepo import record_text, run_git
-from plumb import ids
-from plumb.api import open_core
-from plumb.ids import rewrite
-from plumb.paths import PlumbPaths
+from iaso import ids
+from iaso.api import open_core
+from iaso.ids import rewrite
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -88,7 +88,7 @@ def test_stages_but_never_commits(tmp_path: Path) -> None:
     assert run_git(s.origin, "rev-parse", "HEAD").strip() == head
     assert run_git(s.origin, "rev-parse", "-q", "--verify", "MERGE_HEAD").strip()
     assert run_git(s.origin, "ls-files", "-u").strip() == ""
-    new_path = f".plumb/requirements/{result.renumbered[0]['to']}.md"
+    new_path = f".iaso/requirements/{result.renumbered[0]['to']}.md"
     assert new_path in result.staged
     staged = run_git(s.origin, "diff", "--cached", "--name-only").split()
     assert new_path in staged and "tests/test_export.py" in staged
@@ -100,13 +100,13 @@ def test_dry_run_writes_and_reserves_nothing(tmp_path: Path) -> None:
     s = scenario.build(tmp_path)
     before = _status(s.origin)
     ref = run_git(s.origin, "rev-parse", ids.REF).strip()
-    files = {p: p.read_bytes() for p in (s.origin / ".plumb").rglob("*.md")}
+    files = {p: p.read_bytes() for p in (s.origin / ".iaso").rglob("*.md")}
     result = ids.merge_fix(open_core(s.origin), dry_run=True)
     assert result.dry_run and result.renumbered[0]["to"] == "SR-003"
     assert "would become SR-003" in result.lines[0]
     assert _status(s.origin) == before
     assert run_git(s.origin, "rev-parse", ids.REF).strip() == ref
-    assert {p: p.read_bytes() for p in (s.origin / ".plumb").rglob("*.md")} == files
+    assert {p: p.read_bytes() for p in (s.origin / ".iaso").rglob("*.md")} == files
 
 
 def test_second_run_is_a_no_op(tmp_path: Path) -> None:
@@ -128,7 +128,7 @@ def test_pure_renumber_pins_repinned_other_stale_kept(tmp_path: Path) -> None:
     # the clone also leaves one pin stale for its own reason: INT-001 edited after the pin
     core = open_core(s.clone)
     intent = core.index()["INT-001"]
-    from plumb.capture.records import record_fields
+    from iaso.capture.records import record_fields
 
     core.write_record("intent", {**record_fields(intent), "readback": "edited"}, "",
                       record_id="INT-001")
@@ -151,7 +151,7 @@ def test_duplicate_without_merge_renumbers_the_later_file(tmp_path: Path) -> Non
     root = make_repo(tmp_path / "r")
     write(root, "SR-005", "first")
     commit_all(root, "first")
-    path = root / ".plumb" / "requirements" / "SR-005-imported.md"
+    path = root / ".iaso" / "requirements" / "SR-005-imported.md"
     path.write_text(record_text("SR-005", "second"), encoding="utf-8")
     commit_all(root, "second")
     result = ids.merge_fix(open_core(root))
@@ -353,5 +353,5 @@ def test_renumber_entry_logged(tmp_path: Path) -> None:
     assert payload["old_hash"] != payload["new_hash"]
     assert len(payload["approvals"]) == 1
     assert json.dumps(payload)  # plain JSON
-    state = ids.state(PlumbPaths(s.origin))
+    state = ids.state(IasoPaths(s.origin))
     assert state.high["SR"] == 3

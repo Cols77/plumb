@@ -1,4 +1,4 @@
-"""IDS I7: the ``plumb merge-fix`` command (sp6 5.6; SR-071)."""
+"""IDS I7: the ``iaso merge-fix`` command (sp6 5.6; SR-071)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from ids import scenario
-from plumb.cli import main
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -19,7 +19,7 @@ def test_output_names_titles_not_paths(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert 'SR-002 "export csv" from the merged branch is now SR-003' in out
     assert "the owner's approval carried" in out and "3 commits' trailers mapped" in out
-    assert ".plumb/" not in out and ".md" not in out
+    assert ".iaso/" not in out and ".md" not in out
 
 
 def test_json_shape(tmp_path: Path, capsys) -> None:
@@ -47,7 +47,7 @@ def test_exit_1_when_a_side_is_not_a_record(tmp_path: Path, capsys) -> None:
 
     root = make_repo(tmp_path / "r")
     run_git(root, "checkout", "-q", "-b", "side")
-    path = root / ".plumb" / "requirements" / "SR-005.md"
+    path = root / ".iaso" / "requirements" / "SR-005.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("---\nid: SR-005\ntitle: [unclosed\n---\n", encoding="utf-8")
     commit_all(root, "side")
@@ -57,4 +57,4 @@ def test_exit_1_when_a_side_is_not_a_record(tmp_path: Path, capsys) -> None:
     run_git(root, "merge", "--no-edit", "side", check=False)
     assert main(["merge-fix", "--root", str(root)]) == 1
     out = capsys.readouterr().out
-    assert "SR-005 still has two records" in out and "/plumb merge-fix" in out
+    assert "SR-005 still has two records" in out and "/iaso merge-fix" in out

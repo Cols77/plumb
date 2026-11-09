@@ -6,23 +6,23 @@
 
 GENERATED from the one source of each (so the legacy installer and the plugin never drift):
 
-- ``plugin/commands/plumb.md`` and every file of ``plugin/skills/<name>/`` (``SKILL.md`` and
-  any reference files beside it): the templates under ``src/plumb/hosts/claude_code/templates``,
-  each ``.md`` rendered with ``{plumb}`` as ``plumb`` (the session-start hook puts the plugin's
+- ``plugin/commands/iaso.md`` and every file of ``plugin/skills/<name>/`` (``SKILL.md`` and
+  any reference files beside it): the templates under ``src/iaso/hosts/claude_code/templates``,
+  each ``.md`` rendered with ``{iaso}`` as ``iaso`` (the session-start hook puts the plugin's
   ``bin`` on the agent's PATH), any other file as it is; a file or skill folder under
   ``plugin/skills`` with no template (a skill renamed, a reference dropped) is stale, and the
   build removes it;
-- ``plugin/workflows/<name>.js``: the templates under ``templates/workflows``, ``{plumb}`` rendered as for skills (SR-385);
+- ``plugin/workflows/<name>.js``: the templates under ``templates/workflows``, ``{iaso}`` rendered as for skills (SR-385);
 - ``plugin/bin/gate.sh``: SP8's edit gate, the template as it is;
-- ``plugin/hooks/guard.gen.ts``: the guard table of ``plumb.guard`` for the mod (SP7 5.9);
+- ``plugin/hooks/guard.gen.ts``: the guard table of ``iaso.guard`` for the mod (SP7 5.9);
 - ``plugin/hooks/hooks.json``: the command hooks and the mod module;
 - ``plugin/.claude-plugin/plugin.json`` and ``.claude-plugin/marketplace.json``: the version
   is ``pyproject.toml``'s, which the build sets to ``0.1.<git commit count>`` (SR-377) together
-  with ``src/plumb/__init__.py``, so every build of main installs as a new plugin version;
+  with ``src/iaso/__init__.py``, so every build of main installs as a new plugin version;
 - ``plugin/LICENSE``: the repository's ``LICENSE`` as it is (SR-123), so the two never drift;
-- ``plugin/vendor/plumb-<version>-py3-none-any.whl`` and ``plugin/vendor/MANIFEST.json``
+- ``plugin/vendor/iaso-<version>-py3-none-any.whl`` and ``plugin/vendor/MANIFEST.json``
   ``{version, wheel, sha256, source_digest}``; ``source_digest`` is the digest of
-  ``src/plumb/**`` (templates included) and ``pyproject.toml``.
+  ``src/iaso/**`` (templates included) and ``pyproject.toml``.
 
 ``--check`` also fails naming any test-only file under ``plugin/`` (``*.test.*``,
 ``harness.ts``, ``fixtures.ts``): the mod's tests live in ``tests/plugin/mod`` (SR-123), since a
@@ -44,30 +44,30 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugin"
-SRC = REPO / "src" / "plumb"
+SRC = REPO / "src" / "iaso"
 TEMPLATES = SRC / "hosts" / "claude_code" / "templates"
 HOST_TEMPLATES = TEMPLATES   # the command and gate.sh (the tests move TEMPLATES, not these)
 VENDOR = PLUGIN / "vendor"
 sys.path.insert(0, str(REPO / "src"))
-from plumb.hosts.claude_code.ask_gate import QUESTION_TOOLS  # noqa: E402
+from iaso.hosts.claude_code.ask_gate import QUESTION_TOOLS  # noqa: E402
 
 QUESTION_MATCHER = "|".join(QUESTION_TOOLS)   # AskUserQuestion and the benchmark's stand-in
 DESCRIPTION = ("Keep a coding agent's work aligned with what you asked for: your intent, the "
                "requirements and examples it becomes, and the checks that hold the code to them.")
 AUTHOR = {"name": "Colin AUBE"}
-REPOSITORY = "https://github.com/Cols77/plumb"
-DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod plumb's cards draw with is published
+REPOSITORY = "https://github.com/Cols77/iaso"
+DIAGRAM_MARKETPLACE = "diagram-mod"   # where the diagram mod iaso's cards draw with is published
 
-# (Claude Code event, matcher, plumb hook, async, timeout in seconds): SP7 4.3, with SR-111's
+# (Claude Code event, matcher, iaso hook, async, timeout in seconds): SP7 4.3, with SR-111's
 # synchronous edit check and SP8's gate on PreToolUse (the guard covers Bash too). The timeout
-# bounds the whole command (sh, the launcher, Python's start); plumb's own watchdog cuts each
+# bounds the whole command (sh, the launcher, Python's start); iaso's own watchdog cuts each
 # hook at 90 s (``hookio.HARD_LIMIT_S`` or ``hooks.hard_limit_s``; the stop hook's read-back
 # gets 1 s more), so these only keep a hung process from holding the session (SR-123, SR-181,
 # SR-310); the pre-tool and edit-check hooks sit in the agent's way on every tool call: 10 s (SR-379).
 # post-edit and edit-check share a
 # matcher in two groups because only post-edit is async; they write different files under
-# ``.plumb/session/<id>/`` (``touched.txt``, ``stale_told.json``). MultiEdit stays: the legacy
-# installer (``plumb.hosts.claude_code.install``) and ``plumb.guard`` still name it.
+# ``.iaso/session/<id>/`` (``touched.txt``, ``stale_told.json``). MultiEdit stays: the legacy
+# installer (``iaso.hosts.claude_code.install``) and ``iaso.guard`` still name it.
 HOOKS: tuple[tuple[str, str | None, str, bool, int], ...] = (
     ("SessionStart", "startup|resume|clear|compact", "session-start", False, 120),
     ("UserPromptSubmit", None, "prompt", False, 120),
@@ -138,7 +138,7 @@ def _lf(data: bytes) -> bytes:
 
 
 def source_digest() -> str:
-    """The digest of what the wheel is built from: ``src/plumb/**`` and ``pyproject.toml``."""
+    """The digest of what the wheel is built from: ``src/iaso/**`` and ``pyproject.toml``."""
     digest = hashlib.sha256()
     files = sorted(p for p in SRC.rglob("*") if p.is_file() and "__pycache__" not in p.parts
                    and p.suffix not in (".pyc", ".pyo"))
@@ -161,19 +161,19 @@ def _json(data: object) -> str:
 
 
 def _render(name: str) -> str:
-    """The template ``name`` for the plugin: ``{plumb}`` as the agent types it, and the skills'
+    """The template ``name`` for the plugin: ``{iaso}`` as the agent types it, and the skills'
     files left under ``${CLAUDE_PLUGIN_ROOT}/skills/``. ``install.template`` points them at
     ``.claude/skills/`` for the per-repository install, where they are copied; in the plugin
-    they exist only beside it (``plumb plugin migrate`` deletes the .claude copies)."""
+    they exist only beside it (``iaso plugin migrate`` deletes the .claude copies)."""
     return _render_text((HOST_TEMPLATES / name).read_text(encoding="utf-8"))
 
 
 def _render_text(text: str) -> str:
-    """``text`` as ``install.template`` renders a template: ``{plumb}`` as what the agent types."""
+    """``text`` as ``install.template`` renders a template: ``{iaso}`` as what the agent types."""
     sys.path.insert(0, str(REPO / "src"))
-    from plumb.hosts.claude_code.install import Launcher
+    from iaso.hosts.claude_code.install import Launcher
 
-    return text.replace("{plumb}", Launcher("path", "plumb", "plumb").agent_prefix)
+    return text.replace("{iaso}", Launcher("path", "iaso", "iaso").agent_prefix)
 
 
 def skill_names() -> list[str]:
@@ -198,22 +198,22 @@ def hooks_json() -> str:
     hooks: dict[str, list[dict[str, object]]] = {}
     for event, matcher, name, is_async, timeout in HOOKS:
         hook: dict[str, object] = {"type": "command",
-                                   "command": f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/plumb-hook" {name}',
+                                   "command": f'sh "${{CLAUDE_PLUGIN_ROOT}}/bin/iaso-hook" {name}',
                                    "timeout": timeout}
         if is_async:
             hook["async"] = True
         group: dict[str, object] = {"matcher": matcher} if matcher else {}
         group["hooks"] = [hook]
         hooks.setdefault(event, []).append(group)
-    return _json({"description": "plumb's background checks (SP7 4.3) and its in-app panel",
+    return _json({"description": "iaso's background checks (SP7 4.3) and its in-app panel",
                   "modules": ["./register.tsx"], "hooks": hooks})
 
 
 def guard_ts() -> str:
     sys.path.insert(0, str(REPO / "src"))
-    from plumb import guard
+    from iaso import guard
 
-    return ("// GENERATED by scripts/build_plugin.py from plumb.guard.TABLE (SP7 5.9); "
+    return ("// GENERATED by scripts/build_plugin.py from iaso.guard.TABLE (SP7 5.9); "
             "do not edit.\n"
             "// The mod's tool.call hook denies the same forms as the pre-tool command hook.\n"
             f"export const MARKER_NAME = {json.dumps(guard.MARKER_NAME)};\n"
@@ -225,7 +225,7 @@ def guard_ts() -> str:
 
 
 def plugin_json() -> str:
-    return _json({"name": "plumb", "version": version(), "description": DESCRIPTION,
+    return _json({"name": "iaso", "version": version(), "description": DESCRIPTION,
                   "author": AUTHOR, "license": "MIT",
                   # SR-358: the repository every install compares its build with
                   "repository": REPOSITORY,
@@ -238,17 +238,17 @@ def plugin_json() -> str:
 
 
 def marketplace_json() -> str:
-    return _json({"name": "plumb", "owner": AUTHOR,
-                  "description": "plumb, as a Claude Code plugin",
+    return _json({"name": "iaso", "owner": AUTHOR,
+                  "description": "iaso, as a Claude Code plugin",
                   # without it Claude Code refuses to install a dependency from another marketplace
                   "allowCrossMarketplaceDependenciesOn": [DIAGRAM_MARKETPLACE],
-                  "plugins": [{"name": "plumb", "source": "./plugin", "version": version(),
+                  "plugins": [{"name": "iaso", "source": "./plugin", "version": version(),
                                "description": DESCRIPTION, "author": AUTHOR}]})
 
 
 def text_files() -> dict[Path, str]:
     """Every GENERATED text file and its content."""
-    out = {PLUGIN / "commands" / "plumb.md": _render("plumb-command.md"),
+    out = {PLUGIN / "commands" / "iaso.md": _render("iaso-command.md"),
            PLUGIN / "bin" / "gate.sh": _render("gate.sh"),
            PLUGIN / "hooks" / "guard.gen.ts": guard_ts(),
            PLUGIN / "hooks" / "hooks.json": hooks_json(),
@@ -293,7 +293,7 @@ def test_only_files() -> list[Path]:
 
 
 def wheel_name() -> str:
-    return f"plumb-{version()}-py3-none-any.whl"
+    return f"iaso-{version()}-py3-none-any.whl"
 
 
 def _sha256(path: Path) -> str:
@@ -345,7 +345,7 @@ def build_wheel() -> None:
         built = Path(tmp) / wheel_name()
         if not built.is_file():
             raise SystemExit(f"build_plugin: uv build did not produce {wheel_name()}")
-        for old in VENDOR.glob("plumb-*.whl"):
+        for old in VENDOR.glob("iaso-*.whl"):
             old.unlink()
         shutil.copyfile(built, VENDOR / wheel_name())
     data = {"version": version(), "wheel": wheel_name(),

@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from understand.test_intent_loop import SESSION
 
-from plumb import study
-from plumb.study import cli, video
+from iaso import study
+from iaso.study import cli, video
 
 TITLE = "How the judge cascade runs"
 SLUG = "how-the-judge-cascade-runs"
@@ -115,7 +115,7 @@ def test_sr316_ex1_render_starts_in_the_background_and_the_turn_does_not_wait(
     assert _render(accepted, tmp_path) == 0
     assert _state(accepted) == "rendering" and study.get(accepted, SLUG)["depth"] == "video"
     [cmd] = popen
-    assert cmd[:3] == [sys.executable, "-m", "plumb"] and "render-job" in cmd
+    assert cmd[:3] == [sys.executable, "-m", "iaso"] and "render-job" in cmd
     assert video.path(accepted, SLUG, CLIP, ".py").read_text(encoding="utf-8") == SCENE
 
 
@@ -193,7 +193,7 @@ def test_sr318_ex2_a_clone_needs_no_render(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
     _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2")
-    shutil.rmtree(accepted / ".plumb" / "cache")     # a clone has the committed files only
+    shutil.rmtree(accepted / ".iaso" / "cache")     # a clone has the committed files only
     assert _state(accepted) == "ready"
     assert video.path(accepted, SLUG, CLIP, ".mp4").is_file() and len(popen) == 1
 
@@ -307,7 +307,7 @@ def test_sr366_ex1_a_pass_keeps_the_verdict_and_the_video_is_announced(
         accepted: Path, tmp_path: Path, popen: list[Any], fake: None) -> None:
     _rendered(accepted, tmp_path)
     [line] = [x for x in study.accepted_lines(accepted) if "rendered" in x]
-    assert "independent reviewer agent" in line and f"plumb study check {SLUG} --clip {CLIP}" in line
+    assert "independent reviewer agent" in line and f"iaso study check {SLUG} --clip {CLIP}" in line
     assert _study(accepted, "check", SLUG, "--clip", CLIP, "--pass", "--reviewer", "agent-2") == 0
     kept = json.loads(video.path(accepted, SLUG, CLIP, ".check.json").read_text(encoding="utf-8"))
     assert kept["verdict"] == "pass" and kept["reviewer"] == "agent-2"
@@ -497,11 +497,11 @@ def test_sr371_a_dict_field_written_as_a_python_repr_is_read_back_and_every_comm
 @pytest.mark.sr("SR-380")
 def test_sr380_ex4_a_render_without_manim_says_to_install_the_video_extra(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """SR-380 EX-4: Manim is not installed with plumb; a render says to install plumb[video]."""
+    """SR-380 EX-4: Manim is not installed with iaso; a render says to install iaso[video]."""
     import importlib.util
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None)
     scene = tmp_path / "s.py"
     scene.write_text(SCENE, encoding="utf-8")
-    with pytest.raises(RuntimeError, match=r"install plumb\[video\]"):
+    with pytest.raises(RuntimeError, match=r"install iaso\[video\]"):
         video.run_manim(scene, tmp_path / "media")

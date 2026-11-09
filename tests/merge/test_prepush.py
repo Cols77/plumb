@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, git, write
 
-from plumb import cli
-from plumb.boundary import install_pre_push_hook
-from plumb.boundary.prepush import HOOK_MARKER, ForeignHookError, uninstall_pre_push_hook
+from iaso import cli
+from iaso.boundary import install_pre_push_hook
+from iaso.boundary.prepush import HOOK_MARKER, ForeignHookError, uninstall_pre_push_hook
 
 pytestmark = pytest.mark.sr("SR-262")
 
@@ -35,11 +35,11 @@ def test_installs_and_leaves_foreign_hook(repo: Path, capsys) -> None:
     _hook(repo).unlink()
     assert cli.main(["merge-check", "--install-pre-push", "--root", str(repo)]) == 0
     text = _hook(repo).read_text(encoding="utf-8")
-    assert HOOK_MARKER in text and "-m plumb merge-check --hook pre-push" in text
+    assert HOOK_MARKER in text and "-m iaso merge-check --hook pre-push" in text
     assert install_pre_push_hook(repo, sys.executable) == _hook(repo)  # idempotent
 
 
-def test_uninstall_removes_only_plumb_hook(repo: Path, capsys) -> None:
+def test_uninstall_removes_only_iaso_hook(repo: Path, capsys) -> None:
     _hook(repo).parent.mkdir(parents=True, exist_ok=True)
     _hook(repo).write_text(FOREIGN, encoding="utf-8")
     assert uninstall_pre_push_hook(repo) is False
@@ -69,12 +69,12 @@ def test_hook_blocks_push_on_nonzero(repo: Path, tmp_path: Path) -> None:
     git(repo, "push", "-q", "origin", "main")
     before = git(repo, "rev-parse", "HEAD").strip()
     install_pre_push_hook(repo, sys.executable)
-    write(repo, ".plumb/requirements/SR-001.md",
+    write(repo, ".iaso/requirements/SR-001.md",
           "---\nid: SR-001\ntitle: New\nstatement: A new behaviour.\n---\n")
     commit(repo, "propose SR-001")   # no SR trailer: no proof is delivered (that would be 5)
-    from plumb.api import open_core
+    from iaso.api import open_core
 
-    asked = repo / ".plumb" / "session" / "s1" / "judge_questions.json"
+    asked = repo / ".iaso" / "session" / "s1" / "judge_questions.json"
     asked.parent.mkdir(parents=True, exist_ok=True)
     asked.write_text(json.dumps([{
         "key": "is it new?", "question": "Is it new?", "header": "New", "job": "j1",

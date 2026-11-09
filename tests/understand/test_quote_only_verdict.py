@@ -13,7 +13,7 @@ from understand.test_judge_job import (
     world,  # noqa: F401
 )
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-241")
 

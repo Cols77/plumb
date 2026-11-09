@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 
 from awareness.scenario import capture, change, new_requirement, setup
-from plumb.api import open_core
-from plumb.awareness import inflight
-from plumb.contracts import Judgment
+from iaso.api import open_core
+from iaso.awareness import inflight
+from iaso.contracts import Judgment
 
 pytestmark = pytest.mark.sr("SR-259")
 
@@ -101,32 +101,32 @@ def test_conflict_raised_once_for_both_branches(tmp_path: Path) -> None:
     result = change(main, "main's version again, reworded")
     assert _decisions(main) == []
     known = [line for line in result.lines if "asked on branch feat-x" in line]
-    assert known == ['plumb: SR-005 "relay checks": the owner is asked on branch feat-x '
+    assert known == ['iaso: SR-005 "relay checks": the owner is asked on branch feat-x '
                      "whether this work or that branch's holds; build on the answer"]
-    from plumb import approvals
+    from iaso import approvals
 
     approvals.approve(open_core(other), [dec.id])           # the owner answers on feat-x
     assert inflight.sync_decisions(open_core(other)) is True
     assert inflight.sync_decisions(open_core(other)) is False  # nothing new to carry
     result = change(main, "main's version, third wording")
     settled = [line for line in result.lines if "settled it on branch feat-x" in line]
-    assert settled == ['plumb: SR-005 "relay checks": the owner settled it on branch feat-x: '
+    assert settled == ['iaso: SR-005 "relay checks": the owner settled it on branch feat-x: '
                        "\"feat-x's version\"; build on that"]
 
 
 def test_clarify_shows_the_card_before_anything_is_written(tmp_path: Path) -> None:
     """SR-081 EX-5: the read-back check, nothing written."""
-    from plumb.capture.clarify import clarify, view_lines
+    from iaso.capture.clarify import clarify, view_lines
 
     main, other = setup(tmp_path)
     change(other, "A relay pins the stated group, named by its title.")
-    before = sorted(p.name for p in (main / ".plumb").rglob("*.md"))
+    before = sorted(p.name for p in (main / ".iaso").rglob("*.md"))
     view = clarify(open_core(main), "make SR-005 pin only the affirmed records")
     lines = view_lines(view)
     assert lines[0] == ('a conflict with feat-x over "relay checks" comes back at the end of '
                         "this turn for you to ask the owner")
     assert not any("SR-005" in line or "Say:" in line for line in lines)    # SR-151 EX-3
-    assert sorted(p.name for p in (main / ".plumb").rglob("*.md")) == before
+    assert sorted(p.name for p in (main / ".iaso").rglob("*.md")) == before
     assert inflight.read(main, allow_git=True)[1]["claims"][0]["branch"] == "feat-x"
 
 
@@ -135,7 +135,7 @@ def test_dry_run_checks_and_records_nothing(tmp_path: Path) -> None:
     change(other, "feat-x's version")
     result = change(main, "main's version", dry_run=True)
     assert any("comes back at the end of this turn" in line for line in result.lines)
-    assert "plumb: nothing recorded (a preview)" in result.lines
+    assert "iaso: nothing recorded (a preview)" in result.lines
     assert _decisions(main) == []
     assert [c["branch"] for c in inflight.read(main, allow_git=True)[1]["claims"]] == [
         "feat-x"]
@@ -156,7 +156,7 @@ def test_capture_never_fails_on_an_inflight_error(tmp_path: Path,
     def broken(*a: object, **k: object) -> None:
         raise RuntimeError("register unreadable")
 
-    from plumb.awareness import early
+    from iaso.awareness import early
 
     monkeypatch.setattr(early, "after_capture", broken)
     result = capture(main, {"intent": "INT-001",
@@ -180,7 +180,7 @@ def test_same_version_on_both_branches_asks_nothing(tmp_path: Path) -> None:
 def _settled(tmp_path: Path) -> tuple[Path, Path]:
     """main and feat-x both change SR-005; feat-x raises the decision; the owner confirms
     it on feat-x, which keeps feat-x's version."""
-    from plumb import approvals
+    from iaso import approvals
 
     main, other = setup(tmp_path)
     change(main, "main's version of the relay")
@@ -192,7 +192,7 @@ def _settled(tmp_path: Path) -> tuple[Path, Path]:
     return main, other
 
 
-_SETTLED = ('plumb: SR-005 "relay checks": the owner settled it on branch feat-x: '
+_SETTLED = ('iaso: SR-005 "relay checks": the owner settled it on branch feat-x: '
             "\"feat-x's version\"; build on that")
 
 
@@ -204,7 +204,7 @@ def test_settled_answer_on_the_capture_line(tmp_path: Path) -> None:
 
 
 def test_settled_answer_on_the_clarify_read_back(tmp_path: Path) -> None:
-    from plumb.awareness import early
+    from iaso.awareness import early
 
     main, _other = _settled(tmp_path)
     check = early.check_text(open_core(main), "make SR-005 pin only the affirmed records")
@@ -212,14 +212,14 @@ def test_settled_answer_on_the_clarify_read_back(tmp_path: Path) -> None:
 
 
 def test_settled_answer_on_the_brief_line(tmp_path: Path) -> None:
-    from plumb import awareness
+    from iaso import awareness
 
     main, _other = _settled(tmp_path)
     assert _SETTLED in awareness.brief_lines(open_core(main))
 
 
 def test_settled_answer_on_the_prompt_delta_line(tmp_path: Path) -> None:
-    from plumb import awareness
+    from iaso import awareness
 
     main, _other = _settled(tmp_path)
     assert _SETTLED in [line.text for line in awareness.delta_lines(open_core(main),
@@ -229,7 +229,7 @@ def test_settled_answer_on_the_prompt_delta_line(tmp_path: Path) -> None:
 def test_an_answer_in_relative_words_is_shown_by_branch(tmp_path: Path) -> None:
     """A register (or a relayed answer) holding "this request's version" or "keep this one"
     is shown on the other branch as the raising branch's version."""
-    from plumb import awareness
+    from iaso import awareness
 
     main, _other = _settled(tmp_path)
 
@@ -286,7 +286,7 @@ def test_preview_of_a_different_tail_shows_the_card(tmp_path: Path) -> None:
 #    words ask nothing): one test per entry point that reads a branch's claims
 
 
-_SR005 = ".plumb/requirements/SR-005.md"
+_SR005 = ".iaso/requirements/SR-005.md"
 
 
 def _edited_outside_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -294,8 +294,8 @@ def _edited_outside_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     """feat-x claims SR-005 by a capture (claim ``feat-x:INT-001``), then changes it again
     with no claim written (an edit outside capture); its stop hook claims the new version
     (claim ``feat-x:-``)."""
-    from plumb.awareness.publish import publish
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness.publish import publish
+    from iaso.awareness.turn import claim_changes
 
     main, other = setup(tmp_path)
     change(other, "feat-x version one")
@@ -336,7 +336,7 @@ def test_capture_of_the_newest_version_asks_nothing(
 
 def test_read_back_asks_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """check_text: one card for the record, with feat-x's newest words."""
-    from plumb.awareness import early
+    from iaso.awareness import early
 
     main, _other = _edited_outside_capture(tmp_path, monkeypatch)
     check = early.check_text(open_core(main), "make SR-005 pin only the affirmed records")
@@ -348,14 +348,14 @@ class _Unavailable:
     name = "jev"
 
     def contradiction(self, prompt: str, record: Any) -> Judgment:
-        from plumb.judgment import JudgmentUnavailable
+        from iaso.judgment import JudgmentUnavailable
 
         raise JudgmentUnavailable("no judge", "judgment.backend is not set")
 
 
 @pytest.mark.sr("SR-237")
 def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
-    from plumb.awareness.early import check_live
+    from iaso.awareness.early import check_live
 
     main, _ = setup(tmp_path)
     result = new_requirement(main, "relay checks pin nothing",
@@ -378,7 +378,7 @@ def test_check_live_contradicts_benign_and_unavailable(tmp_path: Path) -> None:
 def test_check_live_with_no_configured_judge_says_not_checked(tmp_path: Path) -> None:
     """eval-e135b2b0: with judgment.backend unset, the live check says it could not judge;
     it never claims "may change" with the unavailability as its reason."""
-    from plumb.awareness.early import check_live
+    from iaso.awareness.early import check_live
 
     main, _ = setup(tmp_path)
     result = new_requirement(main, "relay checks pin nothing",
@@ -393,7 +393,7 @@ def test_check_live_judges_the_opposite_even_when_wordier_records_outrank_it(
         repo: Path, write_record) -> None:
     """SR-165 EX-2: SR-076 (the agent relays the choice) and SR-150 (never relayed) ranked 4th
     by words behind longer, related records; the opposite is still judged and named."""
-    from plumb.awareness.early import check_live
+    from iaso.awareness.early import check_live
 
     def sr(n: int, statement: str) -> str:
         return (f"---\nid: SR-{n:03d}\ntitle: t{n}\nstatement: {statement}\nexamples:\n"

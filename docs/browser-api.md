@@ -1,6 +1,6 @@
 # Local browser API
 
-Launch `plumb ui --root PATH --port 8765 --open --assets PATH`. `--assets` names a
+Launch `iaso ui --root PATH --port 8765 --open --assets PATH`. `--assets` names a
 built directory containing `index.html` and `assets/`. Without assets the API remains
 available and the CLI reports the missing build. `--demo` uses a fresh temporary
 project and never loads the owner's repository; demo records are explicitly labelled.
@@ -48,14 +48,14 @@ Browser additions:
 
 Studies and the understanding picture (SR-292..294; DEC-151, DEC-152, DEC-154) are a
 section beside the questions, project-wide rather than per session. `Study` is
-`{slug,title,topic,step,loop,why,status,body?}` from `.plumb/studies/<slug>.md`; `status`
+`{slug,title,topic,step,loop,why,status,body?}` from `.iaso/studies/<slug>.md`; `status`
 is `new`, `opened`, `known` or `deeper`, and `body` is plain words with an optional
 ```` ```mermaid ```` block, shown as text. `Understanding` is `{text,knows,needs}` from
-`.plumb/understanding.md` (`- knows: ...` and `- needs: ...` lines). Reading a study opens
+`.iaso/understanding.md` (`- knows: ...` and `- needs: ...` lines). Reading a study opens
 it, which clears the band's study line. 'I know this' (`known`) writes a `knows` line for
 its topic and 'Go deeper' (`deeper`) a `needs: <topic> (deeper)` line; neither is an answer:
 nothing is queued, logged as a press or delivered to a session. A study about an open
-conflict lays out both sides and has no resolution button. Plumb never opens the room by
+conflict lays out both sides and has no resolution button. Iaso never opens the room by
 itself when a study is written. Slugs are 1–80 letters, digits or hyphens.
 
 Offers carry their own `offer_id`, question, record, exact shown hash, buttons and draw

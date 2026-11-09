@@ -1,6 +1,6 @@
 """R13 Q4: a chat "ok" confirms on a host without a prompt hook, and every confirmation
-resting on a message the agent recorded itself (``plumb turn start``) is labelled
-"self-recorded message" in plumb show, the merge-boundary glance and the host status
+resting on a message the agent recorded itself (``iaso turn start``) is labelled
+"self-recorded message" in iaso show, the merge-boundary glance and the host status
 (sp4 3.2, SR-053). One flag written by the prose relay, which no longer exists (SR-101 EX-9);
 entries it wrote stay in the log and every surface reads the flag. The tests write such an
 entry with ``logutil.legacy_relay``."""
@@ -16,11 +16,11 @@ import pytest
 from hosts_helpers import make_project
 from logutil import legacy_relay
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.confirm import SELF_RECORDED
-from plumb.merge import merge_check
+from iaso import approvals
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.confirm import SELF_RECORDED
+from iaso.merge import merge_check
 
 pytestmark = pytest.mark.sr("SR-282")
 
@@ -37,12 +37,12 @@ def project(repo: Path, write_record, monkeypatch) -> tuple[Path, str]:
 
 
 def _logged(repo: Path) -> dict:
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     return json.loads(path.read_text("utf-8").splitlines()[-1])
 
 
 def _relay_turn_prompt(repo: Path, monkeypatch, capsys) -> None:
-    """The agent records the owner's "ok" itself (plumb turn start), then relays it."""
+    """The agent records the owner's "ok" itself (iaso turn start), then relays it."""
     monkeypatch.setattr("sys.stdin", io.StringIO(OK))
     assert main(["turn", "start", "--session", "s1"]) == 0
     capsys.readouterr()
@@ -53,7 +53,7 @@ def _relay_turn_prompt(repo: Path, monkeypatch, capsys) -> None:
 
 def _relay_hook_prompt(repo: Path) -> None:
     """The host's prompt hook logged the owner's "ok"; the agent relays it."""
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     digest = approvals.prompt_digest(OK)
     path.write_text(json.dumps({"digest": digest, "session": "s1", "at": "t", "text": OK,
@@ -102,7 +102,7 @@ def test_merge_glance_labels_self_recorded_confirmation(project, monkeypatch,
     out = capsys.readouterr().out
     [row] = [line for line in out[out.index("approvals in range"):].splitlines()
              if "SR-001" in line and "AGENT-RELAYED" in line]
-    assert SELF_RECORDED in row  # the merge boundary's glance (plumb.boundary, sp3 3.2)
+    assert SELF_RECORDED in row  # the merge boundary's glance (iaso.boundary, sp3 3.2)
     merge_check(open_core(repo), sha, as_json=True)
     data = json.loads(capsys.readouterr().out)
     assert [a["self_recorded"] for a in data["glance"]] == [True]

@@ -18,7 +18,7 @@ examples:
 PYPROJECT = """[tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-markers = ["sr(id): links a test to a plumb requirement"]
+markers = ["sr(id): links a test to a iaso requirement"]
 """
 
 
@@ -46,8 +46,8 @@ def make_project(root: Path) -> Path:
     write(root, "tests/test_paths.py",
           "def test_mentions():\n    assert 'src/pkg/lonely.py'.endswith('.py')\n")
     write(root, "docs/guide.md", "# guide\n")
-    if (root / ".plumb").is_dir():  # keep the lane fast: the flaky rerun has its own tests
-        write(root, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n")
+    if (root / ".iaso").is_dir():  # keep the lane fast: the flaky rerun has its own tests
+        write(root, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n")
     return root
 
 

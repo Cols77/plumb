@@ -1,9 +1,9 @@
 """The hooks' warm path skips the test-map build (spec 10: hooks well under 2 s).
 
-``full_pending`` and the record-to-test map are cached in ``.plumb/cache/derived.json``
+``full_pending`` and the record-to-test map are cached in ``.iaso/cache/derived.json``
 under a fingerprint of everything they are computed from (the scanned source files, the
 records and their links, the evidence log, the config, the environment key and the shared
-test infrastructure). A warm SessionStart on plumb's own repository used to rebuild the map
+test infrastructure). A warm SessionStart on iaso's own repository used to rebuild the map
 on every call (about 0.65 s of 1.37 s).
 """
 
@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-import plumb.verify.testmap as testmap
-from plumb.api import open_core
-from plumb.verify import open_verify
+import iaso.verify.testmap as testmap
+from iaso.api import open_core
+from iaso.verify import open_verify
 
 pytestmark = [pytest.mark.sr("SR-310"), pytest.mark.sr("SR-255")]
 
@@ -62,7 +62,7 @@ def test_a_source_change_invalidates_the_cache(project: Path, monkeypatch) -> No
 
 
 def test_a_new_link_invalidates_the_record_tests(project: Path) -> None:
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     open_verify(open_core(project)).tests_for(["SR-001"])
     open_core(project).add_link("SR-001", "verified_by",

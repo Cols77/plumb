@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.understand import cmd_intent, files, gate
+from iaso.understand import cmd_intent, files, gate
 
 from conftest import git
 

@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify
 
-from plumb.api import open_core
-from plumb.contracts import NodeEvidence, Target
-from plumb.hosts.claude_code import stop
+from iaso.api import open_core
+from iaso.contracts import NodeEvidence, Target
+from iaso.hosts.claude_code import stop
 
 pytestmark = pytest.mark.sr("SR-265")
 
@@ -85,7 +85,7 @@ def project(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def start_turn(repo: Path) -> None:
-    path = repo / ".plumb" / "session" / SESSION / "turn.json"
+    path = repo / ".iaso" / "session" / SESSION / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}), "utf-8")
@@ -95,7 +95,7 @@ def edit(repo: Path, rel: str, text: str) -> None:
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, "utf-8")
-    with (repo / ".plumb" / "session" / SESSION / "touched.txt").open("a",
+    with (repo / ".iaso" / "session" / SESSION / "touched.txt").open("a",
                                                                        encoding="utf-8") as f:
         f.write(rel + "\n")
 
@@ -127,7 +127,7 @@ def test_ex5_nothing_for_the_owner_shows_nothing(project: Path, hook_input) -> N
 
 def test_a_failure_of_a_test_since_removed_is_not_a_regression(tmp_path: Path) -> None:
     """SR-012 EX-2: a regression card is raised only for a test still defined in its file."""
-    from plumb.hosts.claude_code.stop import test_exists
+    from iaso.hosts.claude_code.stop import test_exists
 
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_x.py").write_text("def test_kept(): pass\n", encoding="utf-8")

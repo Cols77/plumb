@@ -17,14 +17,14 @@ from understand.test_judge_cascade import calibrate_to, configure
 from understand.test_judge_job import SESSION
 from understand.test_round_approval import owner_answers, world  # noqa: F401
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.approvals import approval_items
-from plumb.understand import judge
+from iaso import cli
+from iaso.api import open_core
+from iaso.approvals import approval_items
+from iaso.understand import judge
 
 LABEL = "judge-approved (auto-model, haiku, 0.8)"
 COUNTED = "1 approved on your behalf by the judge"
-HINT = re.compile(r"/plumb approve|plumb approve|plumb revoke|plumb triage|your confirmation"
+HINT = re.compile(r"/iaso approve|iaso approve|iaso revoke|iaso triage|your confirmation"
                   r"|confirm (it|them)|say ok|ok to\b", re.I)
 ID = re.compile(r"\b(?:INT|SR|DEC|FEAT)-\d{3}\b")
 
@@ -35,8 +35,8 @@ def _cli(capsys, *argv: str) -> str:
 
 
 def _turn_end(root: Path) -> tuple[tuple[str, ...], str]:
-    """The stop hook's confirmations (the agent's), then the owner's one plumb line."""
-    from plumb.understand.summary import Told, _confirmations, owner_line
+    """The stop hook's confirmations (the agent's), then the owner's one iaso line."""
+    from iaso.understand.summary import Told, _confirmations, owner_line
 
     told = Told(root, SESSION, "2000-01-01T00:00:00Z")
     lines = _confirmations(open_core(root), None, told)
@@ -44,7 +44,7 @@ def _turn_end(root: Path) -> tuple[tuple[str, ...], str]:
 
 
 def _session_start(root: Path, hook_input) -> str:
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     out = io.StringIO()
     assert session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="startup")),
@@ -55,7 +55,7 @@ def _session_start(root: Path, hook_input) -> str:
 @pytest.mark.sr("SR-251")
 def test_ex1_the_turn_end_counts_a_judge_approval_and_every_listing_labels_it(
         world: Path, capsys) -> None:  # noqa: F811
-    """SR-251 EX-1: the judge model approved SR-001 during the turn: the plumb line counts one
+    """SR-251 EX-1: the judge model approved SR-001 during the turn: the iaso line counts one
     judge approval and SR-001 shows as judge-approved (auto-model, haiku, 0.8) wherever it is
     listed (show, explain, status, the status card)."""
     judged(world, ("SR-001", "supported", 0.8))
@@ -72,7 +72,7 @@ def test_ex1_the_turn_end_counts_a_judge_approval_and_every_listing_labels_it(
 @pytest.mark.sr("SR-251")
 def test_ex1_the_brief_labels_a_judge_approved_intent(world: Path) -> None:  # noqa: F811
     """SR-251 EX-1: the brief, which lists intents, marks one the judge approved."""
-    from plumb.query import brief_lines
+    from iaso.query import brief_lines
 
     judged(world, ("INT-001", "supported", 0.8))
     (item,) = [x for x in brief_lines(open_core(world)) if x.startswith("  INT-001")]
@@ -83,9 +83,9 @@ def test_ex1_the_brief_labels_a_judge_approved_intent(world: Path) -> None:  # n
 def test_ex2_an_auto_jev_entry_under_the_floor_is_inert_and_validate_warns(
         world: Path) -> None:  # noqa: F811
     """SR-251 EX-2: a worker wrote a by: auto-jev approval at 0.6, under the cascade's 0.9
-    floor: it is refused, SR-001 counts as proposed and plumb validate reports the inert entry
+    floor: it is refused, SR-001 counts as proposed and iaso validate reports the inert entry
     as a warning, not an error."""
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     core = configure(world)
     calibrate_to(core, 0.43)
@@ -141,7 +141,7 @@ def test_review_and_merge_check_name_no_approve_hint_and_no_id(
     """The review's awaits-you, glance and merge-state sections list what waits on a judge by
     title and count, with no approve or confirm hint and no record id; the quick merge check
     prints only what holds the merge, so it names none of them (SR-374 EX-6)."""
-    from plumb.boundary.premerge import PremergeReport, render
+    from iaso.boundary.premerge import PremergeReport, render
 
     judged(world, ("SR-001", "supported", 0.8))
     root = ["--root", str(world)]
@@ -158,9 +158,9 @@ def test_review_and_merge_check_name_no_approve_hint_and_no_id(
 @pytest.mark.sr("SR-251")
 def test_ex1_the_band_counts_every_record_status_lists_judge_approved(
         world: Path, capsys) -> None:  # noqa: F811
-    """SR-251 EX-1: the band's status counts the judge approvals ``plumb status`` lists, of any
+    """SR-251 EX-1: the band's status counts the judge approvals ``iaso status`` lists, of any
     kind (round 3: the band said 2 where status listed 6, its decisions left out)."""
-    from plumb.hosts.claude_code.snapshot import build_snapshot
+    from iaso.hosts.claude_code.snapshot import build_snapshot
 
     judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
     snap = build_snapshot(open_core(world))
@@ -174,11 +174,11 @@ def test_ex1_a_turn_without_an_edit_brings_the_band_count_up_to_date(
         world: Path) -> None:  # noqa: F811
     """SR-251 EX-1: the judge approves between turns; a turn that edits nothing still updates
     the band's count (round 4: the band showed none while status listed 2)."""
-    from plumb.hosts.claude_code.snapshot import (build_snapshot, refresh_counts,
+    from iaso.hosts.claude_code.snapshot import (build_snapshot, refresh_counts,
                                                   write_snapshot)
 
     write_snapshot(world, build_snapshot(open_core(world)))
     judged(world, ("SR-001", "supported", 0.8), ("INT-001", "supported", 0.8))
     refresh_counts(open_core(world))   # the worker, after the turn (SR-375)
-    data = json.loads((world / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    data = json.loads((world / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["judge_approved"] == 2

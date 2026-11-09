@@ -1,5 +1,5 @@
 """A confirmed example's failing acceptance test is visible where the owner looks: the merge
-boundary, ``plumb drift`` and ``plumb status`` (R1, R3, R5)."""
+boundary, ``iaso drift`` and ``iaso status`` (R1, R3, R5)."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, commit_all, make_project, write
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.merge import merge_check
-from plumb.verify import open_verify
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.merge import merge_check
+from iaso.verify import open_verify
 
 pytestmark = pytest.mark.sr("SR-254")
 
@@ -45,7 +45,7 @@ def confirmed(repo: Path, write_record) -> tuple[Path, str]:
 def _check(root: Path, base: str, *, as_json: bool = False) -> int:
     """The merge report after the reviewed link ends are repinned (a stale link of a touched
     requirement holds the merge with exit 1 before verification is read, sp3 5)."""
-    from plumb.links import repin
+    from iaso.links import repin
 
     repin(open_core(root), all_stale=True)
     return merge_check(open_core(root), base, as_json=as_json)

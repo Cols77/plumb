@@ -1,5 +1,5 @@
-"""A study built from the records and traced to them (SR-360; DEC-335, DEC-336): ``plumb study
-gather`` collects the records on the topic, ``plumb study add --records`` keeps them with
+"""A study built from the records and traced to them (SR-360; DEC-335, DEC-336): ``iaso study
+gather`` collects the records on the topic, ``iaso study add --records`` keeps them with
 their hashes, a changed record marks the study out of date and the band offers a rewrite."""
 
 from __future__ import annotations
@@ -12,10 +12,10 @@ import pytest
 from mod.helpers import DIGEST, KEY, run_mod
 from understand.test_intent_loop import SESSION
 
-from plumb import study
-from plumb.api import open_core
-from plumb.browser.service import BrowserService
-from plumb.study import cli
+from iaso import study
+from iaso.api import open_core
+from iaso.browser.service import BrowserService
+from iaso.study import cli
 
 pytestmark = pytest.mark.sr("SR-360")
 
@@ -95,7 +95,7 @@ def test_ex2_a_reworded_requirement_marks_it_out_of_date_and_the_band_offers_a_r
         capsys: pytest.CaptureFixture) -> None:
     from types import SimpleNamespace
 
-    from plumb.understand.hooks import on_prompt
+    from iaso.understand.hooks import on_prompt
 
     slug = _written(merges, tmp_path, "How merges are held", ["SR-901", "DEC-901"])
     assert study.out_of_date(merges, open_core(merges).index()) == []
@@ -112,7 +112,7 @@ def test_ex2_a_reworded_requirement_marks_it_out_of_date_and_the_band_offers_a_r
     assert code == 0 and answer["refresh"] == "asked"
     [line] = on_prompt(SimpleNamespace(root=merges, session_id=SESSION), None, {})
     assert "rewrite the study 'How merges are held' at depth diagrams" in line
-    assert f"plumb study gather {slug}" in line and "--records" in line
+    assert f"iaso study gather {slug}" in line and "--records" in line
     body = tmp_path / "again.md"
     body.write_text("A merge is kept back until the owner says yes.\n", encoding="utf-8")
     assert _study(merges, "add", slug, "--file", str(body), "--records", "SR-901") == 0
@@ -145,7 +145,7 @@ def test_ex3_a_topic_no_record_covers_says_so(repo: Path, tmp_path: Path,
     assert "no record covers" in capsys.readouterr().out
     slug = _written(repo, tmp_path, "How the coffee machine descales", [])
     held = study.get(repo, slug)
-    assert held["records"] == [] and "No record in plumb covers this topic" in held["body"]
+    assert held["records"] == [] and "No record in iaso covers this topic" in held["body"]
 
 
 def test_ex3_a_covered_topic_without_records_is_refused(
@@ -156,7 +156,7 @@ def test_ex3_a_covered_topic_without_records_is_refused(
         _written(merges, tmp_path, "How merges are held", [])
     assert "pass --records" in capsys.readouterr().err
     [held] = study.studies(merges)
-    assert held["status"] == "accepted" and "No record in plumb" not in held["body"]
+    assert held["status"] == "accepted" and "No record in iaso" not in held["body"]
 
 
 def test_ex2_a_failing_out_of_date_check_keeps_the_accepted_lines(
@@ -164,7 +164,7 @@ def test_ex2_a_failing_out_of_date_check_keeps_the_accepted_lines(
     """The out-of-date check failing never drops what the agent is told (SR-294 EX-8)."""
     from types import SimpleNamespace
 
-    from plumb.understand.hooks import on_prompt
+    from iaso.understand.hooks import on_prompt
 
     study.choose(repo, study.propose(repo, title="How merges are held", why="asked",
                                      depth="md", loop="", step="", asked=True), "md")

@@ -10,22 +10,22 @@ from study.helpers import written
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
-from plumb import study
-from plumb.api import open_core
+from iaso import study
+from iaso.api import open_core
 
 from .test_server import auth, request
 
 pytestmark = pytest.mark.sr("SR-294")
 
 intent = test_intent_loop.intent   # INT-001, SR-040 deriving from it, and an open loop
-TITLE = "How plumb's background jobs run"
+TITLE = "How iaso's background jobs run"
 
 
 @pytest.fixture
 def room(intent, tmp_path, monkeypatch):
     """A study added during the loop, then the room's server (not a browser)."""
-    from plumb.browser.server import make_server
-    from plumb.browser.service import BrowserService
+    from iaso.browser.server import make_server
+    from iaso.browser.service import BrowserService
 
     opened = []
     monkeypatch.setattr(webbrowser, "open", lambda *a, **k: opened.append(a))
@@ -89,7 +89,7 @@ def test_the_study_buttons_never_reach_a_session(room):
     press, nothing written under the sessions."""
     server, _ = room
     root = server.service.root
-    sessions = root / ".plumb" / "session"
+    sessions = root / ".iaso" / "session"
     before = {p: p.read_bytes() for p in sessions.rglob("*") if p.is_file()}
     events = len(open_core(root).events())
     slug = study.studies(root)[0]["slug"]

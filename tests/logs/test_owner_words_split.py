@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log, words
-from plumb.api import open_core
-from plumb.normalize import sha256_text
+from iaso import log, words
+from iaso.api import open_core
+from iaso.normalize import sha256_text
 
 from .gitrepo import commit_all, make_repo, run_git
 
@@ -30,7 +30,7 @@ CASES = [
                              "prompt_digest": "sha256:p", "quote": "no up-front spec for this"},
      ("quote",)),
     ("config", {"auto_approve": {"enabled": True}, "by": "owner", "via": "typed",
-                "prompt_digest": "sha256:p", "quote": "/plumb auto-approve on"},
+                "prompt_digest": "sha256:p", "quote": "/iaso auto-approve on"},
      ("quote",)),
 ]
 
@@ -56,14 +56,14 @@ def test_the_committed_entry_keeps_the_outcome_and_digests_only(
         if key not in fields:
             assert entry.payload[key] == value
     on_disk = "\n".join(p.read_text(encoding="utf-8")
-                        for p in (root / ".plumb" / "log" / kind).glob("*.json"))
+                        for p in (root / ".iaso" / "log" / kind).glob("*.json"))
     for field in fields:
         text = payload[field]
         if isinstance(text, str):
             assert text not in on_disk
     status = run_git(root, "status", "--porcelain", "-uall").stdout
-    assert f".plumb/log/{kind}/" in status
-    assert ".plumb/log/owner-words/" not in status
+    assert f".iaso/log/{kind}/" in status
+    assert ".iaso/log/owner-words/" not in status
 
 
 @pytest.mark.parametrize("kind,payload,fields", CASES)
@@ -85,7 +85,7 @@ def test_a_clone_without_the_words_reads_the_outcome_and_asks_for_nothing(
     entry = core.log_append("events", "approval", {
         "records": [{"id": "SR-001", "hash": "sha256:x"}], "by": "agent-relayed",
         "prompt_digest": "sha256:p", "quote": "ok", "quote_digest": sha256_text("ok")})
-    for p in (root / ".plumb" / "log" / "owner-words").glob("*.json"):
+    for p in (root / ".iaso" / "log" / "owner-words").glob("*.json"):
         p.unlink()
     again = open_core(root)
     (shared,) = [e for e in again.events() if e.kind == "approval"]

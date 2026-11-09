@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.hosts.claude_code import prompt
+from iaso import approvals
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -40,7 +40,7 @@ WORD_RULES = ("affirmation_in", "affirmation_context_problem", "change_clauses",
 
 @pytest.fixture
 def project(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     write_record(repo, SR1)
     return repo
 
@@ -60,24 +60,24 @@ def test_ex9_there_is_no_relay_command_so_a_prompt_reading_no_confirms_nothing(
 
 
 def test_the_typed_approve_is_no_longer_a_command_for_the_hook(project: Path) -> None:
-    from plumb.understand import typed
+    from iaso.understand import typed
 
-    assert typed.parse("/plumb approve SR-001") is None       # SR-209 EX-6: read as prose
-    assert typed.legacy_ids("/plumb approve SR-001") == ("SR-001",)   # past entries re-checked
+    assert typed.parse("/iaso approve SR-001") is None       # SR-209 EX-6: read as prose
+    assert typed.legacy_ids("/iaso approve SR-001") == ("SR-001",)   # past entries re-checked
 
 
 def test_the_prompt_hook_no_longer_tells_the_agent_to_relay(
         project: Path, hook_input, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
     index = open_core(project).index()
-    stated = project / ".plumb" / "session" / "stated.json"
+    stated = project / ".iaso" / "session" / "stated.json"
     stated.parent.mkdir(parents=True, exist_ok=True)
     stated.write_text(json.dumps({"at": "2026-10-06T00:00:00Z", "records": [
         {"id": "SR-001", "hash": index["SR-001"].hash, "shown": True}]}), "utf-8")
     out = io.StringIO()
     payload = hook_input("UserPromptSubmit", prompt="ok", session_id="s1")
     assert prompt.main(stdin=io.StringIO(payload), stdout=out, root=project) == 0
-    assert "plumb relay" not in out.getvalue()
+    assert "iaso relay" not in out.getvalue()
     assert "awaiting confirmation" not in out.getvalue()
     assert not hasattr(prompt, "awaiting_line")
 
@@ -94,10 +94,10 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_no_word_rule_of_approvals_is_left_or_imported_anywhere() -> None:
-    import plumb
+    import iaso
 
     assert [name for name in WORD_RULES if hasattr(approvals, name)] == []
-    root = Path(plumb.__file__).parent
+    root = Path(iaso.__file__).parent
     offenders = {str(path.relative_to(root)): sorted(_imports(path) & set(WORD_RULES))
                  for path in root.rglob("*.py")}
     assert {k: v for k, v in offenders.items() if v} == {}

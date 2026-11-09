@@ -1,4 +1,4 @@
-"""KS3: `plumb drift` prints only the drift signals (spec 5.10)."""
+"""KS3: `iaso drift` prints only the drift signals (spec 5.10)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, cli
-from plumb.api import open_core
+from iaso import approvals, cli
+from iaso.api import open_core
 
 INT = """---
 id: INT-001
@@ -69,7 +69,7 @@ def test_drift_clean_when_links_current_and_examples_covered(repo, write_record,
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == "drift: none"
     assert lines[1:] == ["advisory: fidelity never judged for 1 requirements (listed at the "
-                         "merge boundary; plumb fidelity <SR>)"]
+                         "merge boundary; iaso fidelity <SR>)"]
 
 
 @pytest.mark.sr("SR-231")
@@ -107,7 +107,7 @@ def test_drift_reports_uncovered_examples_of_any_requirement(repo, write_record,
 def test_drift_reports_unconfirmed_edit(repo, write_record, capsys):
     _setup(repo, write_record)
     approvals.approve(open_core(repo), ["SR-001"])
-    sr = repo / ".plumb" / "requirements" / "SR-001.md"
+    sr = repo / ".iaso" / "requirements" / "SR-001.md"
     sr.write_text(sr.read_text(encoding="utf-8").replace(
         "hash of both of its ends", "hash of each of its two ends"), encoding="utf-8")
     code, data = _drift(repo, capsys)

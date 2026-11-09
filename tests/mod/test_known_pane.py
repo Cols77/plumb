@@ -1,4 +1,4 @@
-"""SR-367: the known problems pane's data. ``plumb mod known`` answers how many known problems
+"""SR-367: the known problems pane's data. ``iaso mod known`` answers how many known problems
 are open and each one's symptom, cause, fix, state and case history, open ones first; an issue
 whose case reopened counts open. The session start's lines for the agent stay as they are."""
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from mod.helpers import run_mod
 
-from plumb import debug
+from iaso import debug
 
 pytestmark = pytest.mark.sr("SR-367")
 
@@ -24,10 +24,10 @@ def _issue(n: int, state: str = "fixed") -> dict:
 def register(repo: Path) -> Path:
     """Two known problems open (KI-1 open, KI-3 fixed but its case reopened), five fixed."""
     issues = [_issue(1, "open"), *(_issue(n) for n in range(2, 8))]
-    (repo / ".plumb" / "known-issues.json").write_text(json.dumps({"issues": issues}), "utf-8")
+    (repo / ".iaso" / "known-issues.json").write_text(json.dumps({"issues": issues}), "utf-8")
     case = {"id": "KI-3", "state": "open", "detail": "symptom 3 again",
             "history": [{"state": "fixed", "landed": "abc3"}]}
-    folder = repo.joinpath(*debug.STORE)
+    folder = (repo / ".iaso").joinpath(*debug.STORE)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "KI-3.json").write_text(json.dumps(case), "utf-8")
     return repo
@@ -48,7 +48,7 @@ def test_ex2_each_problem_has_symptom_cause_fix_state_and_history(register: Path
 
 
 def test_ex3_none_open_counts_zero(repo: Path) -> None:
-    (repo / ".plumb" / "known-issues.json").write_text(
+    (repo / ".iaso" / "known-issues.json").write_text(
         json.dumps({"issues": [_issue(2)]}), "utf-8")
     assert debug.known_pane(repo)["open"] == 0
     assert debug.known_pane(repo / "nowhere") == {"open": 0, "issues": []}
@@ -60,5 +60,5 @@ def test_the_mod_command_answers_the_pane(register: Path, monkeypatch, capsys) -
 
 
 def test_the_session_start_lines_are_unchanged(register: Path) -> None:
-    assert debug.known_lines(register)[0] == ("plumb: known issues open: KI-1 problem 1; "
+    assert debug.known_lines(register)[0] == ("iaso: known issues open: KI-1 problem 1; "
                                               "KI-3 problem 3")

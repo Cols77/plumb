@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify
 
-from plumb.api import open_core
-from plumb.contracts import FullPending, NodeEvidence, Target
-from plumb.hosts.claude_code import session_start
+from iaso.api import open_core
+from iaso.contracts import FullPending, NodeEvidence, Target
+from iaso.hosts.claude_code import session_start
 
 pytestmark = pytest.mark.sr("SR-278")
 
@@ -44,7 +44,7 @@ def _many_records(repo: Path, write_record, count: int = 60) -> None:
 def test_brief_is_a_few_lines_and_a_pointer_by_default(repo: Path, write_record,
                                                        hook_input) -> None:
     """R9, SR-374 EX-9: the session brief is a few lines, never every proposed record and no
-    counts (they are in plumb status)."""
+    counts (they are in iaso status)."""
     _many_records(repo, write_record)
     lines = _run(repo, hook_input, verify=FakeVerify()).splitlines()
     assert len(lines) <= 6
@@ -57,14 +57,14 @@ def test_a_session_brief_setting_no_longer_picks_a_long_brief(repo: Path, write_
                                                               hook_input) -> None:
     """SR-374, SR-277 (INT-114): the session start gives the table's session lines only; an old
     ``session_brief: full`` in the config changes nothing, and no long brief is built."""
-    from plumb.config import HooksConfig
+    from iaso.config import HooksConfig
 
     assert not hasattr(HooksConfig(), "session_brief")
     _many_records(repo, write_record)
-    (repo / ".plumb" / "config.yaml").write_text("hooks:\n  session_brief: full\n", "utf-8")
+    (repo / ".iaso" / "config.yaml").write_text("hooks:\n  session_brief: full\n", "utf-8")
     out = _run(repo, hook_input, verify=FakeVerify())
-    assert len(out.splitlines()) <= 6 and "plumb brief" not in out.splitlines()[0]
-    assert "more (plumb brief --all)" not in out
+    assert len(out.splitlines()) <= 6 and "iaso brief" not in out.splitlines()[0]
+    assert "more (iaso brief --all)" not in out
 
 
 def test_brief_lists_awaiting_confirmation_and_drift(repo: Path, write_record,
@@ -82,13 +82,13 @@ def test_brief_lists_awaiting_confirmation_and_drift(repo: Path, write_record,
     out = _run(repo, hook_input, verify=verify)
     # SR-374 EX-9: what blocks now, not the counts of what waits or drifts
     assert "waiting on a judge" not in out and "drift" not in out
-    assert "plumb: tests block now: not yet passing: tests/test_a.py::test_x" in out
+    assert "iaso: tests block now: not yet passing: tests/test_a.py::test_x" in out
 
 
 def test_writes_status_snapshot(repo: Path, write_record, hook_input) -> None:
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     _run(repo, hook_input, verify=FakeVerify(pending=FullPending(True, ("pyproject.toml",))))
-    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    data = json.loads((repo / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["v"] == 1
     assert data["requirements_total"] == 1 and data["proposed"] == 1
     assert data["full_pending"] is True
@@ -117,13 +117,13 @@ class _Clock:
 def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
                                      monkeypatch) -> None:
     """On a loaded machine the records brief is printed and only the tests line is cut."""
-    import plumb.api
-    from plumb.hosts.claude_code import hookio
+    import iaso.api
+    from iaso.hosts.claude_code import hookio
 
     clock = _Clock()
     monkeypatch.setattr(hookio, "time", clock)
     write_record(repo, "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s\n---\n")
-    real_open = plumb.api.open_core
+    real_open = iaso.api.open_core
 
     class SlowCore:
         def __init__(self, core) -> None:
@@ -136,20 +136,20 @@ def test_brief_survives_a_budget_cut(repo: Path, write_record, hook_input,
         def __getattr__(self, name):
             return getattr(self._core, name)
 
-    monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
-    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
+    monkeypatch.setattr(iaso.api, "open_core", lambda root: SlowCore(real_open(root)))
+    (repo / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".iaso" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     verify = FakeVerify()
     out = _run(repo, hook_input, verify=verify).splitlines()
-    assert out[0].startswith("plumb: changed since you last looked: SR-001")
-    assert out[-1] == "plumb: check skipped (budget): tests"
+    assert out[0].startswith("iaso: changed since you last looked: SR-001")
+    assert out[-1] == "iaso: check skipped (budget): tests"
 
 
 def test_warm_brief_skips_the_test_map(repo: Path, write_record, hook_input,
                                        monkeypatch) -> None:
     """The tests line is cached by the verify fingerprint: a warm session start builds no
-    test map (it used to cost 0.65 s of 1.37 s on plumb itself)."""
-    import plumb.verify.testmap as testmap
+    test map (it used to cost 0.65 s of 1.37 s on iaso itself)."""
+    import iaso.verify.testmap as testmap
 
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     (repo / "tests").mkdir()
@@ -171,13 +171,13 @@ def test_status_snapshot_survives_a_budget_cut_of_the_tests_line(
     """The status line reads this snapshot: when the tests check is cut by the budget the
     snapshot is still written (tests unknown), so the line never keeps an older session's
     state."""
-    import plumb.api
-    from plumb.hosts.claude_code import hookio
+    import iaso.api
+    from iaso.hosts.claude_code import hookio
 
     clock = _Clock()
     monkeypatch.setattr(hookio, "time", clock)
     write_record(repo, "---\nid: SR-001\ntitle: Links pin both ends\nstatement: s\n---\n")
-    real_open = plumb.api.open_core
+    real_open = iaso.api.open_core
 
     class SlowCore:
         def __init__(self, core) -> None:
@@ -190,12 +190,12 @@ def test_status_snapshot_survives_a_budget_cut_of_the_tests_line(
         def __getattr__(self, name):
             return getattr(self._core, name)
 
-    monkeypatch.setattr(plumb.api, "open_core", lambda root: SlowCore(real_open(root)))
-    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
+    monkeypatch.setattr(iaso.api, "open_core", lambda root: SlowCore(real_open(root)))
+    (repo / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".iaso" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     out = _run(repo, hook_input, verify=FakeVerify()).splitlines()
-    assert out[-1] == "plumb: check skipped (budget): tests"
-    data = json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert out[-1] == "iaso: check skipped (budget): tests"
+    data = json.loads((repo / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["requirements_total"] == 1 and data["proposed"] == 1
 
 
@@ -237,7 +237,7 @@ def test_staged_and_modified_files_are_told_in_one_plain_line(repo: Path, hook_i
     lines = _notice(_run(repo, hook_input, verify=FakeVerify()))
     assert len(lines) == 1
     assert "1 file staged" in lines[0] and "1 file modified" in lines[0]
-    assert "git " not in lines[0] and "plumb " not in lines[0].replace("plumb:", "")
+    assert "git " not in lines[0] and "iaso " not in lines[0].replace("iaso:", "")
 
 
 @pytest.mark.parametrize(("start", "word"), [("merge", "merge"), ("cherry-pick", "cherry-pick"),
@@ -253,7 +253,7 @@ def test_an_unfinished_operation_is_named(repo: Path, hook_input, start: str,
         _git(repo, "rebase", "side", check=False)
     lines = _notice(_run(repo, hook_input, verify=FakeVerify()))
     assert len(lines) == 1
-    assert f"An earlier {word} was left unfinished" in lines[0].replace("plumb: ", "")
+    assert f"An earlier {word} was left unfinished" in lines[0].replace("iaso: ", "")
     assert "1 file in conflict" in lines[0]
 
 
@@ -266,7 +266,7 @@ def test_a_resumed_session_is_not_told(repo: Path, hook_input) -> None:
 
 
 def test_no_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None:
-    from plumb.hosts.claude_code import hygiene
+    from iaso.hosts.claude_code import hygiene
 
     def missing(*args, **kwargs):
         raise FileNotFoundError("git")
@@ -275,13 +275,13 @@ def test_no_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None
     monkeypatch.setattr(hygiene.subprocess, "run", missing)
     out = _run(repo, hook_input, verify=FakeVerify())
     assert _notice(out) == [] and "check skipped" not in out
-    assert not (repo / ".plumb" / "session" / "errors.log").exists()
+    assert not (repo / ".iaso" / "session" / "errors.log").exists()
 
 
 def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> None:
     import subprocess
 
-    from plumb.hosts.claude_code import hygiene
+    from iaso.hosts.claude_code import hygiene
 
     def slow(*args, **kwargs):
         raise subprocess.TimeoutExpired("git", 0.1)
@@ -296,7 +296,7 @@ def test_a_slow_git_is_skipped_silently(repo: Path, hook_input, monkeypatch) -> 
 def test_ex4_low_risk_records_give_no_offer_line(repo: Path, write_record, hook_input,
                                                  monkeypatch) -> None:
     """SR-135 EX-4: records the judge rates faithful to the owner's words add no approve line to
-    the brief; plumb triage still lists them."""
+    the brief; iaso triage still lists them."""
     from capture.capture_helpers import log_prompt, record_text, use_coverage_judge
 
     use_coverage_judge(monkeypatch)

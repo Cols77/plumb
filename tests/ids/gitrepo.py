@@ -1,7 +1,7 @@
 """Temporary git repositories, worktrees and clones for the IDS lane's tests.
 
 The phase-0 ``tests/gitrepo.py`` was not on ``main`` when this lane started; these helpers
-are the lane's own (sp6 plan 2) and never touch the plumb repository itself.
+are the lane's own (sp6 plan 2) and never touch the iaso repository itself.
 """
 
 from __future__ import annotations
@@ -26,12 +26,13 @@ def _configure(root: Path) -> None:
 
 
 def make_repo(path: Path) -> Path:
-    """A git repository adopted by plumb, with one commit on ``main``."""
-    from plumb.commands import init_repo
+    """A git repository adopted by iaso, with one commit on ``main``."""
+    from iaso.commands import init_repo
 
     path.mkdir(parents=True, exist_ok=True)
     run_git(path, "init", "-q", "-b", "main")
     _configure(path)
+    (path / ".iaso").mkdir()   # an old repository, as tests/conftest.py's repo (SR-431)
     init_repo(path)
     (path / "README.md").write_text("test repo\n", encoding="utf-8")
     commit_all(path, "initial")
@@ -71,17 +72,17 @@ KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT":
 
 
 def write(root: Path, record_id: str, title: str, **fields: object) -> Path:
-    path = root / ".plumb" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
+    path = (root / ".iaso" if (root / ".iaso").exists() or not (root / ".iaso").exists() else root / ".iaso") / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(record_text(record_id, title, **fields).encode("utf-8"))
     return path
 
 
-def plumb(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    """Run ``python -m plumb`` in a subprocess (UTF-8, no agent marker)."""
+def iaso(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    """Run ``python -m iaso`` in a subprocess (UTF-8, no agent marker)."""
     import sys
 
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     env["PYTHONUTF8"] = "1"
-    return subprocess.run([sys.executable, "-m", "plumb", *args], cwd=root, input=stdin,
+    return subprocess.run([sys.executable, "-m", "iaso", *args], cwd=root, input=stdin,
                           capture_output=True, text=True, encoding="utf-8", env=env)

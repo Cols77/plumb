@@ -12,9 +12,9 @@ import pytest
 from loadbound import assert_within
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
-from plumb import awareness
-from plumb.api import open_core
-from plumb.awareness import publish as pub
+from iaso import awareness
+from iaso.api import open_core
+from iaso.awareness import publish as pub
 
 pytestmark = pytest.mark.sr("SR-258")
 
@@ -29,7 +29,7 @@ def _five(tmp_path: Path) -> Path:
         paths = []
         for i in range(n * 3 + 1, n * 3 + 4):
             requirement(other, f"SR-{i:03d}", f"thing {i}", f"feat-{n} version")
-            paths.append(f".plumb/requirements/SR-{i:03d}.md")
+            paths.append(f".iaso/requirements/SR-{i:03d}.md")
         pub.publish(open_core(other), paths)
     return main
 
@@ -70,5 +70,5 @@ def test_budget_exhausted_skips_quietly(tmp_path: Path) -> None:
             return 0.0
 
     assert awareness.overlaps(open_core(main), ["SR-001"], deadline=Spent()) == ()
-    errors = (main / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8")
-    assert "plumb: awareness skipped (budget)" in errors
+    errors = (main / ".iaso" / "session" / "errors.log").read_text(encoding="utf-8")
+    assert "iaso: awareness skipped (budget)" in errors
