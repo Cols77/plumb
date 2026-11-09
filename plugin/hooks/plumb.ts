@@ -439,6 +439,22 @@ export function refreshStudy(io: Io, link: PlumbLink, slug: string, yes: boolean
   return plumbMod(io, link, 'study', { key: link.key }, ['--study', slug, '--refresh', yes ? 'yes' : 'no'])
 }
 
+/** SR-415: the name Claude Code gives this session (~/.claude/sessions/<pid>.json); '' when none. */
+async function sessionName(io: Io, session: string): Promise<string> {
+  try {
+    const home = (await io.env()).HOME ?? (await io.env()).USERPROFILE
+    if (!home) return ''
+    const dir = join(home, '.claude', 'sessions')
+    for (const f of await io.list(dir)) {
+      const j = await readJson(io, join(dir, f))
+      if (j?.sessionId === session && typeof j.name === 'string' && j.name) return j.name
+    }
+  } catch {
+    // no name: the band says plumb
+  }
+  return ''
+}
+
 /** The band's first line: plumb's status card (status.json) and SP8's progress, if running. */
 export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> {
   const status = await readJson(io, join(link.root, '.plumb', 'session', 'status.json'))
@@ -470,6 +486,7 @@ export async function readStatus(io: Io, link: PlumbLink): Promise<PlumbStatus> 
       : String(progress.step)
   }
   return {
+    name: await sessionName(io, link.session),
     state: String(status?.state ?? ''),
     summary: String(status?.intent_summary ?? ''),
     progress: step,

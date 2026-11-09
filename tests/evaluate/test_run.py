@@ -12,6 +12,17 @@ from plumb.evaluate import run
 from plumb.evaluate.tasks import Task
 
 
+@pytest.fixture(autouse=True)
+def no_scratch_left(tmp_path_factory, monkeypatch):
+    """report-0ab44aff: a run leaves no plumb-eval-* folder in the temp folder."""
+    import tempfile
+
+    temp = tmp_path_factory.mktemp("systemp")
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    yield
+    assert list(temp.glob("plumb-eval-*")) == []
+
+
 class Claude:
     """Records (model, session_id, message); always answers 'ok'."""
 
@@ -47,16 +58,14 @@ def go(tmp_path, claude, owner=None, model="haiku", limits=None):
 
 
 @pytest.mark.sr("SR-344")
-def test_the_run_leaves_a_scratch_repository_and_a_run_folder(tmp_path):
+def test_the_run_leaves_a_run_folder_and_no_scratch_repository(tmp_path):
     claude = Claude()
     result = go(tmp_path, claude)
-    assert (result.scratch / ".plumb").is_dir()
-    assert (result.scratch / ".claude" / "settings.json").is_file()
+    assert not result.scratch.exists() and not result.scratch.parent.exists()
     assert [c[2] for c in claude.calls] == ["one", "two"]
     for name in ("transcript.jsonl", "score.json", "issues.jsonl", "plumb"):
         assert (result.run_dir / name).exists()
     assert json.loads((result.run_dir / "score.json").read_text())["checks_total"] == 0
-    shutil.rmtree(result.scratch.parent, ignore_errors=True)
 
 
 @pytest.mark.sr("SR-344")
@@ -260,6 +269,8 @@ def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
     (root / ".plumb").mkdir(parents=True)
     (root / ".plumb" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", encoding="utf-8")
-    judgment = load_config(go(tmp_path, Claude()).scratch).judgment
+    kept = tmp_path / "kept"
+    shutil.copytree(go(tmp_path, Claude()).run_dir / "plumb", kept / ".plumb")
+    judgment = load_config(kept).judgment
     assert judgment.backend == "jev"
     assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"

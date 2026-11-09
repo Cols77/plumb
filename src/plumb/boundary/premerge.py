@@ -553,7 +553,11 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
     verification = _verification(core, touched, paths, base)
     failing_tests = failing_tests_of(core, verification)
     main = ours == default_branch_of(root)   # DEC-271: tests, questions, proofs hold main only
-    proofs = delivered_proofs(core, messages) if main else []
+    proofs = delivered_proofs(core, messages, base=base, paths=paths) if main else []
+    if main:   # report-683650f8: a flag the judge left standing is asked like a question
+        from plumb.understand.testchange import flag_questions
+
+        questions = [*questions, *flag_questions(core, verification)]
     # a settled conflict holds once: git wrote this commit's tree before its hook ran, so
     # the commit that finishes it ("finish the merge") records the settled version
     held = bool(collisions or unstaged or unreadable or settled
@@ -599,8 +603,13 @@ def open_questions_on(core: Any, required: Sequence[str]) -> list[dict[str, Any]
             key = str(question.get("key") or question.get("question") or "")
             if ids and key not in seen:
                 seen.add(key)
+                # report-683650f8: the question itself travels with the row, so the session
+                # that lands asks it (its own hooks ask only about its own work, INT-119)
                 rows.append({"key": key, "question": question.get("question"), "records": ids,
-                             "titles": [index[i].title for i in ids if i in index]})
+                             "titles": [index[i].title for i in ids if i in index],
+                             "header": question.get("header"),
+                             "options": list(question.get("options") or ()),
+                             "session": path.parent.name})
     return rows
 
 
@@ -638,27 +647,65 @@ def verification_lines(verification: Mapping[str, Any]) -> list[str]:
     return out
 
 
-def delivered_proofs(core: Any, messages: Sequence[tuple[str, str]]) -> list[dict[str, Any]]:
+def delivered_proofs(core: Any, messages: Sequence[tuple[str, str]], *, base: str = "",
+                     paths: Sequence[str] = ()) -> list[dict[str, Any]]:
     """SR-260 (d), DEC-256, EX-28: the requirements the incoming commits' SR trailers name
     (read through every renumber) whose proof is not shown working or not confirmed by the
-    owner (``proof.unconfirmed_proofs``). Asked only of a merge into the default branch."""
+    owner (``proof.unconfirmed_proofs``). Asked only of a merge into the default branch.
+    With ``base`` and ``paths`` (what the merge changes against ``base``), only a requirement
+    whose behaviour the merge changes owes a proof: its words (pins aside) or its linked
+    code or tests differ at ``base``, or a plain commit naming it changes code or tests
+    (owner 2026-11-08, report-683650f8: a link refresh that names it delivers nothing, and
+    neither does a merge commit's list)."""
     from plumb.capture.proof import unconfirmed_proofs
     from plumb.claims import claimed_ids, trailer_aliases
+    from plumb.hashing import clean_rel_path, target_path
 
     if not messages:
         return []
     aliases = trailer_aliases(core)
-    ids = [i for sha, message in messages for i in claimed_ids(aliases, sha, message)]
+    if not base:
+        return unconfirmed_proofs(core, [i for sha, message in messages
+                                         for i in claimed_ids(aliases, sha, message)])
+    index = core.index()
+    changed = {clean_rel_path(p) or p for p in paths}
+    reworded = set(_reworded(core, base, paths, index))
+
+    def behaviour_changed(rid: str) -> bool:
+        record = index.get(rid)
+        if record is None or rid in reworded:
+            return record is not None
+        return any((clean_rel_path(target_path(link.target) or "") or "") in changed
+                   for link in record.links if link.kind in ("implemented_by", "verified_by"))
+
+    ids: list[str] = []
+    for sha, message in messages:
+        named = claimed_ids(aliases, sha, message)
+        if named:
+            code = _changes_code(Path(core.root), sha)
+            ids += [i for i in named if code or behaviour_changed(i)]
     return unconfirmed_proofs(core, ids)
 
 
-def merged_messages(root: Path, base: str) -> list[tuple[str, str]]:
+def _changes_code(root: Path, sha: str) -> bool:
+    """A plain commit (one parent) that changes a path outside ``.plumb/``: it delivers what
+    its trailer names, declared link or not. A merge commit's trailer is its branch's list."""
+    shown = _git(root, "show", "--format=%P", "--name-only", "--no-renames", sha) or ""
+    parents, _, names = shown.partition("\n")
+    return len(parents.split()) <= 1 and any(
+        line and not line.startswith(".plumb/") for line in names.splitlines())
+
+
+def merged_messages(root: Path, base: str, *, own_too: bool = False) -> list[tuple[str, str]]:
     """``(commit, message)`` of the commits a merge brings in: those of ``base..HEAD`` not
     on HEAD's first-parent line (what earlier merges brought), and those of a merge in
     progress (``incoming_heads``). A commit made on the branch itself is no delivery
-    (DEC-256: a proof holds a merge into the default branch, not a direct commit)."""
+    (DEC-256: a proof holds a merge into the default branch, not a direct commit), unless
+    ``own_too``: a branch previewing its landing into the default branch delivers them all
+    (report-683650f8)."""
     root = Path(root)
-    own = set((_git(root, "rev-list", "--first-parent", f"{base}..HEAD") or "").split())
+    own = set() if own_too else set(
+        (_git(root, "rev-list", "--first-parent", f"{base}..HEAD") or "").split())
     ranges = [f"{base}..HEAD", *(f"HEAD..{sha}" for sha, _ in incoming_heads(root))]
     out: list[tuple[str, str]] = []
     for rng in ranges:
@@ -853,8 +900,9 @@ def hold_lines(report: Any, into: str) -> list[str]:
         out.extend(_capped([owner_text.PREMERGE_FAILING.format(**r) for r in failing]))
     out.extend(getattr(report, "verify_lines", ()))
     proofs = getattr(report, "proofs", ())
-    if proofs:
-        out.append(owner_text.PREMERGE_PROOFS_HEADER.format(into=into))
+    if proofs:   # not held: a branch's preview of what its landing will hold (report-683650f8)
+        out.append((owner_text.PREMERGE_PROOFS_HEADER if held else
+                    owner_text.PREMERGE_PROOFS_PREVIEW_HEADER).format(into=into))
         out.extend(_capped([(owner_text.PREMERGE_PROOF_NOT_SHOWN if r["why"] ==
                              "not shown working" else owner_text.PREMERGE_PROOF_NOT_CONFIRMED)
                             .format(title=r["title"]) for r in proofs]))

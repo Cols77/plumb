@@ -628,8 +628,12 @@ class Verify:
         refs = list(dict.fromkeys(t for tests in per_record.values() for t in tests))
         evidence = self.evidence(refs) if refs else {}
         masked: dict[str, set[str]] = {}  # test file -> SRs whose changed test hid a regression
+        nodes: dict[str, list[dict[str, Any]]] = {}   # test file -> its flags, with the judge
         for item in self.masked_regressions() if refs else ():
             masked.setdefault(item["node"].split("::", 1)[0], set()).update(item["requirements"])
+            nodes.setdefault(item["node"].split("::", 1)[0], []).append(
+                {"node": item["node"], "requirements": sorted(item["requirements"]),
+                 "judge": item.get("judge")})
         out: dict[str, list[dict[str, Any]]] = {}
         for record_id, tests in per_record.items():
             items = []
@@ -644,7 +648,10 @@ class Verify:
                               "regression": ev.regression or hidden, "masked": hidden,
                               "stale": ev.state in ("stale", "none"), "failing": failing,
                               "unverified": not failing and not passing,
-                              "last_run": ev.last_run})
+                              "last_run": ev.last_run,
+                              **({"hidden_nodes": [n for n in nodes[ref.split("::", 1)[0]]
+                                                   if record_id in n["requirements"]]}
+                                 if hidden else {})})
             if items:
                 out[record_id] = items
         return out
@@ -720,6 +727,10 @@ class Verify:
         if not changed:
             return []
         wanted = None if files is None else {f.split("::", 1)[0] for f in files}
+        from plumb.understand import testchange
+        from plumb.understand.judge import answers_by_key as judge_answers
+
+        answers: Mapping[str, str] | None = None   # read once, only when a flag stands
         tmap = self.test_map()
         out = []
         for node_id, entry in sorted(self.index().get("nodes", {}).items()):
@@ -740,6 +751,10 @@ class Verify:
             item["judge"] = self._judge_test_change(item, regressed.get("head"), deleted)
             if item["judge"].get("real"):
                 continue  # a judge read the change: real and needed, not made just to pass
+            if answers is None:
+                answers = judge_answers(self.core)
+            if testchange.owner_needed(answers, node_id, list(item["requirements"])):
+                continue  # report-683650f8: the owner answered the flag's question: needed
             out.append(item)
         return out
 
