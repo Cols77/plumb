@@ -103,6 +103,27 @@ def _hash_map(texts: list[tuple[Path, str]]) -> dict[str, str]:
     return out
 
 
+def _settle(texts: list[tuple[Path, str]], hashes: dict[str, str]) -> dict[str, str]:
+    """A record's hash covers the pins it holds, and the pins follow the hashes: repeat until the
+    hash each record ends with (pins followed) is the one the map says."""
+    from iaso.model import parse_record
+
+    for _ in range(8):
+        nxt = dict(hashes)
+        for p, text in texts:
+            if p.suffix != ".md" or p.parent.name == "studies":
+                continue
+            try:
+                nxt[parse_record(text, p.name).hash] = parse_record(
+                    _follow(rewrite_text(text), hashes), p.name).hash
+            except Exception:   # not a record file
+                pass
+        if nxt == hashes:
+            break
+        hashes = nxt
+    return hashes
+
+
 def _follow(text: str, hashes: dict[str, str]) -> str:
     return re.sub(r"sha256:[0-9a-f]{64}", lambda m: hashes.get(m.group(0), m.group(0)), text)
 
@@ -135,7 +156,7 @@ def convert(root: Path) -> list[str]:
     if moved.returncode:   # not tracked (or not a repository): a plain rename
         old.rename(new)
     texts = list(_texts(new))
-    hashes = _hash_map(texts)
+    hashes = _settle(texts, _hash_map(texts))
     for p, text in texts:
         if p.suffix == ".json" and "log" in p.parts:
             try:
