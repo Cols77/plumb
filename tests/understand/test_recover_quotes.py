@@ -13,11 +13,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.contracts import DispatchError
-from plumb.understand import recover, trial
-from plumb.understand.recover import Cascade, ModelExaminer, ModelPicker
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.contracts import DispatchError
+from iaso.understand import recover, trial
+from iaso.understand.recover import Cascade, ModelExaminer, ModelPicker
 from understand.test_judge_job import approve
 
 pytestmark = pytest.mark.sr("SR-249")
@@ -64,7 +64,7 @@ OTHER = "Fix the failing test in the merge driver."
 def project(repo: Path, write_record) -> Path:
     for text in (INT9, INT15, INT20, SR1):
         write_record(repo, text)
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     open_core(repo).add_link("SR-001", "derives_from", Target(record="INT-009"))
     return repo
@@ -93,7 +93,7 @@ SYNTHETIC = [
     _line("Another Claude session sent a message:\n<cross-session-message from=\"uds:x\">make "
           "it dark</cross-session-message>", _AT, origin={"kind": "peer", "from": "uds:x"}),
     _line("The owner pressed Confirm: make it dark", _AT,
-          origin={"kind": "plugin", "name": "plumb"}),
+          origin={"kind": "plugin", "name": "iaso"}),
     _line("a subagent says make it dark", _AT, isSidechain=True),
 ]
 
@@ -107,7 +107,7 @@ def transcripts(tmp_path: Path, project: Path) -> Path:
         _line([{"type": "text", "text": OCT4}], "2026-10-04T09:12:00.000Z"),
         _line([{"type": "tool_result", "tool_use_id": "t", "content": "make it dark"}],
               "2026-10-04T09:13:00.000Z"),
-        _line("<command-name>/plumb</command-name>", "2026-10-04T09:14:00.000Z"),
+        _line("<command-name>/iaso</command-name>", "2026-10-04T09:14:00.000Z"),
         _line("make it dark", "2026-10-04T09:15:00.000Z", isMeta=True),
         json.dumps({"type": "assistant", "timestamp": "2026-10-04T09:16:00.000Z",
                     "message": {"content": [{"type": "text", "text": "make it dark"}]}}),
@@ -132,7 +132,7 @@ class Jev:
         self.favour, self.asked = favour, 0
 
     def _ask(self, questions, prefix):
-        from plumb.judgment import JudgmentUnavailable
+        from iaso.judgment import JudgmentUnavailable
 
         self.asked += 1
         if self.favour is None:
@@ -182,7 +182,7 @@ def _card(core, record_id: str) -> tuple[dict, list[str]]:
 
 
 def _unverified(core, record_id: str) -> bool:
-    from plumb.understand.claim import UNVERIFIED, _Prompts, premise_problem
+    from iaso.understand.claim import UNVERIFIED, _Prompts, premise_problem
 
     problem = premise_problem(_Prompts(core), core.index(), core.index()[record_id])
     return bool(problem and problem.startswith(UNVERIFIED))
@@ -223,7 +223,7 @@ def test_ex1_the_span_and_date_are_shown_and_the_record_stays_proposed(
     # a transcript match confirms nothing and is not verified words in triage
     assert core.status()["INT-009"].confirmation != "confirmed"
     assert _unverified(core, "INT-009")
-    assert not list((project / ".plumb" / "log").rglob("*recover*"))
+    assert not list((project / ".iaso" / "log").rglob("*recover*"))
     # recovering again confirms nothing either
     recover.recover(core, ["INT-009"], transcripts=transcripts,
                     cascade=_cascade(core, Jev("cards should be short"), sonnet))
@@ -414,8 +414,8 @@ def test_a_short_message_shown_whole_is_long_enough(project: Path, transcripts: 
 def _real_jev(core, monkeypatch, urlopen):
     import urllib.request
 
-    from plumb.judgment.jev import JevBackend, JevClient
-    from plumb.judgment.tiers import Thresholds
+    from iaso.judgment.jev import JevBackend, JevClient
+    from iaso.judgment.tiers import Thresholds
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     return JevBackend(core, JevClient(base_url="https://jev.invalid", key="k", timeout_s=1),
@@ -428,7 +428,7 @@ def test_jev_ranker_speaks_the_real_jev_request_and_answer_shapes(
     (a canned HTTP answer, no network) and reads the real ``JudgmentRecord`` it returns."""
     import io
 
-    from plumb.judgment.model import JudgmentRecord
+    from iaso.judgment.model import JudgmentRecord
 
     sent: list[dict] = []
     returned: list[JudgmentRecord] = []

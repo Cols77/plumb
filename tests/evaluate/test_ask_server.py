@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from plumb.evaluate import ask_server
-from plumb.hosts.claude_code import ask_gate
+from iaso.evaluate import ask_server
+from iaso.hosts.claude_code import ask_gate
 
 QUESTIONS = [{"question": "Cache the pages or not?", "header": "Cache",
               "options": [{"label": "yes", "description": "faster"}, {"label": "no"}],

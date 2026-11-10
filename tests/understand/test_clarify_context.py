@@ -12,14 +12,14 @@ from typing import Any
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb.api import open_core
-from plumb.understand import clarify, evalrun, files, gate, worker
+from iaso.api import open_core
+from iaso.understand import clarify, evalrun, files, gate, worker
 
 pytestmark = pytest.mark.sr("SR-223")
 
 SESSION = "s1"
 REQUEST = "Resolve all of the findings using a workflow."
-FINDINGS = "## Findings\n1. The exit code is lost.\n2. `/plumb init` does nothing."
+FINDINGS = "## Findings\n1. The exit code is lost.\n2. `/iaso init` does nothing."
 
 
 def _owner(text: str, **extra: Any) -> dict[str, Any]:
@@ -170,8 +170,8 @@ def test_ex1_the_prompt_hook_puts_the_conversation_in_the_job_inputs(
         repo: Path, tmp_path: Path, engine_standins: Any) -> None:
     core = open_core(repo)
     transcript = _review_session(tmp_path, with_request=False)
-    digest = log_prompt(repo, "/plumb clarify " + REQUEST, session=SESSION)
-    clarify.on_prompt(_ctx(transcript), core, {"digest": digest, "text": "/plumb clarify " + REQUEST})
+    digest = log_prompt(repo, "/iaso clarify " + REQUEST, session=SESSION)
+    clarify.on_prompt(_ctx(transcript), core, {"digest": digest, "text": "/iaso clarify " + REQUEST})
     job = _job(repo)
     assert job.inputs["context"]["last_reply"].endswith(FINDINGS)
     assert job.inputs["repository"]["root"] == str(repo)
@@ -190,8 +190,8 @@ def test_ex1_the_prompt_hook_puts_the_conversation_in_the_job_inputs(
 def test_ex4_without_a_transcript_the_check_runs_on_the_message_alone(
         repo: Path, engine_standins: Any) -> None:
     core = open_core(repo)
-    digest = log_prompt(repo, "/plumb clarify " + REQUEST, session=SESSION)
-    clarify.on_prompt(_ctx(None), core, {"digest": digest, "text": "/plumb clarify " + REQUEST})
+    digest = log_prompt(repo, "/iaso clarify " + REQUEST, session=SESSION)
+    clarify.on_prompt(_ctx(None), core, {"digest": digest, "text": "/iaso clarify " + REQUEST})
     job = _job(repo)
     assert "context" not in job.inputs
     assert set(job.inputs) == {"message", "touched", "answered", "repository"}
@@ -250,7 +250,7 @@ class _SaysNotARepo:
 def test_a_case_fails_when_the_answer_says_what_it_must_never_say() -> None:
     """SR-128 EX-3: the frozen sr128 cases fail a reader that claims the folder is not a git
     repository, even when its intent and gap are right."""
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     cases = [c for c in evalrun.load_cases("clarify") if c.get("never_says")]
     assert cases
@@ -349,7 +349,7 @@ def test_a_reader_that_does_not_name_the_reference_fails_the_case() -> None:
     vague.line = "Do what was asked."
     assert not any(r["passed"] for r in evalrun.run_cases(vague, cases, "clarify"))
     named = _SaysNotARepo()
-    named.line = "Fix why plumb's panel (the mod) stays off: the plugin-review findings."
+    named.line = "Fix why iaso's panel (the mod) stays off: the plugin-review findings."
     assert all(r["passed"] for r in evalrun.run_cases(named, cases, "clarify"))
 
 

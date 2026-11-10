@@ -1,7 +1,7 @@
 """SR-300 EX-2, EX-3 and SR-220: a decision pinned to a record that was reworded since is a
 debug case the repin step handles: no tests to run, the record as pinned and as it is now go to
 the meaning cascade; a kept meaning repins, a changed meaning is one owner question through the
-question tool (never a card). ``plumb debug`` runs the cases once and says what each did.
+question tool (never a card). ``iaso debug`` runs the cases once and says what each did.
 Judges are stubbed."""
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 from core.stale_asked import asked
-from plumb import stale
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.contracts import Target
-from plumb.understand import judge, repin
-from plumb.understand.repin import Meaning
+from iaso import stale
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.contracts import Target
+from iaso.understand import judge, repin
+from iaso.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-300")
 
@@ -79,7 +79,7 @@ def _no_tests(paths):
 
 
 def _resolve(repo: Path, judge_: Judge, **kw):
-    from plumb.links import repin_after_tests
+    from iaso.links import repin_after_tests
 
     return repin_after_tests(open_core(repo), LINK, runner=_no_tests, judge=judge_,
                              jev=None, diagnoser=None, session="s1", **kw)
@@ -147,7 +147,7 @@ def test_pinned_version_not_in_git_is_refused_with_nothing_to_compare(
 def test_a_reworded_decision_is_judged_with_its_old_wording(project: Path, write_record) -> None:
     """The decision itself was reworded since the pin: the judge reads its earlier wording
     next to the record it decides, and a kept meaning repins."""
-    path = project / ".plumb" / "decisions" / "DEC-001.md"   # the links stay
+    path = project / ".iaso" / "decisions" / "DEC-001.md"   # the links stay
     path.write_text(path.read_text("utf-8").replace("exact sum", "sum as is"), "utf-8")
     sonnet = Judge(True)
     result = _resolve(project, sonnet)
@@ -166,10 +166,10 @@ def test_the_turn_end_heal_covers_record_links(project: Path, write_record, monk
     assert said == [] and _state(project) == "current"
 
 
-def test_plumb_debug_runs_the_cases_and_counts_them(project: Path, write_record, monkeypatch,
+def test_iaso_debug_runs_the_cases_and_counts_them(project: Path, write_record, monkeypatch,
                                                     capsys) -> None:
     """SR-220: the debug workflow reruns the step once and says what each case did."""
-    from plumb import debug
+    from iaso import debug
 
     _reword(project, write_record, " of its two numbers")
     monkeypatch.setattr(repin, "open_judge", lambda core: Judge(True))
@@ -235,7 +235,7 @@ def test_ex2_a_rerun_after_the_owner_answered_asks_nothing_again(
 
 def test_a_rerun_replaces_the_question_and_a_repin_withdraws_it(
         project: Path, write_record) -> None:
-    from plumb import links
+    from iaso import links
 
     _reword(project, write_record, ", rounded to two decimals")
     _resolve(project, Judge(False, "the sum is now rounded"))

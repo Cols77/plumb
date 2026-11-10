@@ -19,10 +19,10 @@ from understand.test_judge_job import (
     requirement_text,
 )
 
-from plumb.api import open_core
-from plumb.contracts import Judgment
-from plumb.hosts.claude_code import question_answer
-from plumb.understand import (cmd_clarify, files, jobs, judge, premise, queue, read, verdict,
+from iaso.api import open_core
+from iaso.contracts import Judgment
+from iaso.hosts.claude_code import question_answer
+from iaso.understand import (cmd_clarify, files, jobs, judge, premise, queue, read, verdict,
                                worker)
 
 MESSAGE = "Pages should load faster."
@@ -359,7 +359,7 @@ def test_wait_reads_a_typed_answer_before_asking_again(
                               "option": "Every page", "evidence": "Every page",
                               "confidence": 0.99}]},
         "judge": {"verdicts": []}})
-    monkeypatch.setattr("plumb.understand.dispatch.configured", lambda *a, **k: fake)
+    monkeypatch.setattr("iaso.understand.dispatch.configured", lambda *a, **k: fake)
     worker.run_once(open_core(world), SESSION, job.id)       # the background worker's turn
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=1, sleep=lambda _s: None)
     assert "read" in [j.kind for j in fake.jobs]

@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import post_edit
+from iaso.hosts.claude_code import post_edit
 
 pytestmark = pytest.mark.sr("SR-276")
 
 
 def _touched(repo: Path, session: str = "test-session") -> list[str]:
-    path = repo / ".plumb" / "session" / session / "touched.txt"
+    path = repo / ".iaso" / "session" / session / "touched.txt"
     return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 
 
@@ -52,9 +52,9 @@ def test_fast_path_imports_no_yaml(repo: Path, hook_input) -> None:
     payload = hook_input("PostToolUse", tool_name="Edit",
                          tool_input={"file_path": str(repo / "a.py")})
     code = ("import sys\n"
-            "from plumb.cli import main\n"
+            "from iaso.cli import main\n"
             f"rc = main(['hook', 'post-edit', '--root', {str(repo)!r}])\n"
-            "heavy = sorted(m for m in ('yaml', 'argparse', 'plumb.api', 'plumb.config',\n"
+            "heavy = sorted(m for m in ('yaml', 'argparse', 'iaso.api', 'iaso.config',\n"
             "               'subprocess') if m in sys.modules)\n"
             "sys.stderr.write('HEAVY=' + ','.join(heavy) + ';RC=' + str(rc))\n")
     result = subprocess.run([sys.executable, "-c", code], input=payload, capture_output=True,

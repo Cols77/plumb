@@ -1,15 +1,15 @@
-# plumb concept spec
+# iaso concept spec
 
 Confirmation today (INT-036, INT-037, INT-041): a card is a read-back of a request, a choice
 (one question at a time, the recommended option first, optionally with a block diagram) or a
 trial. A record is confirmed by the owner's answer on a card, by the owner's own typed command
-(`/plumb approve ...`), or by the judge when the owner has turned auto-approve on. Context
-alone never confirms. There is no settle on/off, triage offer, `plumb relay`, `/plumb confirm`
+(`/iaso approve ...`), or by the judge when the owner has turned auto-approve on. Context
+alone never confirms. There is no settle on/off, triage offer, `iaso relay`, `/iaso confirm`
 or agent-run conflict relay; passages below that name them are history.
 
 Status: reference document. Written 2026-10-05 from the owner intent brief of the same day.
 The owner does not review this document; independent verifier agents check it, and every
-plumb artifact, against the owner's words quoted below. When this document and the owner's
+iaso artifact, against the owner's words quoted below. When this document and the owner's
 quoted words disagree, the quotes win and this document is corrected. The brief's
 owner-proxy rulings R1 to R7 are binding and are applied here: R1 in sections 4.2, 5 and 6.6,
 R2 in 4.6 and 4.7, R3 in 6.6, R4 in 6.4 and 8, R5 in 7.2, R6 in section 1 and 11, and R1, R2,
@@ -23,7 +23,7 @@ the owner's direct answers to five checkpoint questions of 2026-10-06 (D18), is 
 4.6 (the triage offer, auto-approval eligibility, the "self-recorded message" label), 8
 (calibration and the offer line) and 9 (hosts without a prompt hook).
 
-A plumb line hangs straight under its own weight and shows whether a wall is true. plumb does
+A iaso line hangs straight under its own weight and shows whether a wall is true. iaso does
 the same for a codebase. It shows, cheaply and on every turn, whether the system being built
 still matches what its owner intends.
 
@@ -50,30 +50,30 @@ On planning:
 > "Don't you think that we'd need planning features still? how do you ensure that people defining
 > their system will have their intent succesfully translated?"
 
-The owner's decisions that shape plumb. The numbers follow the owner intent brief (decisions
+The owner's decisions that shape iaso. The numbers follow the owner intent brief (decisions
 1 to 12); D13 to D17 are the owner's rulings R9, R8, R10, R11 and R12 of 2026-10-06, and
 D18 is the owner's checkpoint answers R13 of the same day:
 
 | # | Decision | Owner's words |
 |---|---|---|
 | D1 | Standalone tool for any repository, designed so pi-agent-factory can migrate onto it. | "A / B" |
-| D2 | Incremental intent capture by default; large, risky or cross-cutting work escalates to an up-front spec the owner approves; same artifacts in both modes; plumb suggests when to escalate. | "C" |
+| D2 | Incremental intent capture by default; large, risky or cross-cutting work escalates to an up-front spec the owner approves; same artifacts in both modes; iaso suggests when to escalate. | "C" |
 | D3 | Host-neutral core (CLI and library) with thin adapters, Claude Code first. Reuse pi-agent-factory code by extraction, without its per-turn admission and coordination weight. | "B. I guess the CLI / lib can be re-used from pi-agent-factory?" |
 | D4 | A new, simpler record model with an importer, keeping familiar IDs and the KEEP list (section 4). | "B. can be the way to go but be careful about loosing some important features, for example the hash is important for staleness detection." / "Keep list looks fine" |
 | D5 | Mostly in the background: status line, short end-of-turn summary, questions only on a real intent change, an unconfirmed decision that matters, or a regression (section 6.6). | "A" |
-| D6 | First scope is core, grounding loop and covering-test verification, dogfooded on plumb itself. | "Would be nice to dogfood the version to itself as soon as possible and build with it." |
+| D6 | First scope is core, grounding loop and covering-test verification, dogfooded on iaso itself. | "Would be nice to dogfood the version to itself as soon as possible and build with it." |
 | D7 | Reuse existing artifacts: SR, FEAT and NC formats and IDs stay compatible. | "think of re-using the existing artifacts no? SRs FEATs..? It's up to you." |
-| D8 | JEV is an optional judgment backend with an LLM cascade; plumb works without it. | "I think it might be usefull to integrate it in this new version too?" |
+| D8 | JEV is an optional judgment backend with an LLM cascade; iaso works without it. | "I think it might be usefull to integrate it in this new version too?" |
 | D9 | pi-agent-factory goes into maintenance mode after the current integration batch lands; a fork plan is required. | "consider stopping developments on pi-agent-factory if it takes too much RAM" |
 | D10 | Spawn a workflow that captures the intent in this concept spec as the future reference, then plans the dogfooding work and the pi-agent-factory fork. | "Consider spawning a workflow ... to capture this intent in a concept spec that we will then be able to refer to in the future, and then also plan for the work needed for dogfooding and the kind of pi-agent-factory fork that is about to happen." |
 | D11 | Owner does not review; agents verify: the owner reviews neither this spec nor any plan, and independent verifier agents check every artifact against the owner's words. Implementation available by tomorrow morning (9 hours): sub-project 1 has a time-boxed slice that must be dogfoodable by then (section 11). | "I wont review the concept spec or any plan. use agents that verify that my intent based on that conversation is respected. I want to have the implementation available by tomorrow morning (in 9 hours)." |
-| D12 | The repository and CLI are named plumb (a plumb line checks true alignment). | "coherence is a bit confusing because it's a usefull word to use." |
-| D13 | Presentation and context economy (ruling R9). Hooks inject a compact, deduplicated delta: one line per record (ID, title, state), only when it is newly relevant in the session or changed, within a per-turn token budget, nothing when nothing is new; details by `plumb show`; a session brief of a few lines and a pointer. The owner sees a one-line status card by default and the full intent card only when it matters, configurable `full`, `compact` or `off`. Owner commands take plain language and answer in the owner's terms (`/plumb explain <anything>` replaces `plumb why <file\|ID>`). `plumb view` writes a generated Obsidian vault of the records for deep review; editing it never approves. | "isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens?" / "a proper way to present the relevant information to the user, but only when it is important. Otherwise it should only be small card ... collapsible or configured to be disabled." / "the user don't necessarily know the code ... All the commands should be designed to handle this properly" / "use obsidian as the frontend perhaps?" |
-| D14 | JEV-assisted confirmation (ruling R8). A: triage, always available: the judgment backend rates each proposed record's faithfulness to the owner's words and groups the low-risk ones, which the owner confirms in one line with explicit words; it never approves by itself. B: a narrow auto-approval, opt-in and off by default, only for records derived directly from the owner's own words, only with JEV and a passing calibration (D17), recorded `by: auto-jev`, labelled everywhere, revocable and listed at the merge boundary; never for a decision that matters, an escalated spec set or an edit of an owner-confirmed record. Commands `plumb triage`, `plumb config auto-approve on\|off`, `plumb config show`, `plumb jev status`, `plumb jev setup` (sections 4.6 and 8). | "Ok for A+B" / "there should be a command for that" |
-| D15 | Parallel work by awareness instead of locks: git is the coordinator and plumb holds no shared mutable runtime state; collision-free IDs, logs that never conflict, a frontmatter-aware merge driver, cross-worktree awareness, and `plumb check --merge` on the merge result (ruling R10; sub-project 6, section 11). | "yes" |
-| D16 | Brainstorming-grade intent clarification: a `plumb-clarify` skill, written for plumb, that scales its depth to the request (trivial, incremental, escalated), asks only the questions whose answer changes what gets built, one per message, multiple choice with a recommendation, each recorded as a `DEC` that matters (ruling R11; sections 5.2 and 9). | "during the intent clarification, claude code should use some kind of brainstorming skill to improve intent capture capability" |
-| D17 | Port the missing JEV pieces from pi-agent-factory: calibration on the owner's own confirmed and revoked records, a prerequisite for D14 B; edge alignment (`plumb align`); ownership proposals for untraced changes; a hidden-dependency scan as drift hints. All work in a degraded form with the heuristic, all are logged and advisory (ruling R12; section 8). | "Ok adopt the missing pieces you're mentionning" |
-| D18 | Checkpoint answers (ruling R13, given directly by the owner). Q1 calibration (DEC-018): mixed evidence, per record kind at least 20 of the owner's past decisions and at least 5 "no" examples, up to half of them generated variations, none wrongly accepted; the real/generated split shown in `plumb jev status` and the calibration entry. Q2 grouped ok (DEC-017): the offer line names up to about 5 records by title, then "+N more (see plumb triage)"; the owner's "ok" approves exactly the pinned list (hashes), which `plumb triage` shows in full. Q3 auto-approval: a requirement qualifies only when JEV judges that the owner's logged words support its wording and every one of its examples. Q4 hosts without a prompt hook: a chat "ok" may confirm, labelled "self-recorded message" in `plumb show`, the merge-boundary glance and the host status. Q5 scope: everything in R8, R11 and R12 is a must (sections 4.6, 8 and 9). | Q1 "MIXED EVIDENCE" / Q2 "TOP 5 + MORE" / Q3 "WORDING + EXAMPLES" / Q4 "YES, LABELLED" / Q5 "EVERYTHING" |
+| D12 | The repository and CLI are named iaso (a iaso line checks true alignment). | "coherence is a bit confusing because it's a usefull word to use." |
+| D13 | Presentation and context economy (ruling R9). Hooks inject a compact, deduplicated delta: one line per record (ID, title, state), only when it is newly relevant in the session or changed, within a per-turn token budget, nothing when nothing is new; details by `iaso show`; a session brief of a few lines and a pointer. The owner sees a one-line status card by default and the full intent card only when it matters, configurable `full`, `compact` or `off`. Owner commands take plain language and answer in the owner's terms (`/iaso explain <anything>` replaces `iaso why <file\|ID>`). `iaso view` writes a generated Obsidian vault of the records for deep review; editing it never approves. | "isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens?" / "a proper way to present the relevant information to the user, but only when it is important. Otherwise it should only be small card ... collapsible or configured to be disabled." / "the user don't necessarily know the code ... All the commands should be designed to handle this properly" / "use obsidian as the frontend perhaps?" |
+| D14 | JEV-assisted confirmation (ruling R8). A: triage, always available: the judgment backend rates each proposed record's faithfulness to the owner's words and groups the low-risk ones, which the owner confirms in one line with explicit words; it never approves by itself. B: a narrow auto-approval, opt-in and off by default, only for records derived directly from the owner's own words, only with JEV and a passing calibration (D17), recorded `by: auto-jev`, labelled everywhere, revocable and listed at the merge boundary; never for a decision that matters, an escalated spec set or an edit of an owner-confirmed record. Commands `iaso triage`, `iaso config auto-approve on\|off`, `iaso config show`, `iaso jev status`, `iaso jev setup` (sections 4.6 and 8). | "Ok for A+B" / "there should be a command for that" |
+| D15 | Parallel work by awareness instead of locks: git is the coordinator and iaso holds no shared mutable runtime state; collision-free IDs, logs that never conflict, a frontmatter-aware merge driver, cross-worktree awareness, and `iaso check --merge` on the merge result (ruling R10; sub-project 6, section 11). | "yes" |
+| D16 | Brainstorming-grade intent clarification: a `iaso-clarify` skill, written for iaso, that scales its depth to the request (trivial, incremental, escalated), asks only the questions whose answer changes what gets built, one per message, multiple choice with a recommendation, each recorded as a `DEC` that matters (ruling R11; sections 5.2 and 9). | "during the intent clarification, claude code should use some kind of brainstorming skill to improve intent capture capability" |
+| D17 | Port the missing JEV pieces from pi-agent-factory: calibration on the owner's own confirmed and revoked records, a prerequisite for D14 B; edge alignment (`iaso align`); ownership proposals for untraced changes; a hidden-dependency scan as drift hints. All work in a degraded form with the heuristic, all are logged and advisory (ruling R12; section 8). | "Ok adopt the missing pieces you're mentionning" |
+| D18 | Checkpoint answers (ruling R13, given directly by the owner). Q1 calibration (DEC-018): mixed evidence, per record kind at least 20 of the owner's past decisions and at least 5 "no" examples, up to half of them generated variations, none wrongly accepted; the real/generated split shown in `iaso jev status` and the calibration entry. Q2 grouped ok (DEC-017): the offer line names up to about 5 records by title, then "+N more (see iaso triage)"; the owner's "ok" approves exactly the pinned list (hashes), which `iaso triage` shows in full. Q3 auto-approval: a requirement qualifies only when JEV judges that the owner's logged words support its wording and every one of its examples. Q4 hosts without a prompt hook: a chat "ok" may confirm, labelled "self-recorded message" in `iaso show`, the merge-boundary glance and the host status. Q5 scope: everything in R8, R11 and R12 is a must (sections 4.6, 8 and 9). | Q1 "MIXED EVIDENCE" / Q2 "TOP 5 + MORE" / Q3 "WORDING + EXAMPLES" / Q4 "YES, LABELLED" / Q5 "EVERYTHING" |
 
 ## 2. Problem
 
@@ -84,7 +84,7 @@ frameworks, including pi-agent-factory's governed execution, buy alignment with 
 pipelines: state machines, consent phrases, review swarms, admission control. They cost
 minutes per step and hide their state.
 
-plumb takes a third path. The owner's intent lives in small plain-text records in the
+iaso takes a third path. The owner's intent lives in small plain-text records in the
 repository. Those records are linked to the tests and code that realize them, with content
 hashes on every record and every link. A few cheap hooks keep the agent looking at those
 records on every turn and report drift the moment it appears. The owner is asked something
@@ -92,16 +92,16 @@ only when the answer really changes what gets built.
 
 ## 3. Principles
 
-1. **Grounding, not orchestration.** plumb never drives the agent through phases. The agent
-   works as it normally does; plumb supplies the relevant records as context and reports
+1. **Grounding, not orchestration.** iaso never drives the agent through phases. The agent
+   works as it normally does; iaso supplies the relevant records as context and reports
    drift. There is no run state machine.
 2. **Context over procedure.** Telling an agent *which* requirements and *which* tests apply
    works better than telling it *how* to work. The TDAD study found that a grep-able test map
    with a short skill cut regressions by about 70%, while procedural TDD instructions that did
-   not name the tests made regressions worse. plumb's per-turn output names records and tests;
+   not name the tests made regressions worse. iaso's per-turn output names records and tests;
    it never carries long procedures.
 3. **Cheap checks every turn, heavy guarantees only at merge boundaries.** Per-turn hooks are
-   deterministic, read files plumb already knows, and finish well under 2 seconds (target:
+   deterministic, read files iaso already knows, and finish well under 2 seconds (target:
    p95 under 500 ms). The full test suite, claims audit and log-integrity audit run only when
    work merges. No per-turn path ever selects or requests the full suite: the tests the agent
    is asked to run in a turn are a targeted set, capped by a time budget of seconds
@@ -112,7 +112,7 @@ only when the answer really changes what gets built.
    time without losing information. Nothing hides in a database or a service.
 5. **Trust from evidence.** Claims of alignment rest on content hashes, approvals pinned to
    exact content, test evidence pinned to code and environment identity, and hash-chained
-   append-only logs. When identity is unknown, plumb assumes nothing: evidence is not reused
+   append-only logs. When identity is unknown, iaso assumes nothing: evidence is not reused
    and the state is reported as unknown. The trust model is stated honestly: the record is
    tamper-evident, not tamper-proof against a malicious agent (section 4.6).
 6. **Few, meaningful interruptions.** Three triggers can interrupt the owner (section 6.6).
@@ -124,10 +124,10 @@ only when the answer really changes what gets built.
 
 ### 4.1 Layout
 
-Everything plumb owns lives under `.plumb/` at the repository root:
+Everything iaso owns lives under `.iaso/` at the repository root:
 
 ```
-.plumb/
+.iaso/
   config.yaml              # optional settings (source dirs, thresholds, judgment backend)
   claims.yaml              # SR trailer policy: epoch, exempt globs, NC-backed baseline
   intents/INT-001.md
@@ -157,20 +157,20 @@ are allowed and are checked like links.
 | Feature | `FEAT-###` | Groups requirements (replaces bundles). | `description`, `requirements` |
 | Nonconformance | `NC-####` | A known defect against a requirement, first-class. | `status: open \| corrected \| waived`, `detected_by`, `corrected_by`, `external_ref` |
 
-A requirement in plumb's own repository looks like this:
+A requirement in iaso's own repository looks like this:
 
 ```yaml
 ---
 id: SR-004
 title: Links pin both ends
 feature: FEAT-001
-statement: Every link records the content hash of both of its ends, and plumb reports the
+statement: Every link records the content hash of both of its ends, and iaso reports the
   link as stale when either end's current hash differs from its pin.
 examples:
   - id: EX-1
     given: SR-004 links to a test whose pins are current
     when: the test function's body changes
-    then: plumb check reports the link stale and names the test end
+    then: iaso check reports the link stale and names the test end
   - id: EX-2
     given: the same link with current pins
     when: the test file is re-saved with CRLF line endings and no other change
@@ -190,7 +190,7 @@ Requirement states are derived and never stored:
 
 - **proposed:** no approval pins the current hash;
 - **confirmed:** an approval pins the current hash. Only the owner's explicit words create
-  such an approval: `plumb approve` in the owner's terminal (`by: owner`), or the owner's own
+  such an approval: `iaso approve` in the owner's terminal (`by: owner`), or the owner's own
   affirming words in a prompt, recorded by the agent and quote-checked (`by: agent-relayed`,
   section 4.6). There is no "no-objection" approval. The one exception is the owner's own
   choice (D14 B): when the owner has turned auto-approval on, a record derived directly from
@@ -217,12 +217,12 @@ intent the owner actually affirmed.
 ### 4.3 IDs
 
 IDs are kind prefix plus zero-padded number: `INT-###`, `SR-###`, `DEC-###`, `FEAT-###`,
-`NC-####`. The next ID is reserved through the shared ref `refs/plumb/ids` with git's
+`NC-####`. The next ID is reserved through the shared ref `refs/iaso/ids` with git's
 compare-and-swap (`update-ref` with the old value), so the worktrees of one clone never get
 the same ID; outside git it is the highest existing number plus one (SP6, SR-070). Identity
 comes from the frontmatter `id`, never from the filename. Two records with the same ID (two
-clones that numbered independently) are an error that `plumb check` and the merge boundary
-report; `plumb merge-fix` renumbers the incoming record and every reference its side added,
+clones that numbered independently) are an error that `iaso check` and the merge boundary
+report; `iaso merge-fix` renumbers the incoming record and every reference its side added,
 never rewriting history (SR-071). Examples are numbered
 inside their requirement (`SR-004/EX-2`). Imported acceptance criteria keep their `AC-n` IDs.
 
@@ -268,7 +268,7 @@ ends at the moment the link was last confirmed. Link kinds:
 A link is **current** when both pins equal both current hashes, **stale** when either differs
 (the report names which end moved), and **dangling** when its target does not exist. Dangling
 links are errors. Stale links are drift signals: they appear in the end-of-turn summary and
-the status line. They are cleared by `plumb repin <link>`, which records the new pins in the
+the status line. They are cleared by `iaso repin <link>`, which records the new pins in the
 source record and appends a `repin` entry to the log. Repinning a link whose record end
 changed does not confirm the record; only an approval does that.
 
@@ -281,12 +281,12 @@ also lists the code and test ends it owns at that moment; an end added later is 
 owner at the merge boundary (section 7.5). There are no consent phrases. An approval comes
 from one of two sources:
 
-- the owner running `plumb approve SR-004`, or `plumb approve --proposed` to approve every
+- the owner running `iaso approve SR-004`, or `iaso approve --proposed` to approve every
   record still proposed (the batch form; it lists the records and their hashes in the entry),
   in the owner's own terminal, outside any agent session (see the guard below). Such an entry
   is marked `by: owner`;
 - the agent relaying an explicit confirmation the owner gave in conversation, with
-  `plumb approve SR-004 --prompt <digest> --quote "<owner's words>"`. Such an entry is marked
+  `iaso approve SR-004 --prompt <digest> --quote "<owner's words>"`. Such an entry is marked
   `by: agent-relayed` and carries the owner's affirming words verbatim plus the digest of
   the prompt that contained them, as logged by the prompt hook. The quote must itself affirm
   (for example "ok", "yes", "approve", "go ahead"); see check 3 below.
@@ -299,17 +299,17 @@ its quote, for a quick owner glance (section 7.5).
 
 Two forms the owner chose on 2026-10-06 (D14) sit beside these:
 
-- **Triage group (D14 A).** `plumb triage` groups proposed records by the judgment backend's
+- **Triage group (D14 A).** `iaso triage` groups proposed records by the judgment backend's
   faithfulness rating. The owner confirms the low-risk group in one step, either
-  `plumb triage --approve low-risk` in the owner's terminal (`by: owner`, exactly the listed
+  `iaso triage --approve low-risk` in the owner's terminal (`by: owner`, exactly the listed
   hashes). The offer line names up to about 5
-  records of the group by title, then "+N more (see plumb triage)" (D18, R13 Q2); the stated
-  set pins the whole group's hashes, `plumb triage` shows it in full, and the owner's "ok"
+  records of the group by title, then "+N more (see iaso triage)" (D18, R13 Q2); the stated
+  set pins the whole group's hashes, `iaso triage` shows it in full, and the owner's "ok"
   approves exactly that pinned list, no more: a record changed since the offer is left out
   and named. An "ok" that objects to one of the group, or names records instead, does not
   confirm the group. The rating never approves anything by itself. A record joins the group
   only when its premise is the owner's verified words and nothing in it contradicts them,
-  whatever the backend scored (one choke point, the low-risk admission of `plumb triage`):
+  whatever the backend scored (one choke point, the low-risk admission of `iaso triage`):
   every quote it rests on must be verbatim in a prompt the host's prompt hook logged (a
   quote stored without `--prompt`, or resting on a self-recorded message, is shown
   individually as "quote not verified", and owner views call it "quoted, not checked
@@ -318,7 +318,7 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
   variations calibration generates); such a record is shown individually as "contradicts
   your words".
 - **Auto-approval (D14 B).** Off by default. Only the owner turns it on, in the owner's
-  terminal (`plumb config auto-approve on`, logged as an event; editing `config.yaml` alone
+  terminal (`iaso config auto-approve on`, logged as an event; editing `config.yaml` alone
   does not turn it on); a passing calibration for the current JEV model version (section 8)
   raises its floor, none is needed (DEC-143). Then a record derived directly from the owner's own words (an `INT`
   read-back whose quote is verbatim in the logged prompt, an example restating the owner's
@@ -329,29 +329,29 @@ Two forms the owner chose on 2026-10-06 (D14) sit beside these:
   the score, confidence, prompt digest and backend version, hash-pinned like any approval.
   Never for a `DEC` with `matters: true`, an escalated spec set, an edit of a record the owner
   confirmed, or any record when JEV is unavailable; the heuristic never auto-approves. Such
-  approvals are labelled everywhere, revocable with `plumb revoke`, and listed at the merge
+  approvals are labelled everywhere, revocable with `iaso revoke`, and listed at the merge
   boundary beside the agent-relayed ones.
 
 **Prompt-digest log.** On every owner prompt, the prompt hook appends a committed log entry
-under `.plumb/log/prompt/` holding only `{digest, session, at}`: the `sha256` of the prompt
+under `.iaso/log/prompt/` holding only `{digest, session, at}`: the `sha256` of the prompt
 text, never the text itself. The text stays in gitignored session state for the rest of the
 session, which is enough for the write-time check below.
 
 **Guard against self-approval.** The agent has shell access, so without a guard it could run
-`plumb approve` itself and produce an entry that looks like the owner's. plumb prevents this
+`iaso approve` itself and produce an entry that looks like the owner's. iaso prevents this
 with four cheap, deterministic checks, none of which calls a model:
 
-1. **Session marker.** `plumb install claude-code` sets `PLUMB_AGENT_SESSION=claude-code` in
+1. **Session marker.** `iaso install claude-code` sets `IASO_AGENT_SESSION=claude-code` in
    the host's session environment (`.claude/settings.json` `env`). The variable reaches every
    shell command the agent runs, but not the owner's own terminal. When the marker is set,
-   `plumb approve` and `plumb revoke` refuse to write a `by: owner` entry and accept only the
+   `iaso approve` and `iaso revoke` refuse to write a `by: owner` entry and accept only the
    `agent-relayed` form, which must cite `--prompt <digest>` and `--quote`.
 2. **Tool guard.** A `PreToolUse` hook on the shell tool denies any command that runs
-   `plumb approve` or `plumb revoke` without `--prompt`, or that unsets or overrides
-   `PLUMB_AGENT_SESSION`. The same hook on the edit tools denies writes under `.plumb/log/`,
-   so log entries can only be created through plumb. This is a string match on the command
+   `iaso approve` or `iaso revoke` without `--prompt`, or that unsets or overrides
+   `IASO_AGENT_SESSION`. The same hook on the edit tools denies writes under `.iaso/log/`,
+   so log entries can only be created through iaso. This is a string match on the command
    and the path, well within the hook budget.
-3. **Write-time quote check.** `plumb approve --prompt <digest>` checks, before writing
+3. **Write-time quote check.** `iaso approve --prompt <digest>` checks, before writing
    anything, that the digest exists in the prompt-digest log, that the prompt text held in
    session state hashes to that digest, and that the quote is a verbatim substring of that
    text (after the body normalization of section 4.4). It then checks that the quote
@@ -407,9 +407,9 @@ with four cheap, deterministic checks, none of which calls a model:
    of the check stays inspectable after the session state is deleted.
 4. **Owner terminal, on every host.** Checks 1 and 2 need the host's help: an adapter that
    cannot set the marker or install a tool guard (section 9 and sp4) leaves the agent's shell
-   looking like the owner's. So every owner-only command (`plumb approve`, `plumb revoke`,
-   `plumb tests waive`, `plumb spec approve`, `plumb triage --approve`,
-   `plumb config auto-approve`, and any later one) writes its `by: owner` entry through one
+   looking like the owner's. So every owner-only command (`iaso approve`, `iaso revoke`,
+   `iaso tests waive`, `iaso spec approve`, `iaso triage --approve`,
+   `iaso config auto-approve`, and any later one) writes its `by: owner` entry through one
    choke point (`approvals.require_owner`) that, after the marker check, requires stdin and
    stdout to be interactive terminals and a `y`/`N` answered there. There is no flag that
    skips the question. An agent's shell tool runs without a terminal, so the command is
@@ -417,52 +417,52 @@ with four cheap, deterministic checks, none of which calls a model:
    agent that drives a pseudo-terminal could still answer the question; that is a deliberate
    bypass, covered by the trust model below, not the normal path.
 
-`plumb check` re-checks every committed approval: each `agent-relayed` entry must cite a
+`iaso check` re-checks every committed approval: each `agent-relayed` entry must cite a
 prompt digest present in the prompt-digest log and recorded before the approval, and its
 stored quote must contain an affirmation term and match its stored quote digest. Every
 approval entry also records the session marker in force when it was written (or `none`), and
 a `by: owner` entry written under a marker is reported as an error. The owner, inside an
 agent session, confirms by saying so in a prompt (the in-flow path of section 6.6); in their
-own terminal, they use `plumb approve`.
+own terminal, they use `iaso approve`.
 
 **Trust model, stated honestly.** The log is hash-chained and tamper-evident (section 4.7),
 not tamper-proof against a malicious agent. The guard does not make the agent's shell a
 sandbox: an agent determined to bypass it can forge an entry, or a prompt digest, before it
-is committed. What plumb guarantees is that self-approval cannot happen by accident, is
+is committed. What iaso guarantees is that self-approval cannot happen by accident, is
 refused on the normal path on every host (check 4 holds where a host cannot set the marker),
 and that any edit, deletion or out-of-order insertion of a
-committed entry shows up in `plumb check` and in git history. The merge-boundary list of
+committed entry shows up in `iaso check` and in git history. The merge-boundary list of
 `agent-relayed` approvals with their quotes (section 7.5) is the owner's cheap backstop
 against a relayed approval the owner never gave.
 
 An escalated plan (section 5.2) is approved as a set: one approval pins a set hash over the
 sorted member hashes. The set is anchored on an `INT` with `mode: escalated` and a `members`
-list (`plumb spec approve INT-###` in the owner's terminal).
+list (`iaso spec approve INT-###` in the owner's terminal).
 
 ### 4.7 Append-only logs
 
 Approvals, revocations, prompt digests, repins, test evidence promoted at merge boundaries,
 judgments, claim ingestions and owner waivers are written as one JSON file per entry under
-`.plumb/log/<kind>/`. Each entry is created with a no-replace link (`os.link` with a uuid
+`.iaso/log/<kind>/`. Each entry is created with a no-replace link (`os.link` with a uuid
 suffix, so two writers in the same second never collide) and is never edited. Each entry
 carries its own digest and `prev`, the digest of the latest entry of the log when it was
-written (read from a gitignored head pointer in `.plumb/cache/`, rebuilt by a scan when
+written (read from a gitignored head pointer in `.iaso/cache/`, rebuilt by a scan when
 missing), so the log is a hash chain. Branches that merge make the chain fork; that is
 accepted as long as every `prev` resolves to an existing entry. Corrections are new entries
-that reference the old one. `plumb check` verifies each entry's digest and its `prev` link,
+that reference the old one. `iaso check` verifies each entry's digest and its `prev` link,
 so a modified entry, or a deleted entry that a later one points to, is reported; at merge
-boundaries, plumb also checks against git that no committed entry was modified or deleted. The
+boundaries, iaso also checks against git that no committed entry was modified or deleted. The
 earlier single-file logs (`events.jsonl`, `evidence.jsonl`) were migrated to entry files by
-`plumb log migrate` with every digest and `prev` unchanged (SP6, SR-074); the emptied files
+`iaso log migrate` with every digest and `prev` unchanged (SP6, SR-074); the emptied files
 stay so that branches cut before the migration still merge.
 
 ### 4.8 Claims: `SR:` trailers
 
 Commits declare the requirements they serve with an `SR: SR-004, SR-007` trailer, as in
-pi-agent-factory. The `commit-msg` hook checks that each named ID exists. `plumb claims check`
+pi-agent-factory. The `commit-msg` hook checks that each named ID exists. `iaso claims check`
 compares claimed paths (files changed by commits that claim an SR) with declared paths (that
 SR's `implemented_by` and `verified_by` ends) and reports changed but undeclared paths.
-Exempt globs and an NC-backed baseline, which can only shrink, live in `.plumb/claims.yaml`.
+Exempt globs and an NC-backed baseline, which can only shrink, live in `.iaso/claims.yaml`.
 Ingestion writes a small append-only record `{run_id, start, head, commits: [{sha, subject,
 sr_ids, changed_files, exempted}]}` from a single `git log` call per range.
 
@@ -519,7 +519,7 @@ escalated work waits for it.
 Both modes use the same records, so escalated work simply produces more of them up front.
 
 **Clarification depth (D16).** Whenever a request creates or changes intent, the agent loads
-the `plumb-clarify` skill, which scales the clarification to the request: a trivial or clear
+the `iaso-clarify` skill, which scales the clarification to the request: a trivial or clear
 request (it maps to confirmed intent, or is a small unambiguous change) gets no questions and
 a compact read-back; an incremental one gets the read-back with "you said" apart from "I
 assume", proposed examples with edge cases, and only the questions whose answer changes what
@@ -531,10 +531,10 @@ repository, the records or sensible defaults already answer, drops what the owne
 for, restates in the owner's terms, and stops asking once the owner says "go" or "ok": the
 remaining unknowns become labelled assumptions. Clarifying questions are trigger 2 of section
 6.6, so they occur only when the owner starts or changes intent, never mid-implementation
-unless a contradiction appears. The agent records the result with `plumb capture`, which
+unless a contradiction appears. The agent records the result with `iaso capture`, which
 writes the whole read-back (INT, SR with examples, DEC) in one call, all proposed.
 
-plumb suggests escalation, and the owner decides. The prompt hook and `plumb status` raise
+iaso suggests escalation, and the owner decides. The prompt hook and `iaso status` raise
 the suggestion when any of these triggers fires:
 
 - the request would add or change more than 3 requirements, or touch more than one feature;
@@ -561,7 +561,7 @@ is exact code.
   cards that are open: accepted, rejected, change or open, with the owner's exact words as
   evidence. An accepted answer at or above the learned threshold, at the version shown, with
   its words found in the message, is written as an `approval` with `by: owner-words`. The
-  typed commands (`/plumb approve ...`, `/plumb undo ...`, `/plumb go`) stay an exact grammar; prose never turns an owner-only setting on.
+  typed commands (`/iaso approve ...`, `/iaso undo ...`, `/iaso go`) stay an exact grammar; prose never turns an owner-only setting on.
 - **The judge** asks, for every record a capture wrote, whether the owner would object given
   their words. Until the trial teaches a threshold it only offers the supported records in
   batches of at most five (one drawn from below the line); an answered batch is the labelled
@@ -570,11 +570,11 @@ is exact code.
   offered as one card per feature (or per intent when there is no feature).
 - **The clarifier** runs on every owner message and says whether it carries intent and which
   gaps change what gets built. A request with such a gap closes the **gate**: edits are
-  refused (Claude Code only, the edit tools only) until `plumb clarify --wait` has returned the
-  card and the owner has answered it, or has released a failed check (`/plumb go`).
+  refused (Claude Code only, the edit tools only) until `iaso clarify --wait` has returned the
+  card and the owner has answered it, or has released a failed check (`/iaso go`).
 
-Jobs are files under `.plumb/session/<id>/` and carry no authority. The prompt hook and
-`plumb capture` queue them (one read job per turn, one clarify job per message, one judge job
+Jobs are files under `.iaso/session/<id>/` and carry no authority. The prompt hook and
+`iaso capture` queue them (one read job per turn, one clarify job per message, one judge job
 per capture); one worker per session, started by the hook, recomputes each job's inputs from the
 logs, asks the one configured dispatcher, checks the answer against the job's schema and
 applies it. A result file or a job file written by anything else confirms nothing and is
@@ -588,12 +588,12 @@ backlog · 10/160").
 ## 6. The grounding loop
 
 The loop is four hooks plus a status line, with one more hook that guards approvals
-(section 4.6). Each hook is a single `plumb hook <event>` process
-that starts with minimal imports, reads only `.plumb/` and the files named in records, uses
+(section 4.6). Each hook is a single `iaso hook <event>` process
+that starts with minimal imports, reads only `.iaso/` and the files named in records, uses
 caches keyed by file fingerprints (size and mtime first, hash when those change), never runs
 tests, never scans `site-packages`, and never starts one subprocess per file. If a hook cannot
-finish within its budget, it reports "plumb: check skipped (budget)" and the turn continues.
-plumb never blocks the owner's work because of its own failure.
+finish within its budget, it reports "iaso: check skipped (budget)" and the turn continues.
+iaso never blocks the owner's work because of its own failure.
 
 ### 6.1 Session brief (session start)
 
@@ -601,8 +601,8 @@ The session-start hook gives the session lines of the one table of insights (SR-
 intent being worked on in one line, the questions waiting, the open known issues and the records
 changed since the agent last saw them, with no counts and no separate brief (INT-114). It never
 lists every proposed record; records reach the agent one line at a time as they become relevant
-(section 6.2). The rest is one command away (`plumb show <ID>`, `plumb explain <anything>`,
-`plumb context`).
+(section 6.2). The rest is one command away (`iaso show <ID>`, `iaso explain <anything>`,
+`iaso context`).
 
 It is context, not procedure.
 
@@ -618,9 +618,9 @@ On each prompt, the prompt hook:
    state, title), only for a record that is newly relevant in this session or whose hash or
    confirmation state changed since it was injected (session state keeps what the agent has
    seen; a `/clear` or compaction resets it), within `hooks.prompt_lines` and the
-   `hooks.prompt_tokens` budget. A record cut by the budget is named with `plumb show` and
+   `hooks.prompt_tokens` budget. A record cut by the budget is named with `iaso show` and
    comes on a later prompt. Nothing is injected when nothing new is relevant. Examples and
-   covering tests are pulled on demand with `plumb show <ID>`;
+   covering tests are pulled on demand with `iaso show <ID>`;
 3. checks for a possible intent change. The heuristic default flags a prompt that matches a
    confirmed record and contains change language (instead, no longer, remove, rename, also,
    change, should now, don't). When the judgment backend is enabled, it filters these
@@ -657,13 +657,13 @@ then:
   example newly proposed this turn, marked `proposed`, for example:
 
 ```
-plumb: touched SR-004, SR-007 | stale: SR-007 -> src/plumb/links.py (code end)
-plumb: covering tests 6 selected: 4 fresh pass, 1 not yet passing, 1 not yet run
-plumb: full verification pending (tests/conftest.py changed) | 3 deferred (budget)
-plumb: confirmed SR-004 on your prompt "ok, go on" | fidelity unjudged: SR-007
-plumb: questions: none
-plumb: proposed INT-004: build the status line, not the MCP server; assumes ASCII only
-plumb: proposed SR-009/EX-1: given a stale link, when status runs, then it shows stale 1
+iaso: touched SR-004, SR-007 | stale: SR-007 -> src/iaso/links.py (code end)
+iaso: covering tests 6 selected: 4 fresh pass, 1 not yet passing, 1 not yet run
+iaso: full verification pending (tests/conftest.py changed) | 3 deferred (budget)
+iaso: confirmed SR-004 on your prompt "ok, go on" | fidelity unjudged: SR-007
+iaso: questions: none
+iaso: proposed INT-004: build the status line, not the MCP server; assumes ASCII only
+iaso: proposed SR-009/EX-1: given a stale link, when status runs, then it shows stale 1
 ```
 
 The proposed lines repeat what the agent's reply stated, so the owner can confirm them in one
@@ -671,7 +671,7 @@ line ("ok", or "ok SR-009") now or later, or leave them for now; they become a q
 under trigger 2 (section 6.6).
 
 If the turn changed code whose covering tests have no fresh evidence, the hook asks the
-*agent* (not the owner) once per turn to run `plumb verify`, which runs the per-turn
+*agent* (not the owner) once per turn to run `iaso verify`, which runs the per-turn
 selection of section 7.2 (covering tests, or a bounded sample when coverage is unknown,
 within the per-turn time budget) and records evidence. Test execution belongs to the agent's
 turn and never to the hook's latency budget, and the request never names the full suite.
@@ -681,12 +681,12 @@ the next merge boundary satisfies it (section 7.5).
 
 **Fidelity (advisory, no JEV needed).** The stop hook does not ask for fidelity judgments. It
 only notes, as `fidelity unjudged`, each requirement whose `implemented_by` or `verified_by`
-ends changed and which has no judgment for the current hashes. `plumb fidelity SR-004` builds
+ends changed and which has no judgment for the current hashes. `iaso fidelity SR-004` builds
 a scoped packet for the host agent to judge: the requirement's statement, its examples, the
 linked code and tests at their current content, and their test evidence. The packet carries
 no procedure. It runs on demand (the owner or the agent asks for it), and the merge boundary
 lists every touched requirement still unjudged (section 7.5). The agent answers with
-`plumb judge SR-004 --verdict fits|drifts|unsure --note "<one line>"`, which appends a
+`iaso judge SR-004 --verdict fits|drifts|unsure --note "<one line>"`, which appends a
 `judgment` log entry holding the verdict, `backend: host-agent`, the requirement's hash and
 the hashes of the judged ends. Judgments are always advisory: `drifts` and `unsure` appear in
 the summary and the status line as drift signals, never confirm or freshen anything, and
@@ -696,14 +696,14 @@ for fidelity.
 
 ### 6.5 Status line
 
-`plumb status --line` reads `session/status.json` and recomputes nothing. It prints one
+`iaso status --line` reads `session/status.json` and recomputes nothing. It prints one
 plain-ASCII line, for example
-`plumb | SR 12/14 ok | proposed 2 | stale 1 | tests ok | full pending | ask 0`. The
+`iaso | SR 12/14 ok | proposed 2 | stale 1 | tests ok | full pending | ask 0`. The
 `full pending` field appears only while `full verification pending` holds (section 7.2).
 
 With D13 the line becomes the owner's one-line status card: a state, a plain-language
 summary of the intent being worked on, and the counts, for example
-`plumb ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 by JEV) · 1 awaits you`.
+`iaso ✓ aligned · "add multiply next to add" · SR 12/14 ok (2 by JEV) · 1 awaits you`.
 It distinguishes "confirmed by you" from "confirmed by JEV" (D14) and says
 `auto-approve suspended` when a model change suspended it. The full intent card appears in
 the end-of-turn summary only when it matters (a new or changed intent awaiting the owner, one
@@ -712,7 +712,7 @@ configurable, `full`, `compact` or `off` (`docs/specs/sp5-presentation.md`).
 
 ### 6.6 Interruption triggers (exhaustive)
 
-plumb asks the owner a question in exactly three cases:
+iaso asks the owner a question in exactly three cases:
 
 1. **Real intent change.** A request contradicts or extends a confirmed intent, requirement
    or example.
@@ -738,7 +738,7 @@ The agent asks in its reply, with a read-back. Nothing else interrupts, and prop
 never block work outside trigger 2. Stale links, proposed records, unconfirmed edits,
 not-yet-passing tests, unjudged or drifting fidelity, `full verification pending`, escalation
 suggestions and skipped checks are logged and shown in the summary, the status line, and
-`plumb status` / `plumb log`.
+`iaso status` / `iaso log`.
 
 An edit to a confirmed record that no owner request asked for is not trigger 1: the record
 loses its confirmation (its approval no longer pins its hash), it is shown as an "unconfirmed
@@ -756,12 +756,12 @@ only by the owner's own explicit words:
    in a trigger-2 question in that reply. This is deterministic; no model decides it. Each
    record is marked shown only when the summary displayed all of it (an INT's will, won't
    and labelled assumptions; every given/when/then of an SR); a record the summary had to
-   cut is named with `plumb show <ID>` and is confirmed only when the owner's words name it.
+   cut is named with `iaso show <ID>` and is confirmed only when the owner's words name it.
 2. On the owner's next prompt, the prompt hook lists the records of the stated set that are
    still proposed. The agent reads the prompt:
    - an explicit affirmation ("ok", "yes", "approve") is recorded as an `agent-relayed`
      approval with the owner's affirming words and the prompt digest, through
-     `plumb approve --prompt <digest> --quote "..."`. Before writing, plumb checks that the
+     `iaso approve --prompt <digest> --quote "..."`. Before writing, iaso checks that the
      quote is verbatim in the logged prompt, that it contains an affirmation term, and that
      every approved record is in the stated set or named by ID in the quote (section 4.6);
    - a prompt that neither affirms nor objects (for example one that moves on to other work)
@@ -769,14 +769,14 @@ only by the owner's own explicit words:
    - an objection is not an approval: the agent revises the records, states them again, and
      asks only if the objection also meets one of the three triggers above.
 3. Each approval made this way appears as one line in the end-of-turn summary (for example
-   `plumb: confirmed SR-004 on your prompt "ok, go on"`), so the owner sees it and can revoke
-   it, by saying so or with `plumb revoke SR-004` (a new log entry), without being
+   `iaso: confirmed SR-004 on your prompt "ok, go on"`), so the owner sees it and can revoke
+   it, by saying so or with `iaso revoke SR-004` (a new log entry), without being
    interrupted.
 4. Records the owner never affirmed stay proposed: neither silence nor a prompt that does not
    object is confirmation. They keep being counted as proposed in the status line and the
    session brief, and the owner can confirm them whenever they choose, in one line: a prompt
-   naming them by ID ("ok SR-009, SR-010"), `plumb approve SR-009`, or
-   `plumb approve --proposed`. A proposed record does not unlock the covered or verified
+   naming them by ID ("ok SR-009, SR-010"), `iaso approve SR-009`, or
+   `iaso approve --proposed`. A proposed record does not unlock the covered or verified
    states and does not feed trigger 1. Work goes on; the merge boundary is where every
    requirement the change touched must be confirmed.
 
@@ -784,14 +784,14 @@ only by the owner's own explicit words:
 
 ### 7.1 Code-to-test map
 
-`plumb map` builds the map from three sources:
+`iaso map` builds the map from three sources:
 
 - `verified_by` links;
 - `@pytest.mark.sr("SR-###")` markers, found with an `ast` scan;
 - the import closure of each test module, found by resolving `import` statements with `ast`
   over the configured source directories (default `src` and `tests`).
 
-The map is cached in `.plumb/cache/` and keyed by file fingerprints, so only changed files are
+The map is cached in `.iaso/cache/` and keyed by file fingerprints, so only changed files are
 re-parsed. It is printed as grep-able text: `path -> tests`, `SR -> tests`.
 
 ### 7.2 Covering-test selection
@@ -808,10 +808,10 @@ Documentation-only changes select nothing.
 tests within a time budget, and three rules keep them to seconds:
 
 - **Shared test infrastructure sets `full verification pending`; it never triggers a full
-  run in a turn.** The default infrastructure globs are `**/conftest.py`, plumb's pytest
+  run in a turn.** The default infrastructure globs are `**/conftest.py`, iaso's pytest
   plugin, `pyproject.toml`, `pytest.ini`, `tox.ini`, `setup.cfg` and `uv.lock`, and they are
   configurable. A change to one of them adds nothing extra to the per-turn selection. Instead
-  plumb sets **full verification pending**, which the next merge boundary satisfies with a
+  iaso sets **full verification pending**, which the next merge boundary satisfies with a
   full-suite run (section 7.5). The state is derived, not stored: it holds while the current
   hashes of the infrastructure files differ from the hashes recorded with the latest
   full-suite evidence, or when no full-suite evidence exists, or while the unknown-coverage
@@ -821,18 +821,18 @@ tests within a time budget, and three rules keep them to seconds:
   merge.
 - **Unknown coverage gives a bounded sample plus the pending flag.** When a changed source
   file has no covering test in the map (for example a new module, or code reached only
-  dynamically), `plumb verify` adds a bounded sample: the tests nearest to the file by path
+  dynamically), `iaso verify` adds a bounded sample: the tests nearest to the file by path
   (same package, then its parent), in a deterministic order, at most `verify.sample_size`
   (10 by default) and inside the time budget. It also sets `full verification pending`,
   which holds while any such file differs from its hash recorded with the latest full-suite
   evidence. A hook never builds a test map inline that it cannot build within its budget
-  (a fresh checkout, where `.plumb/cache/` is empty): the build starts outside the hook (a
-  detached `plumb map`), and until it lands the turn gets the same bounded sample with
+  (a fresh checkout, where `.iaso/cache/` is empty): the build starts outside the hook (a
+  detached `iaso map`), and until it lands the turn gets the same bounded sample with
   `full verification pending` ("coverage unknown"), on every host. The regression check
   (trigger 3) reads the regressions this turn's runs recorded from the evidence index
   before any step a budget can cut, so it never waits for the map; when the budget cuts the
   selection itself, the agent is still asked to run the turn's covering tests.
-- **A per-turn time budget caps the selection.** `plumb verify` in a turn runs the selected
+- **A per-turn time budget caps the selection.** `iaso verify` in a turn runs the selected
   tests in priority order (tests linked by `verified_by` to the changed requirements, then
   tests that mention a changed path literally, then import-closure tests, nearest importers
   first) until their expected duration reaches the budget: `verify.turn_budget_s`, 30 s by
@@ -841,13 +841,13 @@ tests within a time budget, and three rules keep them to seconds:
   budget. Selected tests left out are reported as "deferred (budget)": they are not run, keep
   their previous evidence state, and are run at the merge boundary.
 
-`plumb verify --full` runs the whole suite. It belongs to the merge boundary or to an
+`iaso verify --full` runs the whole suite. It belongs to the merge boundary or to an
 explicit request by the owner; no hook ever asks for it.
 
 ### 7.3 Identity-pinned evidence
 
-`plumb verify` runs the selected tests with plain `pytest` (never more than `-n 2`) and
-plumb's small pytest plugin. The plugin reports collection, per-phase outcomes and the exit
+`iaso verify` runs the selected tests with plain `pytest` (never more than `-n 2`) and
+iaso's small pytest plugin. The plugin reports collection, per-phase outcomes and the exit
 status; a fixture failure outranks a pass. Evidence is keyed per test node:
 
 - `node_id`;
@@ -859,7 +859,7 @@ The full content identity of the environment (installed distributions and the in
 bytes), which took 1.1 s on pi-agent-factory, is computed only when evidence is recorded and
 is cached under the cheap key. A passing result is reused only when its key matches exactly.
 An unknown identity means no reuse. Each record carries a self-checksum. If the inputs change
-while the tests run, the record is discarded. When reuse misses, plumb says which part of the
+while the tests run, the record is discarded. When reuse misses, iaso says which part of the
 key differed.
 
 ### 7.4 Failure policy
@@ -872,7 +872,7 @@ failure; it never moves a full run into a turn:
   attempts. Within a turn this reruns only the failed tests.
 - **Owner-waiver targeted rerun.** At the merge boundary, an owner waiver lets a targeted
   rerun stand in for a full rerun. The waiver is an immutable log entry pinned to the diff
-  digest it covers (`plumb tests waive --merge <base>`, the owner's terminal only); any later
+  digest it covers (`iaso tests waive --merge <base>`, the owner's terminal only); any later
   edit voids it.
 - **Full rerun only when shared test infrastructure changes, and only at the merge
   boundary.** A change to shared test infrastructure sets `full verification pending`
@@ -883,11 +883,11 @@ failure; it never moves a full run into a turn:
 ### 7.5 Merge boundary
 
 A merge boundary is where work relies on its records, so it is where the guarantees are
-paid for. `plumb check --merge <base>` (sub-project 1a) gives the owner one short report over
+paid for. `iaso check --merge <base>` (sub-project 1a) gives the owner one short report over
 the change from `<base>`:
 
 - **Parallel work (SP6).** Three more sections hold the merge: ID collisions between clones
-  (exit 1, fixed by `plumb merge-fix`), record paths git left unmerged (exit 1), and open
+  (exit 1, fixed by `iaso merge-fix`), record paths git left unmerged (exit 1), and open
   intent conflicts that the record merge driver wrote when two branches changed the same
   words, each shown as one card with both versions (exit 4, the owner's choice). The quick
   form runs as git's pre-merge-commit hook without a test run; the one full run is at push.
@@ -909,9 +909,9 @@ the change from `<base>`:
 - **Agent-relayed and auto-JEV approvals, for a glance.** Every `agent-relayed` approval
   made in the range is listed with its record and the owner's quote, and every `auto-jev`
   approval (D14 B) with its score, confidence and model version. This is not a question; the
-  owner can revoke any of them. `plumb merge-check` (sub-project 3) is the command.
+  owner can revoke any of them. `iaso merge-check` (sub-project 3) is the command.
 - **Fidelity, advisory.** Touched requirements with no judgment for their current hashes, or
-  with a `drifts` or `unsure` verdict, are listed with the `plumb fidelity` command for each.
+  with a `drifts` or `unsure` verdict, are listed with the `iaso fidelity` command for each.
 - **Verification state.** The merge is never green unless every acceptance test the change
   can affect has passing evidence on the current code. The acceptance tests checked are those
   of the touched requirements and of every confirmed requirement whose acceptance tests cover
@@ -929,9 +929,9 @@ the change from `<base>`:
   regression hidden by changing the test is a regression question in the stop hook (trigger
   3), never "questions: none".
 
-Sub-project 3 completes the boundary: plumb runs the full suite (which satisfies
+Sub-project 3 completes the boundary: iaso runs the full suite (which satisfies
 `full verification pending` by recording the current hashes of the shared test
-infrastructure and runs every deferred test), `plumb check` (no dangling links, no duplicate
+infrastructure and runs every deferred test), `iaso check` (no dangling links, no duplicate
 IDs, no unconfirmed edits of confirmed records, hash chain intact), the claims check, and the
 log-integrity check against git, then promotes the resulting evidence into the committed log.
 This is the only place where heavy guarantees are paid for.
@@ -939,12 +939,12 @@ This is the only place where heavy guarantees are paid for.
 ## 8. Optional judgment backend (JEV) and the heuristic default
 
 Some loop decisions are classifications: does this prompt change that requirement, is this
-diff cosmetic or material, does this code still fit its requirement. plumb answers them with a
+diff cosmetic or material, does this code still fit its requirement. iaso answers them with a
 deterministic **heuristic by default**, which needs no key, makes no network call and is
 fully reproducible.
 
 JEV (TypeSafe's typed-judgment model, which answers with `Choice`, `Score` or `Noul` in about
-70 to 500 ms) can be enabled as an **optional** backend through `.plumb/config.yaml`, reached
+70 to 500 ms) can be enabled as an **optional** backend through `.iaso/config.yaml`, reached
 at TypeSafe (`provider: typesafe`, the default: `POST https://api.typesafe.ai/v1/systemone`)
 or through OpenRouter (`provider: openrouter`: `POST
 https://openrouter.ai/api/alpha/decisions`, model `typesafe/jev-1.13`), the same Decisions
@@ -952,16 +952,16 @@ wire format; a preset supplies the endpoint, path, model, validated version and 
 name, and explicit `judgment.jev` values win. The key is read from the environment variable
 named by `judgment.jev.credential_env` (default `TYPESAFE_API_KEY`, or `OPENROUTER_API_KEY`
 with the OpenRouter preset): first the process environment, then the env file that the
-user-level `~/.config/plumb/jev.json` names (read in place, never copied; refused inside the
-repository), then the older user store `~/.config/plumb/jev`. The owner sets it up by saying
-`/plumb jev setup openrouter` (the agent runs `plumb jev setup`, which records only the
-provider, model and variable NAME, never the secret) and checks it with `/plumb jev status`.
+user-level `~/.config/iaso/jev.json` names (read in place, never copied; refused inside the
+repository), then the older user store `~/.config/iaso/jev`. The owner sets it up by saying
+`/iaso jev setup openrouter` (the agent runs `iaso jev setup`, which records only the
+provider, model and variable NAME, never the secret) and checks it with `/iaso jev status`.
 The key never reaches a repository file, log entry, judgment record, notice or output. It is
 used for:
 
 - intent-change detection on candidate prompts;
 - drift triage (cosmetic or material) on stale links;
-- a cheap advisory fidelity score on the `plumb fidelity` packets of section 6.4, scoped to
+- a cheap advisory fidelity score on the `iaso fidelity` packets of section 6.4, scoped to
   the requirements changed in the turn. Within the stop hook's budget, JEV scores a few of
   them in the background and answers the clear cases; low-confidence ones stay `fidelity
   unjudged` for the host agent, on demand or at the merge boundary. JEV only makes scoring
@@ -980,7 +980,7 @@ When the resolved model version differs from the version the thresholds were val
 against, automatic acceptance is suspended. Versions are compared through one normalizer (no
 vendor prefix, no leading `~`, no trailing `-YYYYMMDD` snapshot date, no zero patch), so
 `jev-1.13.0` and OpenRouter's `typesafe/jev-1.13-20260917` are one version; `jev-1.14` is a
-change. The same comparison serves tier routing, the logged `version_drift`, `plumb jev
+change. The same comparison serves tier routing, the logged `version_drift`, `iaso jev
 status` and the calibration checks of auto-approval. In the hook path, the call has a hard timeout of
 about 800 ms; a timeout, missing key or error falls back to the heuristic with one logged
 notice. State sent to the service is assembled only from tracked files, with secret-bearing
@@ -993,49 +993,49 @@ resolved model version raises its floor, none is needed (DEC-143).
 
 **JEV-assisted confirmation (D14, ruling R8).**
 
-- `plumb triage` scores each proposed record for faithfulness to the owner's words (JEV when
+- `iaso triage` scores each proposed record for faithfulness to the owner's words (JEV when
   configured, otherwise the heuristic) and groups the low-risk ones; the end-of-turn summary
-  and `plumb brief` offer one line that names up to about 5 of them by title, then "+N more
-  (see plumb triage)" (D18, R13 Q2), and that the owner confirms with explicit words; the
-  "ok" approves exactly the pinned hashes, which `plumb triage` shows in full; riskier
-  records are shown individually. `plumb triage --approve low-risk` confirms the group from the owner's
+  and `iaso brief` offer one line that names up to about 5 of them by title, then "+N more
+  (see iaso triage)" (D18, R13 Q2), and that the owner confirms with explicit words; the
+  "ok" approves exactly the pinned hashes, which `iaso triage` shows in full; riskier
+  records are shown individually. `iaso triage --approve low-risk` confirms the group from the owner's
   terminal, recorded as an owner approval of exactly the listed hashes.
-- `plumb config auto-approve on|off [--backend jev] [--min-probability 0.9]
-  [--min-confidence high]` and `plumb config show` run in the owner's terminal only and are
+- `iaso config auto-approve on|off [--backend jev] [--min-probability 0.9]
+  [--min-confidence high]` and `iaso config show` run in the owner's terminal only and are
   logged in the event log; `on` refuses when JEV is not configured (DEC-143: calibrated or not).
-- `plumb jev status` (configured? provider, endpoint, key source label, reachable?
-  normalized resolved version) and `plumb jev setup`, which records only the provider, model
+- `iaso jev status` (configured? provider, endpoint, key source label, reachable?
+  normalized resolved version) and `iaso jev setup`, which records only the provider, model
   and the NAME of the environment variable that holds the credential (with `--env-file`, the
   user-level `jev.json` that names where it is read) and never stores the secret. The owner
-  reaches them, and calibration, through `/plumb jev status`, `/plumb jev setup openrouter`
-  and `/plumb jev calibrate`. Setting a provider replaces the earlier provider's endpoint,
+  reaches them, and calibration, through `/iaso jev status`, `/iaso jev setup openrouter`
+  and `/iaso jev calibrate`. Setting a provider replaces the earlier provider's endpoint,
   path and validated version.
 
 **Ported from pi-agent-factory's FEAT-022 (D17, ruling R12).** All four work with the
 heuristic in a degraded form, or report "no judgments available"; with JEV they are cheaper
 and sharper; all judgments are logged and advisory.
 
-1. **Calibration.** `plumb jev calibrate` measures the backend's accuracy on the owner's own
+1. **Calibration.** `iaso jev calibrate` measures the backend's accuracy on the owner's own
    confirmed and revoked records (a labelled set built from the log) and records thresholds
    per claim kind with the resolved model version. The evidence is mixed (D18, R13 Q1): per
    record kind, at least 20 of the owner's past decisions and at least 5 "no" examples, of
    which up to half may be generated variations (a will flipped to a won't, a flipped
    result, a changed number); JEV must wrongly accept none of them. The split between real
-   and generated examples is shown in `plumb jev status` and in the calibration log entry.
-   The owner reaches it as `/plumb jev calibrate`; the agent runs it.
+   and generated examples is shown in `iaso jev status` and in the calibration log entry.
+   The owner reaches it as `/iaso jev calibrate`; the agent runs it.
    A passing calibration for the current model version raises the fast track's floor to its
    threshold; none is needed, and a version change only means the floor again (DEC-143).
-2. **Edge alignment.** `plumb align [scope]` collects the scope deterministically (intent ->
+2. **Edge alignment.** `iaso align [scope]` collects the scope deterministically (intent ->
    feature -> requirement -> example -> test -> code -> evidence) with a fingerprint, reports
    empty families as named gaps, and judges each edge with one question phrased for its edge
    class, weakest edge first. Whether an edge exists stays deterministic; judgments never
-   create or remove edges. It is shown in `/plumb review` and in the Obsidian view.
+   create or remove edges. It is shown in `/iaso review` and in the Obsidian view.
 3. **Ownership proposals.** For an untraced change, the backend proposes the owning
    requirement (a choice over candidates narrowed by the code map), and "does this diff serve
    its claimed SRs?" becomes a non-blocking commit-hook warning. A bare test-file reference
    gets a proposed test node. These feed the agent's read-back: every untraced-change
-   instruction (the stop hook's, the next prompt's, `plumb turn end`'s) names the proposed
-   owner of each shown path, bounded in paths and time, and `plumb review` lists them for
+   instruction (the stop hook's, the next prompt's, `iaso turn end`'s) names the proposed
+   owner of each shown path, bounded in paths and time, and `iaso review` lists them for
    uncommitted changes too. They never write links.
 4. **Hidden-dependency scan.** When a confirmed record or an authoritative document changes,
    a bounded scan proposes records or documents that silently depend on it, shown as drift
@@ -1044,31 +1044,31 @@ and sharper; all judgments are logged and advisory.
 ## 9. Host adapters
 
 The core is a CLI with JSON output and a Python library. Hosts are thin adapters. **Claude
-Code comes first**: `plumb install claude-code` writes four things.
+Code comes first**: `iaso install claude-code` writes four things.
 
 - **Hooks** in `.claude/settings.json`: `SessionStart` (brief), `UserPromptSubmit` (prompt
   digest, context and intent check), `PostToolUse` on edit tools (tracking), `Stop` (summary
   with the `proposed` lines, verification nudge and the `fidelity unjudged` note), and
   `PreToolUse` on the shell and edit tools (the
-  approval guard of section 4.6). The same file sets the `PLUMB_AGENT_SESSION` session
+  approval guard of section 4.6). The same file sets the `IASO_AGENT_SESSION` session
   marker in its `env`.
 - **The status line command**.
-- **A short `plumb` skill** (since DEC-036 the `plumb-records` skill) of about 20 lines. It explains how to state a read-back and
+- **A short `iaso` skill** (since DEC-036 the `iaso-records` skill) of about 20 lines. It explains how to state a read-back and
   examples as non-blocking statements, how to record them and decisions, how to relay an
   owner's explicit confirmation with the owner's affirming words (and that a prompt that does
   not object is not a confirmation, section 6.6), when to ask (only the three triggers), and
-  when to run `plumb verify` and `plumb fidelity`.
-- **A short CLAUDE.md block** naming `.plumb/` and `plumb map`.
+  when to run `iaso verify` and `iaso fidelity`.
+- **A short CLAUDE.md block** naming `.iaso/` and `iaso map`.
 
-It also installs the `commit-msg` hook for `SR:` trailers, and the `plumb-clarify` skill
-(D16) beside the `plumb` skill. The owner-facing `/plumb` command takes plain-language
-arguments (`/plumb explain`, `/plumb status`, `/plumb review`, `/plumb confirm`); the agent
+It also installs the `commit-msg` hook for `SR:` trailers, and the `iaso-clarify` skill
+(D16) beside the `iaso` skill. The owner-facing `/iaso` command takes plain-language
+arguments (`/iaso explain`, `/iaso status`, `/iaso review`, `/iaso confirm`); the agent
 resolves them to records, files and tests and answers in the owner's terms, while the raw CLI
 stays the agent's interface (D13).
 
 Later adapters (Codex, Pi, Hermes) are thin layers over one host-neutral turn API, mirroring
 these hooks where the host supports them, with a CLI-only fallback (an instruction file plus
-`plumb turn start` and `plumb turn end`) where it does not. `plumb turn start` logs the
+`iaso turn start` and `iaso turn end`) where it does not. `iaso turn start` logs the
 owner's message and starts the turn before it prints the session brief of a session's first
 turn, so a brief cut by the watchdog never drops the message. On such a host the owner's chat
 "ok" may confirm, and each confirmation resting on a message the agent recorded itself is
@@ -1078,7 +1078,7 @@ exposes the brief, the relevant records, why and impact, and drift
 
 ## 10. Relationship to pi-agent-factory
 
-- **Extraction, not fork.** plumb copies selected pi-agent-factory modules together with their
+- **Extraction, not fork.** iaso copies selected pi-agent-factory modules together with their
   tests, then simplifies them:
   - the register parser and acceptance model, `SR:` trailer claims and the review of claimed
     against declared paths, test markers;
@@ -1092,8 +1092,8 @@ exposes the brief, the relevant records, why and impact, and drift
 
   It does not copy the per-turn admission, coordination, planning run state, gates,
   policy compiler, manifests or `factory.*` shims. No `factory.*` or `coherence.*` import
-  exists in plumb.
-- **Importer.** `plumb import pi-agent-factory <path>` reads that repository and never writes
+  exists in iaso.
+- **Importer.** `iaso import pi-agent-factory <path>` reads that repository and never writes
   to it. It maps the following:
   - `requirements/SR-*.md`: acceptance criteria are kept as `AC-n`, structured
     `implemented_by` and `verified_by` entries become pinned links, and legacy `checksum:`
@@ -1102,7 +1102,7 @@ exposes the brief, the relevant records, why and impact, and drift
     membership, and each difference between them is reported as a finding, never resolved
     silently;
   - `docs/nonconformances/NC-*.md`: read leniently, with original `corrected_by` strings kept;
-  - `.factory/trace-claims.yaml` becomes `.plumb/claims.yaml`;
+  - `.factory/trace-claims.yaml` becomes `.iaso/claims.yaml`;
   - the `commits[]` of `evidence/runs/ingest-*.json` become the claims checkpoint.
 
   An imported record is confirmed only when the owner confirmed it upstream: a record that
@@ -1110,7 +1110,7 @@ exposes the brief, the relevant records, why and impact, and drift
   approval marked `by: import` that cites that upstream entry. Every other imported record
   arrives as proposed. Importing never manufactures a confirmation the owner did not give.
 - **Maintenance mode.** Once the current integration batch lands, pi-agent-factory takes
-  fixes only, and new feature work moves to plumb. The fork plan, `docs/fork-plan.md`,
+  fixes only, and new feature work moves to iaso. The fork plan, `docs/fork-plan.md`,
   sequences the maintenance mode, the extraction, the import and the switch.
 
 ## 11. Roadmap
@@ -1120,37 +1120,37 @@ exposes the brief, the relevant records, why and impact, and drift
    parts, in this order.
 
    **1a. Time-boxed slice: must be dogfoodable within the 9 hours.** Built in the order listed,
-   so that plumb is used on plumb as early as possible:
+   so that iaso is used on iaso as early as possible:
    1. the record model (INT, SR, DEC, FEAT, NC; IDs; frontmatter), content hashing and
-      normalization with whole-file link ends, links, pins, staleness, `plumb repin`, and
-      `plumb check` (dangling links, duplicate IDs, stale pins, unconfirmed edits);
-   2. the hash-chained append-only log, pinned approvals (`plumb approve`, `plumb revoke`;
+      normalization with whole-file link ends, links, pins, staleness, `iaso repin`, and
+      `iaso check` (dangling links, duplicate IDs, stale pins, unconfirmed edits);
+   2. the hash-chained append-only log, pinned approvals (`iaso approve`, `iaso revoke`;
       `by: owner` and `by: agent-relayed`), the prompt-digest log, and the CLI side of the
       approval guard (session marker and write-time quote check, section 4.6);
-   3. plumb's own requirements written as `SR` records in `.plumb/`, the `SR:` trailer and
-      the commit-msg hook that checks it. From this step on, plumb's commits carry `SR:`
+   3. iaso's own requirements written as `SR` records in `.iaso/`, the `SR:` trailer and
+      the commit-msg hook that checks it. From this step on, iaso's commits carry `SR:`
       trailers;
-   4. `plumb check --merge <base>` with its first two parts (section 7.5): every touched
+   4. `iaso check --merge <base>` with its first two parts (section 7.5): every touched
       requirement must be confirmed, and the `agent-relayed` approvals of the range are
       listed. Its fidelity and verification lines join it as those parts land;
    5. the session-start, prompt, edit-tracking and stop hooks (the summary shows read-backs
       and examples as `proposed`), the guard hook, the status line, the in-flow confirmation
-      path (the owner's explicit words only), and `plumb install claude-code`. Each hook is
-      installed in plumb's own repository as soon as it lands;
-   6. `plumb map` (`verified_by` links, `sr` markers and the AST import closure), covering-test
+      path (the owner's explicit words only), and `iaso install claude-code`. Each hook is
+      installed in iaso's own repository as soon as it lands;
+   6. `iaso map` (`verified_by` links, `sr` markers and the AST import closure), covering-test
       selection with the per-turn time budget, the unknown-coverage sample and the derived
       `full verification pending` state (an infrastructure change never triggers a full run
-      in a turn, section 7.2), and `plumb verify` with evidence keyed by `node_id`,
+      in a turn, section 7.2), and `iaso verify` with evidence keyed by `node_id`,
       `closure_digest` and the cheap `env_key` only.
 
    **1b. Rest of sub-project 1**, built after 1a:
-   - `plumb fidelity` packets and `plumb judge` (section 6.4);
+   - `iaso fidelity` packets and `iaso judge` (section 6.4);
    - the judgment interface with the heuristic, disabled and fake backends;
    - AST symbol-level hashing of link ends (1a hashes whole files);
    - the full environment identity of section 7.3;
    - the failure policy: flaky rerun of failed tests within a turn, and owner waivers for the
      merge-boundary full rerun;
-   - `plumb claims check` (claimed against declared paths) and `.plumb/claims.yaml`.
+   - `iaso claims check` (claimed against declared paths) and `.iaso/claims.yaml`.
 
    If time runs out, every item of 1a or 1b that is not finished is recorded in
    `docs/followups.md` with its state, and is built next in the order above. Items are dropped
@@ -1158,30 +1158,30 @@ exposes the brief, the relevant records, why and impact, and drift
    dogfoodable core: records, hashes, approvals, check (including the merge-boundary
    confirmation rule), trailers, hooks and status line.
 
-   Exit criteria: plumb's own requirements are `SR` records in `.plumb/`, its commits carry
-   `SR:` trailers, plumb's hooks are installed in its own repository, the hooks stay under
-   budget, and `plumb check --merge` refuses a merge whose touched requirements are not all
+   Exit criteria: iaso's own requirements are `SR` records in `.iaso/`, its commits carry
+   `SR:` trailers, iaso's hooks are installed in its own repository, the hooks stay under
+   budget, and `iaso check --merge` refuses a merge whose touched requirements are not all
    confirmed.
 Sub-projects 2 to 5 and the importer completion are built as one batch of five parallel
 lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its spec.
 
 2. **Intent capture and escalation** (`docs/specs/sp2-intent-capture.md`, lane CAPTURE).
    This adds:
-   - `plumb capture`, which records a whole read-back in one call, and the helpers
-     `plumb new`, `plumb intent`, `plumb example` and `plumb decide` (decisions with
+   - `iaso capture`, which records a whole read-back in one call, and the helpers
+     `iaso new`, `iaso intent`, `iaso example` and `iaso decide` (decisions with
      alternatives, "I assumed A; B also fits");
    - the escalation triggers and the up-front spec mode, a set of records approved by
      set-hash;
    - intent-change and contradiction scoring through the judgment backend, the heuristic by
      default and the live JEV client only behind the protocol, its credential read from the
      environment;
-   - the R8 commands (D14): `plumb triage`, `plumb config auto-approve on|off`,
-     `plumb config show`, `plumb jev status`, `plumb jev setup`; the narrow auto-approval,
-     gated by calibration (`plumb jev calibrate`, D17 item 1);
-   - the `plumb-clarify` skill and `plumb clarify` (D16), with the `plumb` skill (now
-     `plumb-records`, DEC-036) updated to drive the capture helpers;
+   - the R8 commands (D14): `iaso triage`, `iaso config auto-approve on|off`,
+     `iaso config show`, `iaso jev status`, `iaso jev setup`; the narrow auto-approval,
+     gated by calibration (`iaso jev calibrate`, D17 item 1);
+   - the `iaso-clarify` skill and `iaso clarify` (D16), with the `iaso` skill (now
+     `iaso-records`, DEC-036) updated to drive the capture helpers;
    - ownership proposals and the hidden-dependency scan as drift hints (D17 items 3 and 4).
-3. **Merge boundary** (`docs/specs/sp3-merge-boundary.md`, lane MERGE). `plumb merge-check`
+3. **Merge boundary** (`docs/specs/sp3-merge-boundary.md`, lane MERGE). `iaso merge-check`
    completes section 7.5: every touched requirement confirmed; agent-relayed and auto-JEV
    approvals listed for a glance; `full verification pending` cleared by exactly one
    full-suite run with evidence pinned to identity; claims, stale and dangling links and
@@ -1192,26 +1192,26 @@ lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its sp
    read-only MCP server on stdio.
 5. **Presentation** (`docs/specs/sp5-presentation.md`, lane PRESENT). D13 beyond what
    sub-project 1 already ships (the per-session prompt delta, the compact session brief and
-   `plumb explain`): one deduplicated delta for every hook output; the one-line status card
+   `iaso explain`): one deduplicated delta for every hook output; the one-line status card
    and the full intent card only when it matters, configurable `full`, `compact` or `off`;
-   plain-language owner slash commands executed through the agent (`/plumb explain`,
-   `/plumb status`, `/plumb review`, `/plumb confirm`); the R8 commands as the owner sees
-   them ("confirmed by you" or "by JEV"); `plumb align` (D17 item 2); and `plumb view`, a
+   plain-language owner slash commands executed through the agent (`/iaso explain`,
+   `/iaso status`, `/iaso review`, `/iaso confirm`); the R8 commands as the owner sees
+   them ("confirmed by you" or "by JEV"); `iaso align` (D17 item 2); and `iaso view`, a
    generated Obsidian vault of the records with a Canvas intent map, which never approves
    anything.
    **Importer completion** (lane IMPORT, specified in `docs/plans/next-plan.md` section 9):
    the full pi-agent-factory register import (SR relations to code and tests, bundles to
    features, NCs, `by: import` approvals only where an upstream human consent pins the
-   current content), idempotent, with a dry-run diff. Moving pi-agent-factory onto plumb and
+   current content), idempotent, with a dry-run diff. Moving pi-agent-factory onto iaso and
    retiring the duplicated modules there follow the fork plan (`docs/fork-plan.md`, F3 and F4).
 6. **Parallel work** (D15, ruling R10), built after the batch above: collision-free IDs
-   reserved through the shared ref `refs/plumb/ids` with git's compare-and-swap
-   (`plumb merge-fix` renumbers collisions from other clones); one file per log entry under
-   `.plumb/log/<kind>/` as section 4.7 says, with a migration of the current JSONL streams
+   reserved through the shared ref `refs/iaso/ids` with git's compare-and-swap
+   (`iaso merge-fix` renumbers collisions from other clones); one file per log entry under
+   `.iaso/log/<kind>/` as section 4.7 says, with a migration of the current JSONL streams
    that keeps the hash chain; a frontmatter-aware git merge driver whose content conflicts
    become intent conflicts shown as one card with both versions; cross-worktree awareness in
    the brief and the status line, read-only, with no leases and no admission; and
-   `plumb check --merge` on the merge result as a pre-merge or pre-push hook. The batch
+   `iaso check --merge` on the merge result as a pre-merge or pre-push hook. The batch
    above avoids designs that conflict with it: IDs come from one allocation function, every
    log write goes through one append function, and no shared mutable runtime state is added.
 
@@ -1219,7 +1219,7 @@ lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its sp
 
 - No run state machine, no phases, no planning runs, no handoff hashes, no consent phrases, no
   review swarms, and no governed execution by default.
-- No orchestration of agents. plumb informs and checks; the host agent does the work.
+- No orchestration of agents. iaso informs and checks; the host agent does the work.
 - No full test suite and no environment scan per turn. A shared-infrastructure change sets
   `full verification pending`, which the next merge boundary satisfies; it never triggers a
   full run inside a turn, and the tests run in a turn stay within the per-turn time budget
@@ -1228,7 +1228,7 @@ lanes after a short contracts phase (`docs/plans/next-plan.md`); each has its sp
 - No model that decides freshness, and no model that confirms intent except where the owner
   chose it. Hashes decide staleness, and only the owner confirms: by a command in the
   owner's own terminal, or by the owner's own affirming words in a prompt, which the agent
-  records as a guarded `agent-relayed` approval that plumb checks deterministically (verbatim
+  records as a guarded `agent-relayed` approval that iaso checks deterministically (verbatim
   quote of a logged prompt, an affirmation term, targets limited to the records just stated,
   the triage group just offered, or records named by ID; sections 4.6 and 6.6). There is no
   "no-objection" approval: neither silence nor a prompt that merely does not object confirms

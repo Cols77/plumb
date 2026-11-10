@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.understand import repin
-from plumb.understand.repin import Meaning, ModelMeaningJudge
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.understand import repin
+from iaso.understand.repin import Meaning, ModelMeaningJudge
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -65,9 +65,9 @@ def _state(repo: Path) -> str:
 
 def test_a_reworded_requirement_is_judged_with_its_old_wording_even_if_the_code_stood(
         project: Path, write_record) -> None:
-    from plumb.links import repin_after_tests
+    from iaso.links import repin_after_tests
 
-    sr = project / ".plumb" / "requirements" / "SR-001.md"             # the source moved
+    sr = project / ".iaso" / "requirements" / "SR-001.md"             # the source moved
     sr.write_text(sr.read_text("utf-8").replace("the sum.", "the sum of its two numbers."),
                   "utf-8")                                              # the links stay
     sonnet = Judge(True)

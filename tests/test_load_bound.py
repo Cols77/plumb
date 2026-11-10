@@ -40,7 +40,7 @@ def _suite(repo: Path, body: str) -> tuple[subprocess.CompletedProcess, list[dic
                            "--rootdir", str(repo), "--confcutdir", str(repo), "-c", "NUL" if os.name == "nt" else "/dev/null",
                            str(repo / "test_t.py")], cwd=repo, env=env, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", check=False)
-    cases = [row for p in (repo / ".plumb" / "cache" / "debug").glob("*.json")
+    cases = [row for p in (repo / ".iaso" / "cache" / "debug").glob("*.json")
              for row in json.loads(p.read_text(encoding="utf-8"))]
     return done, cases
 

@@ -10,15 +10,15 @@ from pathlib import Path
 
 import pytest
 
-from plumb import hashing
-from plumb.contracts import Target
+from iaso import hashing
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-310")
 
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    (tmp_path / ".plumb").mkdir()
+    (tmp_path / ".iaso").mkdir()
     (tmp_path / "src").mkdir()
     code = tmp_path / "src" / "m.py"
     code.write_text("def f():\n    return 1\n\n\ndef g():\n    return 2\n", encoding="utf-8")
@@ -108,7 +108,7 @@ def test_a_hook_cut_by_the_watchdog_still_saves_what_it_learned(
     with hashing.stat_cached(root):
         first = hashing.hash_target(root, {}, target)
         hashing.flush_stat_cache()  # what the watchdog calls just before it exits
-        saved = (root / ".plumb" / "cache" / "hashes.json").read_text("utf-8")
+        saved = (root / ".iaso" / "cache" / "hashes.json").read_text("utf-8")
     assert "src/m.py" in saved
     assert _hash(root, target) == first
     assert len(reads) == 1

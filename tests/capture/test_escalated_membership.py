@@ -1,6 +1,6 @@
 """R8 B "NEVER for an escalated spec set": a record that derives from (or decides) an escalated
 INT belongs to its set even when the anchor's ``members`` does not list it
-(``plumb.capture.spec.escalated_sets``). One test per entry point that reads the rule: the
+(``iaso.capture.spec.escalated_sets``). One test per entry point that reads the rule: the
 fast track in the judge job, the validate re-check, triage and the set state."""
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from capture_helpers import approve_set, log_prompt, record_text, run
 from jev_fixtures import calibrated
 from understand.test_one_judge import run_judge_job
 
-from plumb.api import open_core
-from plumb.capture.spec import set_state
+from iaso.api import open_core
+from iaso.capture.spec import set_state
 
 pytestmark = [pytest.mark.sr("SR-250"), pytest.mark.sr("SR-227")]
 
@@ -32,7 +32,7 @@ REQUIREMENT = {"title": "multiply returns the product",
 def ready(repo: Path, write_record, monkeypatch):
     stub = calibrated(repo, write_record, monkeypatch, requirements=True)
     assert run(repo, "config", "auto-approve", "on") == 0  # the owner's terminal (test)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")  # the agent captures
+    monkeypatch.setenv("IASO_AGENT_SESSION", "session-1")  # the agent captures
     yield repo
     stub.close()
 
@@ -79,11 +79,11 @@ def test_validate_rejects_auto_jev_of_a_record_of_an_escalated_set(ready) -> Non
     intent, sr = new_ids(repo, before)
     run_judge_job(repo, [intent, sr])
     assert state_of(repo, sr) == "confirmed"  # auto-jev while the intent was incremental
-    path = repo / ".plumb" / "intents" / f"{intent}.md"
+    path = repo / ".iaso" / "intents" / f"{intent}.md"
     path.write_text(path.read_text(encoding="utf-8").replace("mode: incremental",
                                                              "mode: escalated"),
                     encoding="utf-8")
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     core = open_core(repo)
     inert = [f for f in validate(core) if f.code == "inert-approval" and sr in f.subject]

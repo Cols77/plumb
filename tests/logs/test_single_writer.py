@@ -1,5 +1,5 @@
 """SP6 6.2: ``log.append`` (and the migration in ``log.py``) is the only writer under
-``.plumb/log/`` (SR-073)."""
+``.iaso/log/`` (SR-073)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ import pytest
 
 pytestmark = pytest.mark.sr("SR-232")
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "plumb"
+SRC = Path(__file__).resolve().parents[2] / "src" / "iaso"
 LOG_REF = re.compile(r"log_dir|log_kind_dir|log_events|log_evidence|log_path\(|log_head|"
-                     r"log_pack\(|\.plumb/log")
+                     r"log_pack\(|\.iaso/log")
 WRITES = re.compile(r"write_text|write_bytes|\.touch\(|os\.link|os\.replace|unlink|"
                     r"os\.remove|open\([^)]*[\"'][wa]b?[\"']")
 # guard.py / pretool.py only refuse agent edits under the log
@@ -26,7 +26,7 @@ READERS = {"paths.py", "commands.py", "merge.py", "validate.py", "hosts/claude_c
            "boundary/landing.py"}  # names log paths to stage the tidy commit; writes none
 
 
-def test_only_log_py_writes_under_plumb_log() -> None:
+def test_only_log_py_writes_under_iaso_log() -> None:
     referencing: dict[str, list[str]] = {}
     for path in SRC.rglob("*.py"):
         rel = path.relative_to(SRC).as_posix()

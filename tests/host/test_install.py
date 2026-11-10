@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import install
+from iaso.hosts.claude_code import install
 
 pytestmark = pytest.mark.sr("SR-279")
 
 ALL_HOOKS = ("session-start", "prompt", "post-edit", "stop")
-UV = install.Launcher("uv", "uv run --no-sync plumb", "uv run --no-sync plumb")
+UV = install.Launcher("uv", "uv run --no-sync iaso", "uv run --no-sync iaso")
 
 
 def _settings(repo: Path) -> dict:
@@ -28,8 +28,8 @@ def _commands(settings: dict, event: str) -> list[str]:
 
 @pytest.fixture
 def no_claims(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Hide BRIDGE's plumb.claims so the installer degrades with a notice."""
-    monkeypatch.setitem(sys.modules, "plumb.claims", None)
+    """Hide BRIDGE's iaso.claims so the installer degrades with a notice."""
+    monkeypatch.setitem(sys.modules, "iaso.claims", None)
 
 
 def _install(repo: Path, **kwargs) -> install.InstallReport:
@@ -42,19 +42,19 @@ def _install(repo: Path, **kwargs) -> install.InstallReport:
 def test_install_writes_hooks_statusline_env_and_deny_rules(repo: Path, no_claims) -> None:
     _install(repo)
     settings = _settings(repo)
-    assert _commands(settings, "SessionStart") == ["uv run --no-sync plumb hook session-start"]
-    assert _commands(settings, "UserPromptSubmit") == ["uv run --no-sync plumb hook prompt"]
-    assert _commands(settings, "PostToolUse") == ["uv run --no-sync plumb hook post-edit"]
+    assert _commands(settings, "SessionStart") == ["uv run --no-sync iaso hook session-start"]
+    assert _commands(settings, "UserPromptSubmit") == ["uv run --no-sync iaso hook prompt"]
+    assert _commands(settings, "PostToolUse") == ["uv run --no-sync iaso hook post-edit"]
     assert settings["hooks"]["PostToolUse"][0]["matcher"] == "Edit|Write|MultiEdit|NotebookEdit"
-    assert _commands(settings, "Stop") == ["uv run --no-sync plumb hook stop"]
+    assert _commands(settings, "Stop") == ["uv run --no-sync iaso hook stop"]
     assert settings["statusLine"] == {"type": "command",
-                                      "command": "uv run --no-sync plumb statusline"}
-    assert settings["env"]["PLUMB_AGENT_SESSION"] == "claude-code"
+                                      "command": "uv run --no-sync iaso statusline"}
+    assert settings["env"]["IASO_AGENT_SESSION"] == "claude-code"
     deny = settings["permissions"]["deny"]
-    for rule in ("Bash(plumb approve:*)", "Bash(plumb revoke:*)", "Bash(plumb tests waive:*)",
-                 "Bash(uv run plumb approve:*)", "Bash(python -m plumb approve:*)",
-                 "Bash(uv run --no-sync plumb approve:*)", "Bash(*PLUMB_AGENT_SESSION*)",
-                 "Edit(.plumb/log/**)", "Write(.plumb/log/**)", "MultiEdit(.plumb/log/**)"):
+    for rule in ("Bash(iaso approve:*)", "Bash(iaso revoke:*)", "Bash(iaso tests waive:*)",
+                 "Bash(uv run iaso approve:*)", "Bash(python -m iaso approve:*)",
+                 "Bash(uv run --no-sync iaso approve:*)", "Bash(*IASO_AGENT_SESSION*)",
+                 "Edit(.iaso/log/**)", "Write(.iaso/log/**)", "MultiEdit(.iaso/log/**)"):
         assert rule in deny
     assert not any("relay" in rule for rule in deny)
 
@@ -95,7 +95,7 @@ def test_install_preserves_foreign_settings_and_is_idempotent(repo: Path, no_cla
     assert settings["model"] == "opus" and settings["env"]["FOO"] == "1"
     assert "Bash(git status)" in settings["permissions"]["allow"]
     assert "Bash(rm -rf:*)" in settings["permissions"]["deny"]
-    assert _commands(settings, "Stop") == ["echo bye", "uv run --no-sync plumb hook stop"]
+    assert _commands(settings, "Stop") == ["echo bye", "uv run --no-sync iaso hook stop"]
     assert "lint.sh" in _commands(settings, "PostToolUse")
     assert settings["statusLine"]["command"] == "my-status"  # a foreign status line is kept
     assert any("status line" in line and "kept" in line for line in report.lines)
@@ -104,15 +104,15 @@ def test_install_preserves_foreign_settings_and_is_idempotent(repo: Path, no_cla
     assert b"\r\n" not in first
 
 
-def test_reinstall_with_new_launcher_replaces_plumb_entries(repo: Path, no_claims) -> None:
+def test_reinstall_with_new_launcher_replaces_iaso_entries(repo: Path, no_claims) -> None:
     _install(repo)
-    venv = install.Launcher("venv", '"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m plumb',
-                            ".venv/Scripts/python.exe -m plumb")
+    venv = install.Launcher("venv", '"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m iaso',
+                            ".venv/Scripts/python.exe -m iaso")
     _install(repo, launcher=venv)
     settings = _settings(repo)
     assert _commands(settings, "Stop") == [
-        '"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m plumb hook stop']
-    assert "Bash(.venv/Scripts/python.exe -m plumb approve:*)" in settings["permissions"]["deny"]
+        '"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe" -m iaso hook stop']
+    assert "Bash(.venv/Scripts/python.exe -m iaso approve:*)" in settings["permissions"]["deny"]
 
 
 def test_post_edit_registered_async(repo: Path, no_claims) -> None:
@@ -125,16 +125,16 @@ def test_post_edit_registered_async(repo: Path, no_claims) -> None:
 
 def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
     _install(repo)
-    skill = (repo / ".claude" / "skills" / "plumb-records" / "SKILL.md").read_text(
+    skill = (repo / ".claude" / "skills" / "iaso-records" / "SKILL.md").read_text(
         encoding="utf-8")
-    assert skill.startswith("---\nname: plumb-records\n")  # SR-120: /plumb is the command
+    assert skill.startswith("---\nname: iaso-records\n")  # SR-120: /iaso is the command
     body = skill.split("---", 2)[2].strip().splitlines()
     # the context and the question rules (SR-248; SR-362 added three; SR-379 made it their home)
     assert 12 <= len(body) <= 46
-    assert ".plumb/test_map.txt" in skill
-    assert "uv run --no-sync plumb tests run --changed" in skill
-    assert "never" in skill.lower() and "plumb approve" in skill
-    assert "{plumb}" not in skill
+    assert ".iaso/test_map.txt" in skill
+    assert "uv run --no-sync iaso tests run --changed" in skill
+    assert "never" in skill.lower() and "iaso approve" in skill
+    assert "{iaso}" not in skill
 
 
 def test_claude_md_block_idempotent(repo: Path, no_claims) -> None:
@@ -143,26 +143,26 @@ def test_claude_md_block_idempotent(repo: Path, no_claims) -> None:
     _install(repo)
     text = (repo / "CLAUDE.md").read_text(encoding="utf-8")
     assert text.startswith("# Project\n\nOwn notes.\n")
-    assert text.count("<!-- plumb:begin -->") == 1 and text.count("<!-- plumb:end -->") == 1
-    assert ".plumb/test_map.txt" in text and "brief" in text
+    assert text.count("<!-- iaso:begin -->") == 1 and text.count("<!-- iaso:end -->") == 1
+    assert ".iaso/test_map.txt" in text and "brief" in text
 
 
 def test_install_calls_commit_msg_installer_or_notes_missing(repo: Path,
                                                             monkeypatch: pytest.MonkeyPatch
                                                             ) -> None:
-    monkeypatch.setitem(sys.modules, "plumb.claims", None)
+    monkeypatch.setitem(sys.modules, "iaso.claims", None)
     report = _install(repo)
     assert any("commit-msg" in line and "not available" in line for line in report.lines)
 
     calls = []
-    fake = types.ModuleType("plumb.claims")
+    fake = types.ModuleType("iaso.claims")
 
     def install_commit_msg_hook(root: Path, interpreter: str) -> Path:
         calls.append((root, interpreter))
         return root / ".git" / "hooks" / "commit-msg"
 
     fake.install_commit_msg_hook = install_commit_msg_hook
-    monkeypatch.setitem(sys.modules, "plumb.claims", fake)
+    monkeypatch.setitem(sys.modules, "iaso.claims", fake)
     report = _install(repo)
     assert calls == [(repo, sys.executable)]
     assert any("commit-msg" in line and "installed" in line for line in report.lines)
@@ -170,13 +170,13 @@ def test_install_calls_commit_msg_installer_or_notes_missing(repo: Path,
 
 def test_commit_msg_installer_failure_is_reported(repo: Path,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = types.ModuleType("plumb.claims")
+    fake = types.ModuleType("iaso.claims")
 
     def install_commit_msg_hook(root: Path, interpreter: str) -> Path:
         raise RuntimeError("a foreign commit-msg hook exists; left untouched")
 
     fake.install_commit_msg_hook = install_commit_msg_hook
-    monkeypatch.setitem(sys.modules, "plumb.claims", fake)
+    monkeypatch.setitem(sys.modules, "iaso.claims", fake)
     report = _install(repo)
     assert any("foreign commit-msg hook" in line for line in report.lines)
 
@@ -193,14 +193,14 @@ def test_launcher_selection(repo: Path) -> None:
     venv = install.choose_launcher(repo, "auto", which=which_none)
     assert venv.kind == "venv"
     rel = exe.relative_to(repo).as_posix()
-    assert venv.hook_prefix == f'"$CLAUDE_PROJECT_DIR/{rel}" -m plumb'
-    assert venv.agent_prefix == f"{rel} -m plumb"
-    # plumb on PATH only because the project's own venv is active: still the venv launcher
-    inside = str(scripts / "plumb.exe")
+    assert venv.hook_prefix == f'"$CLAUDE_PROJECT_DIR/{rel}" -m iaso'
+    assert venv.agent_prefix == f"{rel} -m iaso"
+    # iaso on PATH only because the project's own venv is active: still the venv launcher
+    inside = str(scripts / "iaso.exe")
     assert install.choose_launcher(repo, "auto", which=lambda n: inside).kind == "venv"
-    elsewhere = "C:/tools/bin/plumb.exe" if install.IS_WINDOWS else "/usr/local/bin/plumb"
+    elsewhere = "C:/tools/bin/iaso.exe" if install.IS_WINDOWS else "/usr/local/bin/iaso"
     assert install.choose_launcher(repo, "auto", which=lambda n: elsewhere).kind == "path"
-    assert install.choose_launcher(repo, "path", which=which_none).hook_prefix == "plumb"
+    assert install.choose_launcher(repo, "path", which=which_none).hook_prefix == "iaso"
     assert install.choose_launcher(repo, "uv", which=which_none).kind == "uv"
 
 
@@ -219,11 +219,11 @@ def test_invalid_settings_json_is_not_clobbered(repo: Path, no_claims) -> None:
 
 
 def test_cli_hooks_install_and_alias(repo: Path, no_claims, capsys) -> None:
-    from plumb.cli import main
+    from iaso.cli import main
 
     assert main(["hooks", "install", "--root", str(repo), "--launcher", "uv"]) == 0
     assert _commands(_settings(repo), "SessionStart") == [
-        "uv run --no-sync plumb hook session-start"]
+        "uv run --no-sync iaso hook session-start"]
     assert main(["install", "claude-code", "--root", str(repo), "--launcher", "uv"]) == 0
     assert "unchanged" in capsys.readouterr().out
     assert main(["install", "codex", "--root", str(repo)]) == 2
@@ -232,7 +232,7 @@ def test_cli_hooks_install_and_alias(repo: Path, no_claims, capsys) -> None:
 # --- SHOULD items -----------------------------------------------------------------------
 
 
-def test_uninstall_removes_only_plumb_entries(repo: Path, no_claims) -> None:
+def test_uninstall_removes_only_iaso_entries(repo: Path, no_claims) -> None:
     claude = repo / ".claude"
     claude.mkdir()
     foreign = {"env": {"FOO": "1"}, "permissions": {"deny": ["Bash(rm -rf:*)"]},
@@ -243,8 +243,8 @@ def test_uninstall_removes_only_plumb_entries(repo: Path, no_claims) -> None:
     install.uninstall(repo)
     settings = _settings(repo)
     assert settings == foreign
-    assert not (claude / "skills" / "plumb-records").exists()
-    assert not (claude / "commands" / "plumb.md").exists()
+    assert not (claude / "skills" / "iaso-records").exists()
+    assert not (claude / "commands" / "iaso.md").exists()
     assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "# Project\n"
 
 
@@ -254,31 +254,31 @@ def test_hooks_status_reports_installed_parts(repo: Path, no_claims) -> None:
     _install(repo)
     after = "\n".join(install.status(repo))
     for part in ("session-start", "prompt", "post-edit", "stop", "statusLine",
-                 "PLUMB_AGENT_SESSION", "deny rules", "skill", "CLAUDE.md"):
+                 "IASO_AGENT_SESSION", "deny rules", "skill", "CLAUDE.md"):
         assert part in after
 
 
 @pytest.mark.sr("SR-278")
 def test_slash_command_brief_why_impact(repo: Path, no_claims) -> None:
     _install(repo)
-    text = (repo / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
+    text = (repo / ".claude" / "commands" / "iaso.md").read_text(encoding="utf-8")
     assert "$ARGUMENTS" in text
     for name in ("brief", "explain", "why", "impact"):
-        assert f"Bash(uv run --no-sync plumb {name}:*)" in text
+        assert f"Bash(uv run --no-sync iaso {name}:*)" in text
 
 
 @pytest.mark.sr("SR-203")
 def test_slash_command_routes_plain_language_explain(repo: Path, no_claims) -> None:
-    """/plumb advertises explain with plain-language arguments, keeps why as an alias, and
-    advertises only subcommands the CLI has (R9: the /plumb why bug)."""
-    from plumb import cli
+    """/iaso advertises explain with plain-language arguments, keeps why as an alias, and
+    advertises only subcommands the CLI has (R9: the /iaso why bug)."""
+    from iaso import cli
 
     _install(repo)
-    text = (repo / ".claude" / "commands" / "plumb.md").read_text(encoding="utf-8")
+    text = (repo / ".claude" / "commands" / "iaso.md").read_text(encoding="utf-8")
     hint = next(line for line in text.splitlines() if line.startswith("argument-hint:"))
     assert "explain <anything>" in hint
     assert "why <ID|path>" not in text
-    assert "uv run --no-sync plumb explain <their words>" in text
+    assert "uv run --no-sync iaso explain <their words>" in text
     advertised = {part.split()[0] for part in hint.split('"')[1].split("|")}
     # sp5 6.1: the six owner verbs, plain words accepted (SR-064 EX-3), plus the JEV judge
     # (setup, status, calibrate: SR-039, R14); SR-122: every typed verb the command answers

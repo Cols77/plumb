@@ -11,9 +11,9 @@ from typing import Any
 import pytest
 from host.test_answer_rejudge import answer as owner_answers
 
-from plumb.api import open_core
-from plumb.hosts.claude_code.snapshot import awaiting_count
-from plumb.understand import cmd_clarify, files, judge, premise, summary, worker
+from iaso.api import open_core
+from iaso.hosts.claude_code.snapshot import awaiting_count
+from iaso.understand import cmd_clarify, files, judge, premise, summary, worker
 from understand.test_judge_cascade import configure, fast_track_on, world  # noqa: F401
 from understand.test_judge_job import SESSION
 from understand.test_judge_questions import answer, applied_on, asking, written
@@ -166,7 +166,7 @@ def test_ex7_three_records_of_one_principle_are_one_question_naming_them_by_titl
     title, never by id, and covers all three."""
     import json
 
-    from plumb.understand import cmd_question
+    from iaso.understand import cmd_question
 
     waiting(world, *[(f"Records {n}?", "public pages only", False, ("SR-001",))
                      for n in range(3)])

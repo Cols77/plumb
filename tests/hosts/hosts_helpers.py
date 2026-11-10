@@ -8,8 +8,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from plumb.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK
-from plumb.contracts import FullPending, NodeEvidence, Selection
+from iaso.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK
+from iaso.contracts import FullPending, NodeEvidence, Selection
 
 SR1 = """---
 id: SR-001
@@ -40,7 +40,7 @@ links:
 
 def scripted_judge(monkeypatch, where: Path) -> None:
     """DEC-088: since DEC-060 / SR-174 the stale check waits without a judge, so these tests
-    get a scripted one (``PLUMB_FAKE_DISPATCH``) that says the edit changed the meaning and
+    get a scripted one (``IASO_FAKE_DISPATCH``) that says the edit changed the meaning and
     brings it to the owner on a card lacking its consequences, which does not resolve the
     link (SR-116), so the stale hold still blocks."""
     script = where / "judge.json"
@@ -48,7 +48,7 @@ def scripted_judge(monkeypatch, where: Path) -> None:
         "repin": {"verdict": "changed", "reason": "the value changed", "confidence": 0.9},
         "diagnose": {"outcome": "owner", "explanation": "the value changed", "topic": "",
                      "options": ["keep the new value", "undo the edit"]}}), "utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
 
 
 def git(root: Path, *args: str) -> None:
@@ -57,8 +57,8 @@ def git(root: Path, *args: str) -> None:
 
 def make_project(repo: Path, write_record, *, decision: bool = True) -> Path:
     """SR-001 implemented by src/calc.py (and an unconfirmed DEC that matters), committed."""
-    from plumb.api import open_core
-    from plumb.contracts import Target
+    from iaso.api import open_core
+    from iaso.contracts import Target
 
     write_record(repo, SR1)
     if decision:
@@ -99,14 +99,14 @@ def snapshot(root: Path) -> dict[str, bytes]:
 
 
 def approve_in_agent_shell(root: Path, monkeypatch, env: Mapping[str, str]) -> int:
-    """``plumb approve SR-001`` as an agent's shell runs it on a host: the environment the
+    """``iaso approve SR-001`` as an agent's shell runs it on a host: the environment the
     adapter gives (``env``), no terminal, a piped "y", and the real terminal check."""
     import io
 
-    from plumb import approvals, cli
+    from iaso import approvals, cli
 
     monkeypatch.setattr(approvals, "owner_terminal_answer", REAL_TERMINAL_CHECK)
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr("sys.stdin", io.StringIO("y\ny\n"))
@@ -115,6 +115,6 @@ def approve_in_agent_shell(root: Path, monkeypatch, env: Mapping[str, str]) -> i
 
 
 def approvals_written(root: Path) -> list:
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     return list(open_core(root).log_read("events", ["approval"]))

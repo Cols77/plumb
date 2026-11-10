@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import CoreAPI
+from iaso.api import open_core
+from iaso.contracts import CoreAPI
 
 
 @pytest.mark.sr("SR-230")

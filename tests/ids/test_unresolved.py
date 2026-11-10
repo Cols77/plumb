@@ -15,14 +15,14 @@ import pytest
 
 from ids import scenario
 from ids.gitrepo import commit_all, run_git
-from plumb import ids
-from plumb.api import open_core
-from plumb.cli import main
+from iaso import ids
+from iaso.api import open_core
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-257")
 
-FEAT = ".plumb/features/FEAT-001.md"
-SR_PATH = ".plumb/requirements/SR-002.md"
+FEAT = ".iaso/features/FEAT-001.md"
+SR_PATH = ".iaso/requirements/SR-002.md"
 
 
 def _feature(root: Path, description: str, requirements: list[str]) -> None:
@@ -49,7 +49,7 @@ def _feature_conflict(tmp_path: Path) -> scenario.Scenario:
 
 
 def _untouched(s: scenario.Scenario, before_ref: str) -> None:
-    assert not (s.origin / ".plumb" / "requirements" / "SR-003.md").exists()
+    assert not (s.origin / ".iaso" / "requirements" / "SR-003.md").exists()
     assert run_git(s.origin, "rev-parse", ids.REF).strip() == before_ref
     assert not [e for e in open_core(s.origin).events() if e.kind == "renumber"]
 

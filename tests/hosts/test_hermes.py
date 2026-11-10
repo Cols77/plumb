@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 from hosts_helpers import approvals_written, approve_in_agent_shell, make_project, snapshot
 
-from plumb.cli import main
-from plumb.hosts.common import command_line, launcher_argv
-from plumb.hosts.hermes import install as hermes
+from iaso.cli import main
+from iaso.hosts.common import command_line, launcher_argv
+from iaso.hosts.hermes import install as hermes
 
 pytestmark = pytest.mark.sr("SR-283")
 
@@ -35,8 +35,8 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
 @pytest.fixture(autouse=True)
 def restore_marker(monkeypatch) -> None:
     """register(ctx) sets the marker in os.environ: give it back after each test."""
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "")
-    monkeypatch.delenv("PLUMB_AGENT_SESSION")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "")
+    monkeypatch.delenv("IASO_AGENT_SESSION")
 
 
 class FakeCtx:
@@ -73,58 +73,58 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
     first = snapshot(project)
     assert hermes.install(project).changed == []
     assert snapshot(project) == first
-    assert ".hermes/plugins/plumb/plugin.py" in first
+    assert ".hermes/plugins/iaso/plugin.py" in first
     assert first["AGENTS.md"].decode().startswith("# Owner's notes")
     assert b"name: other" in first[".hermes/plugins/other/plugin.yaml"]
 
 
 def test_install_generates_canonical_namespaced_skills(project: Path) -> None:
     report = hermes.install(project, launcher="path")
-    assert any("skills/plumb-records/SKILL.md" in item for item in report.changed)
+    assert any("skills/iaso-records/SKILL.md" in item for item in report.changed)
     skill_dir = project / hermes.PLUGIN_DIR / "skills"
-    assert (skill_dir / "plumb-records" / "SKILL.md").read_text("utf-8") == (
-        (hermes.CANONICAL_SKILLS / "plumb-records" / "SKILL.md")
-        .read_text("utf-8").replace("{plumb}", "plumb")
+    assert (skill_dir / "iaso-records" / "SKILL.md").read_text("utf-8") == (
+        (hermes.CANONICAL_SKILLS / "iaso-records" / "SKILL.md")
+        .read_text("utf-8").replace("{iaso}", "iaso")
     )
-    assert (skill_dir / "plumb-clarify" / "SKILL.md").read_text("utf-8") == (
-        (hermes.CANONICAL_SKILLS / "plumb-clarify" / "SKILL.md")
-        .read_text("utf-8").replace("{plumb}", "plumb")
+    assert (skill_dir / "iaso-clarify" / "SKILL.md").read_text("utf-8") == (
+        (hermes.CANONICAL_SKILLS / "iaso-clarify" / "SKILL.md")
+        .read_text("utf-8").replace("{iaso}", "iaso")
     )
     assert not (project / ".hermes" / "skills").exists()
 
 
 def test_skill_update_is_idempotent_and_preserves_foreign(project: Path) -> None:
     hermes.install(project, launcher="path")
-    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb-records" / "SKILL.md"
+    skill = project / hermes.PLUGIN_DIR / "skills" / "iaso-records" / "SKILL.md"
     original = skill.read_text("utf-8")
     assert hermes.install(project, launcher="path").changed == []
     assert skill.read_text("utf-8") == original
-    skill.write_text("---\nname: plumb\n---\nforeign\n", "utf-8")
+    skill.write_text("---\nname: iaso\n---\nforeign\n", "utf-8")
     report = hermes.install(project, launcher="uv")
-    assert skill.read_text("utf-8") == "---\nname: plumb\n---\nforeign\n"
-    assert any("skills/plumb-records/SKILL.md" in line and "not plumb's" in line
+    assert skill.read_text("utf-8") == "---\nname: iaso\n---\nforeign\n"
+    assert any("skills/iaso-records/SKILL.md" in line and "not iaso's" in line
                for line in report.lines)
 
 
 def test_owned_skill_launcher_update_matches_canonical_uv_bytes(project: Path) -> None:
     hermes.install(project, launcher="path")
     report = hermes.install(project, launcher="uv")
-    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb-records" / "SKILL.md"
-    expected = ((hermes.CANONICAL_SKILLS / "plumb-records" / "SKILL.md")
-                .read_text("utf-8").replace("{plumb}",
+    skill = project / hermes.PLUGIN_DIR / "skills" / "iaso-records" / "SKILL.md"
+    expected = ((hermes.CANONICAL_SKILLS / "iaso-records" / "SKILL.md")
+                .read_text("utf-8").replace("{iaso}",
                                              command_line(launcher_argv(project, "uv"))))
     assert skill.read_text("utf-8") == expected
-    assert any("skills/plumb-records/SKILL.md" in item for item in report.changed)
+    assert any("skills/iaso-records/SKILL.md" in item for item in report.changed)
     assert hermes.install(project, launcher="uv").changed == []
 
 
 def test_missing_owned_skill_is_not_registered(project: Path) -> None:
     hermes.install(project, launcher="path")
-    (project / hermes.PLUGIN_DIR / "skills" / "plumb-records" / "SKILL.md").unlink()
-    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_missing_skill")
+    (project / hermes.PLUGIN_DIR / "skills" / "iaso-records" / "SKILL.md").unlink()
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "iaso_missing_skill")
     ctx = FakeCtx()
     plugin.register(ctx)
-    assert set(ctx.skills) == {"plumb-clarify"}
+    assert set(ctx.skills) == {"iaso-clarify"}
 
 
 def test_foreign_plugin_metadata_cannot_authorize_skill_overwrite(project: Path) -> None:
@@ -132,16 +132,16 @@ def test_foreign_plugin_metadata_cannot_authorize_skill_overwrite(project: Path)
     plugin_dir.mkdir(parents=True, exist_ok=True)
     foreign = b"FOREIGN OWNER CONTENT"
     (plugin_dir / "plugin.py").write_bytes(
-        b"SKILL_DIGESTS: dict[str, str] = {'plumb-records': '"
+        b"SKILL_DIGESTS: dict[str, str] = {'iaso-records': '"
         + hashlib.sha256(foreign).hexdigest().encode()
         + b"'}\n"
     )
-    skill = plugin_dir / "skills" / "plumb-records" / "SKILL.md"
+    skill = plugin_dir / "skills" / "iaso-records" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_bytes(foreign)
     report = hermes.install(project, launcher="path")
     assert skill.read_bytes() == foreign
-    assert any("skills/plumb-records/SKILL.md" in line and "not plumb's" in line
+    assert any("skills/iaso-records/SKILL.md" in line and "not iaso's" in line
                for line in report.lines)
 
 
@@ -150,11 +150,11 @@ def test_foreign_plugin_metadata_cannot_authorize_skill_deletion(project: Path) 
     plugin_dir.mkdir(parents=True, exist_ok=True)
     foreign = b"FOREIGN OWNER CONTENT"
     (plugin_dir / "plugin.py").write_bytes(
-        b"SKILL_DIGESTS: dict[str, str] = {'plumb-records': '"
+        b"SKILL_DIGESTS: dict[str, str] = {'iaso-records': '"
         + hashlib.sha256(foreign).hexdigest().encode()
         + b"'}\n"
     )
-    skill = plugin_dir / "skills" / "plumb-records" / "SKILL.md"
+    skill = plugin_dir / "skills" / "iaso-records" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_bytes(foreign)
     hermes.uninstall(project)
@@ -165,11 +165,11 @@ def test_malformed_skill_digest_mapping_is_ignored(project: Path) -> None:
     plugin_dir = project / hermes.PLUGIN_DIR
     plugin_dir.mkdir(parents=True, exist_ok=True)
     (plugin_dir / "plugin.py").write_text(
-        "Generated by `plumb hosts install hermes`\n"
-        "SKILL_DIGESTS: dict[str, str] = {'plumb-records': 'not-a-digest', 'other': 3}\n",
+        "Generated by `iaso hosts install hermes`\n"
+        "SKILL_DIGESTS: dict[str, str] = {'iaso-records': 'not-a-digest', 'other': 3}\n",
         "utf-8",
     )
-    skill = plugin_dir / "skills" / "plumb-records" / "SKILL.md"
+    skill = plugin_dir / "skills" / "iaso-records" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_bytes(b"FOREIGN OWNER CONTENT")
     assert hermes._skill_digests(plugin_dir / "plugin.py") == {}
@@ -186,21 +186,21 @@ def test_dry_run_and_uninstall_cover_owned_skills_only(project: Path) -> None:
     assert hermes.install(project, launcher="uv", dry_run=True).changed
     assert snapshot(project) == before
     hermes.uninstall(project)
-    assert not (project / hermes.PLUGIN_DIR / "skills" / "plumb-records").exists()
+    assert not (project / hermes.PLUGIN_DIR / "skills" / "iaso-records").exists()
     assert foreign.exists()
 
 
 def test_plugin_registers_bare_skills_only_when_files_match(project: Path) -> None:
     hermes.install(project, launcher="path")
-    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_skill_guard")
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "iaso_skill_guard")
     ctx = FakeCtx()
     plugin.register(ctx)
-    assert set(ctx.skills) == {"plumb-records", "plumb-clarify"}
-    skill = project / hermes.PLUGIN_DIR / "skills" / "plumb-records" / "SKILL.md"
+    assert set(ctx.skills) == {"iaso-records", "iaso-clarify"}
+    skill = project / hermes.PLUGIN_DIR / "skills" / "iaso-records" / "SKILL.md"
     skill.write_text("foreign\n", "utf-8")
     ctx = FakeCtx()
     plugin.register(ctx)
-    assert set(ctx.skills) == {"plumb-clarify"}
+    assert set(ctx.skills) == {"iaso-clarify"}
 
 
 def test_pinned_hermes_skill_view_resolves_only_qualified_names(project: Path,
@@ -217,8 +217,8 @@ def test_pinned_hermes_skill_view_resolves_only_qualified_names(project: Path,
                             capture_output=True, text=True, env=env)
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)
-    assert data["registered"] == ["plumb:plumb-clarify", "plumb:plumb-records"]
-    assert data["plumb"]["success"] and data["clarify"]["success"]
+    assert data["registered"] == ["iaso:iaso-clarify", "iaso:iaso-records"]
+    assert data["iaso"]["success"] and data["clarify"]["success"]
     assert not data["flat"]["success"]
 
 
@@ -267,8 +267,8 @@ def test_hook_contract_rejects_swapped_project_plugins(monkeypatch) -> None:
 def test_block_goes_to_hermes_md_when_present(project: Path) -> None:
     (project / ".hermes.md").write_text("# Hermes notes\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in (project / ".hermes.md").read_text("utf-8")
-    assert "plumb:begin" not in (project / "AGENTS.md").read_text("utf-8")
+    assert "iaso:begin" in (project / ".hermes.md").read_text("utf-8")
+    assert "iaso:begin" not in (project / "AGENTS.md").read_text("utf-8")
 
 
 @pytest.mark.parametrize("name", ["CLAUDE.md", "claude.md"])
@@ -280,7 +280,7 @@ def test_install_preserves_claude_context(project: Path, name: str) -> None:
     assert not (project / "AGENTS.md").exists()
     contents = context.read_text("utf-8")
     assert contents.startswith("# Existing instructions\nKeep this rule.")
-    assert "plumb:begin" in contents
+    assert "iaso:begin" in contents
 
 
 def test_empty_hermes_file_does_not_shadow_claude(project: Path) -> None:
@@ -288,7 +288,7 @@ def test_empty_hermes_file_does_not_shadow_claude(project: Path) -> None:
     (project / ".hermes.md").write_text(" \n", "utf-8")
     (project / "CLAUDE.md").write_text("# Claude rules\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in (project / "CLAUDE.md").read_text("utf-8")
+    assert "iaso:begin" in (project / "CLAUDE.md").read_text("utf-8")
     assert (project / ".hermes.md").read_text("utf-8") == " \n"
 
 
@@ -299,7 +299,7 @@ def test_empty_first_hermes_name_does_not_select_second_name(project: Path) -> N
     second.write_text("# Second Hermes rules\n", "utf-8")
     (project / "CLAUDE.md").write_text("# Claude rules\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in (project / "CLAUDE.md").read_text("utf-8")
+    assert "iaso:begin" in (project / "CLAUDE.md").read_text("utf-8")
     assert second.read_text("utf-8") == "# Second Hermes rules\n"
 
 
@@ -309,7 +309,7 @@ def test_both_nonempty_hermes_names_select_first(project: Path) -> None:
     second = project / "HERMES.md"
     second.write_text("# Second Hermes rules\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in (project / ".hermes.md").read_text("utf-8")
+    assert "iaso:begin" in (project / ".hermes.md").read_text("utf-8")
     assert second.read_text("utf-8") == "# Second Hermes rules\n"
 
 
@@ -319,7 +319,7 @@ def test_unreadable_selected_hermes_file_falls_through(project: Path) -> None:
     claude = project / "CLAUDE.md"
     claude.write_text("# Claude rules\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in claude.read_text("utf-8")
+    assert "iaso:begin" in claude.read_text("utf-8")
     assert (project / ".hermes.md").read_bytes() == b"\xff\xfe"
 
 
@@ -328,16 +328,16 @@ def test_lowercase_agents_context_is_selected(project: Path) -> None:
     agents = project / "agents.md"
     agents.write_text("# Lowercase owner rules\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in agents.read_text("utf-8")
+    assert "iaso:begin" in agents.read_text("utf-8")
 
 
 def test_agents_override_wins_over_agents_and_claude(project: Path) -> None:
     (project / "AGENTS.override.md").write_text("# Override\n", "utf-8")
     (project / "CLAUDE.md").write_text("# Claude\n", "utf-8")
     hermes.install(project)
-    assert "plumb:begin" in (project / "AGENTS.override.md").read_text("utf-8")
-    assert "plumb:begin" not in (project / "AGENTS.md").read_text("utf-8")
-    assert "plumb:begin" not in (project / "CLAUDE.md").read_text("utf-8")
+    assert "iaso:begin" in (project / "AGENTS.override.md").read_text("utf-8")
+    assert "iaso:begin" not in (project / "AGENTS.md").read_text("utf-8")
+    assert "iaso:begin" not in (project / "CLAUDE.md").read_text("utf-8")
 
 
 def test_uninstall_keeps_claude_shared_block(project: Path) -> None:
@@ -375,7 +375,7 @@ def test_uninstall_dry_run_preserves_shared_context(project: Path, name: str) ->
     assert any("ownership is shared or unknown" in line for line in report.lines)
 
 
-def test_uninstall_removes_only_plumb(project: Path) -> None:
+def test_uninstall_removes_only_iaso(project: Path) -> None:
     before = snapshot(project)
     hermes.install(project)
     hermes.uninstall(project)
@@ -383,13 +383,13 @@ def test_uninstall_removes_only_plumb(project: Path) -> None:
 
 
 def test_uninstall_keeps_block_another_host_reads(project: Path) -> None:
-    from plumb.hosts.codex import install as codex
+    from iaso.hosts.codex import install as codex
 
     hermes.install(project)
     codex.install(project)
     report = hermes.uninstall(project)
     assert any("still used by codex" in line for line in report.lines)
-    assert "plumb:begin" in (project / "AGENTS.md").read_text("utf-8")
+    assert "iaso:begin" in (project / "AGENTS.md").read_text("utf-8")
 
 
 def test_dry_run_writes_nothing(project: Path, monkeypatch) -> None:
@@ -401,10 +401,10 @@ def test_dry_run_writes_nothing(project: Path, monkeypatch) -> None:
 
 def test_owner_only_refused_in_agent_shell(project: Path, monkeypatch) -> None:
     hermes.install(project)
-    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_hermes_guard")
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "iaso_hermes_guard")
     plugin.register(FakeCtx())
-    env = {"PLUMB_AGENT_SESSION": os.environ["PLUMB_AGENT_SESSION"]}
-    assert env == {"PLUMB_AGENT_SESSION": "hermes"}  # what the agent's terminal inherits
+    env = {"IASO_AGENT_SESSION": os.environ["IASO_AGENT_SESSION"]}
+    assert env == {"IASO_AGENT_SESSION": "hermes"}  # what the agent's terminal inherits
     assert approve_in_agent_shell(project, monkeypatch, env) == 3
     assert approve_in_agent_shell(project, monkeypatch, {}) == 3  # plugins not enabled
     assert approvals_written(project) == []
@@ -419,7 +419,7 @@ def test_status_does_not_infer_activation(project: Path, monkeypatch, capsys,
     assert main(["hosts", "status", "hermes"]) == 0
     out = capsys.readouterr().out
     assert "runtime activation: unverified" in out
-    assert "hermes plugins enable plumb" in out
+    assert "hermes plugins enable iaso" in out
     assert "restart" in out.lower()
     assert "CLI fallback (runtime marker unverified):" in out
     assert "prompts: CLI fallback (runtime marker unverified;" in out
@@ -429,7 +429,7 @@ def test_status_qualifies_unknown_marker_and_preserves_trust(project: Path) -> N
     text = "\n".join(hermes.status(project))
     baseline_marker = ("no session marker on this host: owner-only commands require an "
                        "interactive terminal")
-    baseline_prompt = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
+    baseline_prompt = ("prompts: CLI-only fallback (the agent runs iaso turn start): a chat "
                        "\"ok\" still confirms, and every such confirmation is labelled "
                        "\"self-recorded message\"")
     assert "runtime activation: unverified" in text
@@ -437,7 +437,7 @@ def test_status_qualifies_unknown_marker_and_preserves_trust(project: Path) -> N
     assert "prompts: CLI fallback (runtime marker unverified;" in text
     assert baseline_marker in text
     assert baseline_prompt in text
-    assert "trust model: plumb's log is hash-chained" in text
+    assert "trust model: iaso's log is hash-chained" in text
 
 
 @pytest.mark.parametrize("kind", ["missing", "foreign", "partial"])
@@ -449,12 +449,12 @@ def test_status_unknown_marker_for_missing_foreign_partial_install(project: Path
         (target / "plugin.yaml").write_text("name: foreign\n", "utf-8")
     elif kind == "partial":
         target.mkdir(parents=True)
-        (target / "plugin.yaml").write_text(hermes.render("plugin.yaml", ["plumb"]),
+        (target / "plugin.yaml").write_text(hermes.render("plugin.yaml", ["iaso"]),
                                                "utf-8")
     text = "\n".join(hermes.status(project))
     baseline_marker = ("no session marker on this host: owner-only commands require an "
                        "interactive terminal")
-    baseline_prompt = ("prompts: CLI-only fallback (the agent runs plumb turn start): a chat "
+    baseline_prompt = ("prompts: CLI-only fallback (the agent runs iaso turn start): a chat "
                        "\"ok\" still confirms, and every such confirmation is labelled "
                        "\"self-recorded message\"")
     assert "runtime activation: unverified" in text
@@ -465,16 +465,16 @@ def test_status_unknown_marker_for_missing_foreign_partial_install(project: Path
 
 
 def test_codex_keeps_baseline_fallback_literals(project: Path) -> None:
-    from plumb.hosts.codex import install as codex
+    from iaso.hosts.codex import install as codex
 
     baseline_marker = ("no session marker on this host: owner-only commands require an "
                        "interactive terminal")
-    baseline_prompt = "prompts: CLI-only fallback (the agent runs plumb turn start)"
+    baseline_prompt = "prompts: CLI-only fallback (the agent runs iaso turn start)"
     assert baseline_marker in "\n".join(codex.status(project))
     assert baseline_prompt in "\n".join(codex.status(project))
 
 
-FAKE_PLUMB = r'''
+FAKE_IASO = r'''
 import json, os, sys
 event = sys.argv[sys.argv.index("hook") + 1]
 data = json.loads(sys.stdin.read() or "{}")
@@ -482,18 +482,18 @@ with open(sys.argv[1], "a", encoding="utf-8") as log:
     log.write(json.dumps({"event": event, "unseen": "--unseen" in sys.argv,
                           "process_cwd": os.getcwd(), **data}) + "\n")
 out = {"agent_context": [f"ctx {event}"],
-       "owner_lines": ["plumb: summary"] if event == "stop" else [], "block": None,
-       "status_line": "plumb | ok"}
+       "owner_lines": ["iaso: summary"] if event == "stop" else [], "block": None,
+       "status_line": "iaso | ok"}
 if event == "stop" and not data.get("stop_active"):
-    out["block"] = "plumb: run the covering tests"
+    out["block"] = "iaso: run the covering tests"
 print(json.dumps(out))
 '''
 
 
 def _fake_plugin(project: Path, tmp_path: Path, monkeypatch, name: str):
-    """The rendered plugin over a fake plumb that logs each call to ``calls.jsonl``."""
-    fake = tmp_path / "fake_plumb.py"
-    fake.write_text(FAKE_PLUMB, "utf-8")
+    """The rendered plugin over a fake iaso that logs each call to ``calls.jsonl``."""
+    fake = tmp_path / "fake_iaso.py"
+    fake.write_text(FAKE_IASO, "utf-8")
     log = tmp_path / "calls.jsonl"
     plugin_dir = project / hermes.PLUGIN_DIR
     plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -513,7 +513,7 @@ def _fake_plugin(project: Path, tmp_path: Path, monkeypatch, name: str):
 
 
 def test_hook_root_is_not_process_cwd(project: Path, tmp_path: Path, monkeypatch) -> None:
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_root_bound")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_root_bound")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -526,11 +526,11 @@ def test_hook_root_is_not_process_cwd(project: Path, tmp_path: Path, monkeypatch
 
 def test_uninstalled_template_does_not_spawn(tmp_path: Path, monkeypatch) -> None:
     adopted = tmp_path / "adopted"
-    (adopted / ".plumb").mkdir(parents=True)
-    loose = adopted / "loose" / "plugins" / "plumb"
+    (adopted / ".iaso").mkdir(parents=True)
+    loose = adopted / "loose" / "plugins" / "iaso"
     loose.mkdir(parents=True)
-    (loose / "plugin.py").write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
-    plugin = _load_plugin(loose, "plumb_no_project")
+    (loose / "plugin.py").write_text(hermes.render("plugin.py", ["iaso"]), "utf-8")
+    plugin = _load_plugin(loose, "iaso_no_project")
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
     monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append(kw))
@@ -540,12 +540,12 @@ def test_uninstalled_template_does_not_spawn(tmp_path: Path, monkeypatch) -> Non
     assert calls == []
 
 
-@pytest.mark.parametrize("relative", ["plugin.py", "plugins/plumb/plugin.py"])
+@pytest.mark.parametrize("relative", ["plugin.py", "plugins/iaso/plugin.py"])
 def test_invalid_plugin_layout_is_inert(tmp_path: Path, relative: str, monkeypatch) -> None:
     path = tmp_path / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
-    plugin = _load_plugin(path.parent, "plumb_invalid_layout_" + relative.replace("/", "_"))
+    path.write_text(hermes.render("plugin.py", ["iaso"]), "utf-8")
+    plugin = _load_plugin(path.parent, "iaso_invalid_layout_" + relative.replace("/", "_"))
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append(kw))
     monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append(kw))
@@ -557,9 +557,9 @@ def test_invalid_plugin_layout_is_inert(tmp_path: Path, relative: str, monkeypat
 
 def test_resolve_failure_imports_and_dispatches_inertly(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "plugin.py"
-    path.write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
+    path.write_text(hermes.render("plugin.py", ["iaso"]), "utf-8")
     monkeypatch.setattr(Path, "resolve", lambda _self: (_ for _ in ()).throw(OSError("no resolve")))
-    plugin = _load_plugin(path.parent, "plumb_resolve_failure")
+    plugin = _load_plugin(path.parent, "iaso_resolve_failure")
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append("run"))
     monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append("popen"))
@@ -572,11 +572,11 @@ def test_resolve_failure_imports_and_dispatches_inertly(tmp_path: Path, monkeypa
 
 def test_dispatch_rechecks_sentinel_after_valid_import(project: Path, monkeypatch) -> None:
     hermes.install(project)
-    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "plumb_dead_project")
+    plugin = _load_plugin(project / hermes.PLUGIN_DIR, "iaso_dead_project")
     calls = []
     monkeypatch.setattr(plugin.subprocess, "run", lambda *a, **kw: calls.append("run"))
     monkeypatch.setattr(plugin.subprocess, "Popen", lambda *a, **kw: calls.append("popen"))
-    shutil.rmtree(project / ".plumb")
+    shutil.rmtree(project / ".iaso")
     assert plugin._run("prompt", {"session_id": "s", "text": "hello"}) == plugin.EMPTY
     assert plugin._run("post-edit", {"session_id": "s", "path": "a.py"},
                        background=True) == plugin.EMPTY
@@ -584,7 +584,7 @@ def test_dispatch_rechecks_sentinel_after_valid_import(project: Path, monkeypatc
 
 
 def test_first_prompt_lazily_loads_brief(project: Path, tmp_path: Path, monkeypatch) -> None:
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_lazy_brief")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_lazy_brief")
     first = ctx.hooks["pre_llm_call"](session_id="lazy", user_message="hello")
     second = ctx.hooks["pre_llm_call"](session_id="lazy", user_message="again")
     assert first == {"context": "ctx session-start\nctx prompt"}
@@ -594,7 +594,7 @@ def test_first_prompt_lazily_loads_brief(project: Path, tmp_path: Path, monkeypa
 
 def test_observer_without_parent_then_child_never_starts(project: Path, tmp_path: Path,
                                                           monkeypatch) -> None:
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_child_observer")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_child_observer")
     ctx.hooks["on_session_start"](session_id="child-2", platform="cli")
     for _ in range(2):
         assert ctx.hooks["pre_llm_call"](session_id="child-2", parent_session_id="h1",
@@ -613,7 +613,7 @@ def test_observer_without_parent_then_child_never_starts(project: Path, tmp_path
 
 def test_repeated_and_delayed_observers_do_not_duplicate_start(project: Path, tmp_path: Path,
                                                                monkeypatch) -> None:
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_observer_order")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_observer_order")
     ctx.hooks["on_session_start"](session_id="owner", platform="cli")
     first = ctx.hooks["pre_llm_call"](session_id="owner", user_message="one")
     ctx.hooks["on_session_start"](session_id="owner", platform="cli")
@@ -625,7 +625,7 @@ def test_repeated_and_delayed_observers_do_not_duplicate_start(project: Path, tm
 
 
 def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeypatch) -> None:
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_fake")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_hermes_fake")
     assert set(ctx.hooks) == {"on_session_start", "pre_llm_call", "post_tool_call",
                               "pre_verify", "transform_llm_output", "post_llm_call"}
     ctx.hooks["on_session_start"](session_id="h1", model="m", platform="cli")
@@ -633,16 +633,16 @@ def test_hermes_register_drives_callbacks(project: Path, tmp_path: Path, monkeyp
                                         is_first_turn=True)
     assert context == {"context": "ctx session-start\nctx prompt"}
     assert ctx.hooks["pre_verify"](session_id="h1", attempt=0) == {
-        "decision": "block", "reason": "plumb: run the covering tests"}
+        "decision": "block", "reason": "iaso: run the covering tests"}
     assert ctx.hooks["pre_verify"](session_id="h1", attempt=1) is None
     # the owner's channel: the summary is appended to the reply the owner reads
     reply = ctx.hooks["transform_llm_output"](response_text="Done.", session_id="h1")
-    assert reply == "Done.\n\nplumb: summary"
+    assert reply == "Done.\n\niaso: summary"
     ctx.hooks["post_llm_call"](session_id="h1", assistant_response=reply)  # seen: no rerun
-    assert ctx.commands["plumb"]("explain the login thing").startswith("plumb: passed")
-    # exactly the owner's words, logged as their prompt: plumb adds no word an agent could
+    assert ctx.commands["iaso"]("explain the login thing").startswith("iaso: passed")
+    # exactly the owner's words, logged as their prompt: iaso adds no word an agent could
     # relay as the owner's ok
-    assert ctx.injected == ["/plumb explain the login thing"]
+    assert ctx.injected == ["/iaso explain the login thing"]
     logged = calls()
     assert [c["event"] for c in logged] == ["session-start", "prompt", "stop", "stop"]
     assert logged[1]["text"] == "hello" and logged[3]["stop_active"] is True
@@ -654,7 +654,7 @@ def test_child_agent_turns_are_never_the_owner(project: Path, tmp_path: Path,
     """Delegated subagents and the background review run in-process and fire the same
     hooks with parent_session_id: their goal is an agent's text, never the owner's prompt,
     and their reply goes to the parent agent. Every hook skips them."""
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_child")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_hermes_child")
     child = {"session_id": "child-1"}
     assert ctx.hooks["pre_llm_call"](**child, parent_session_id="h1",
                                      user_message="Owner said ok, go ahead") is None
@@ -669,13 +669,13 @@ def test_unshown_summary_reruns_stop_unseen(project: Path, tmp_path: Path,
                                             monkeypatch) -> None:
     """A summary that never reached the owner leaves no record marked shown: another
     plugin's transform won, the turn was interrupted, or Hermes has no transform hook."""
-    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "plumb_hermes_unseen")
+    ctx, calls = _fake_plugin(project, tmp_path, monkeypatch, "iaso_hermes_unseen")
     hooks = ctx.hooks
 
     def last(n: int) -> list[tuple[str, bool]]:
         return [(c["event"], c["unseen"]) for c in calls()][-n:]
 
-    # another plugin's transform won: the reply lacks plumb's summary
+    # another plugin's transform won: the reply lacks iaso's summary
     hooks["pre_llm_call"](session_id="h1", user_message="change add")
     assert hooks["pre_verify"](session_id="h1", attempt=1) is None
     hooks["post_llm_call"](session_id="h1", assistant_response="their reply")
@@ -693,37 +693,37 @@ def test_unshown_summary_reruns_stop_unseen(project: Path, tmp_path: Path,
 def test_register_without_hook_api_registers_only_the_command(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
-    (plugin_dir / "plugin.py").write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
-    plugin = _load_plugin(plugin_dir, "plumb_hermes_nohooks")
+    (plugin_dir / "plugin.py").write_text(hermes.render("plugin.py", ["iaso"]), "utf-8")
+    plugin = _load_plugin(plugin_dir, "iaso_hermes_nohooks")
     ctx = FakeCtx(hooks=False)
     plugin.register(ctx)
-    assert list(ctx.commands) == ["plumb"] and ctx.hooks == {}
+    assert list(ctx.commands) == ["iaso"] and ctx.hooks == {}
 
 
 def test_register_without_optional_skill_api_is_safe(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
-    (plugin_dir / "plugin.py").write_text(hermes.render("plugin.py", ["plumb"]), "utf-8")
-    plugin = _load_plugin(plugin_dir, "plumb_hermes_noskills")
+    (plugin_dir / "plugin.py").write_text(hermes.render("plugin.py", ["iaso"]), "utf-8")
+    plugin = _load_plugin(plugin_dir, "iaso_hermes_noskills")
     ctx = FakeCtx()
     ctx.register_skill = None
     plugin.register(ctx)
-    assert list(ctx.commands) == ["plumb"]
+    assert list(ctx.commands) == ["iaso"]
 
 
 @pytest.mark.sr("SR-282")
-def test_real_plumb_through_the_plugin(project: Path, monkeypatch) -> None:
-    """The rendered plugin with a real plumb: the owner's prompt is logged via hook and the
+def test_real_iaso_through_the_plugin(project: Path, monkeypatch) -> None:
+    """The rendered plugin with a real iaso: the owner's prompt is logged via hook and the
     delta comes back as the turn's context."""
     plugin_dir = project / hermes.PLUGIN_DIR
     hermes.install(project)
     (plugin_dir / "plugin.py").write_text(
-        hermes.render("plugin.py", [sys.executable, "-m", "plumb"]), "utf-8")
-    plugin = _load_plugin(plugin_dir, "plumb_hermes_real")
+        hermes.render("plugin.py", [sys.executable, "-m", "iaso"]), "utf-8")
+    plugin = _load_plugin(plugin_dir, "iaso_hermes_real")
     monkeypatch.chdir(project)
     result = plugin.pre_llm_call(session_id="r1", user_message="what does SR-001 do?")
     assert result and "SR-001" in result["context"]
-    prompts = project / ".plumb" / "session" / "prompts.jsonl"
+    prompts = project / ".iaso" / "session" / "prompts.jsonl"
     entry = json.loads(prompts.read_text("utf-8").splitlines()[-1])
     assert entry["via"] == "hook"
     # a delegated subagent's goal is never logged as the owner's prompt
@@ -735,29 +735,29 @@ def test_real_plumb_through_the_plugin(project: Path, monkeypatch) -> None:
 @pytest.mark.sr("SR-202")
 def test_records_skill_ships_its_reference_files_and_retires_the_old_name(
         project: Path) -> None:
-    """DEC-036: the records skill is plumb-records; the files it links travel with it, and the
-    skill an earlier install wrote as ``plumb`` goes when it is still plumb's."""
+    """DEC-036: the records skill is iaso-records; the files it links travel with it, and the
+    skill an earlier install wrote as ``iaso`` goes when it is still iaso's."""
     plugin_dir = project / hermes.PLUGIN_DIR
-    old = plugin_dir / "skills" / "plumb" / "SKILL.md"
+    old = plugin_dir / "skills" / "iaso" / "SKILL.md"
     old.parent.mkdir(parents=True)
-    old.write_text("---\nname: plumb\n---\nold body\n", "utf-8")
+    old.write_text("---\nname: iaso\n---\nold body\n", "utf-8")
     (plugin_dir / "plugin.py").write_text(
-        "Generated by `plumb hosts install hermes`\n"
-        "SKILL_DIGESTS: dict[str, str] = {'plumb': '"
+        "Generated by `iaso hosts install hermes`\n"
+        "SKILL_DIGESTS: dict[str, str] = {'iaso': '"
         + hashlib.sha256(old.read_bytes()).hexdigest() + "'}\n", "utf-8")
     hermes.install(project, launcher="path")
     assert not old.parent.exists()
-    refs = plugin_dir / "skills" / "plumb-records" / "references"
+    refs = plugin_dir / "skills" / "iaso-records" / "references"
     for name in ("merge.md", "conflicts.md", "capture-doc.md"):
         assert (refs / name).read_text("utf-8") == (
-            hermes.CANONICAL_SKILLS / "plumb-records" / "references" / name
-        ).read_text("utf-8").replace("{plumb}", "plumb")
+            hermes.CANONICAL_SKILLS / "iaso-records" / "references" / name
+        ).read_text("utf-8").replace("{iaso}", "iaso")
     hermes.uninstall(project)
-    assert not (plugin_dir / "skills" / "plumb-records").exists()
+    assert not (plugin_dir / "skills" / "iaso-records").exists()
 
 
 def test_a_foreign_skill_under_the_retired_name_is_kept(project: Path) -> None:
-    old = project / hermes.PLUGIN_DIR / "skills" / "plumb" / "SKILL.md"
+    old = project / hermes.PLUGIN_DIR / "skills" / "iaso" / "SKILL.md"
     old.parent.mkdir(parents=True)
     old.write_text("the owner's own skill\n", "utf-8")
     hermes.install(project, launcher="path")

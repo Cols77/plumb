@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
+from iaso.api import open_core
 from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-239")
@@ -24,7 +24,7 @@ DOC = {
 
 
 def _capture(repo: Path, digest: str):
-    from plumb.capture.capture import capture
+    from iaso.capture.capture import capture
 
     return capture(open_core(repo), DOC, prompt_digest=digest)
 
@@ -39,7 +39,7 @@ def test_ex7_capture_copies_no_message_text_into_the_tracked_log(repo: Path) -> 
     _capture(repo, digest)
     assert _premises(repo) == []
     tracked = "".join(p.read_text(encoding="utf-8", errors="ignore")
-                      for p in (repo / ".plumb" / "log").rglob("*.json"))
+                      for p in (repo / ".iaso" / "log").rglob("*.json"))
     assert PROMPT not in tracked
 
 
@@ -49,14 +49,14 @@ def test_ex10_a_record_judged_where_it_was_captured_is_not_judged_again_elsewher
     its judgment stands, nothing is queued, and no 'missing words' mark exists (DEC-116)."""
     from dataclasses import fields
 
-    from plumb.understand import backlog, judge, premise
+    from iaso.understand import backlog, judge, premise
     from understand.test_judge_job import approve
 
     digest = log_prompt(repo, PROMPT)
     _capture(repo, digest)
     core = open_core(repo)
     approve(core, "SR-001")
-    (repo / ".plumb" / "session" / "prompts.jsonl").unlink()      # a clone: no session log
+    (repo / ".iaso" / "session" / "prompts.jsonl").unlink()      # a clone: no session log
     core = open_core(repo)
     got = premise.premise_of(core, core.index()["SR-001"])
     assert got.messages == () and not got.on_file
@@ -69,7 +69,7 @@ def test_ex10_a_record_judged_where_it_was_captured_is_not_judged_again_elsewher
 
 
 def test_the_session_log_gives_the_text_of_the_message(repo: Path) -> None:
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     digest = log_prompt(repo, PROMPT)
     _capture(repo, digest)
@@ -80,11 +80,11 @@ def test_the_session_log_gives_the_text_of_the_message(repo: Path) -> None:
 
 
 def test_an_old_committed_premise_entry_still_serves_a_clone(repo: Path, write_record) -> None:
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     digest = log_prompt(repo, "A")
     write_record(repo, intent_text(1, "A", "Keep one log", prompt=digest))
-    (repo / ".plumb" / "session" / "prompts.jsonl").unlink()
+    (repo / ".iaso" / "session" / "prompts.jsonl").unlink()
     core = open_core(repo)
     core.log_append("events", "premise", {"digest": digest, "text": "A", "session": "s1",
                                           "used_by": ["INT-001"]})
@@ -93,7 +93,7 @@ def test_an_old_committed_premise_entry_still_serves_a_clone(repo: Path, write_r
 
 
 def test_the_session_log_is_read_before_an_old_committed_entry(repo: Path, write_record) -> None:
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     digest = log_prompt(repo, "A")
     write_record(repo, intent_text(1, "A", "Keep one log", prompt=digest))
@@ -105,7 +105,7 @@ def test_the_session_log_is_read_before_an_old_committed_entry(repo: Path, write
 
 
 def test_a_fragment_premise_says_the_words_are_not_on_file(repo: Path, write_record) -> None:
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     write_record(repo, intent_text(1, "a fragment of what was said", "Do the thing"))
     core = open_core(repo)
@@ -119,8 +119,8 @@ def test_a_fragment_premise_says_the_words_are_not_on_file(repo: Path, write_rec
 
 def test_the_stored_question_and_the_parent_are_part_of_a_requirement_premise(
         repo: Path, write_record) -> None:
-    from plumb.approvals import approval_items
-    from plumb.understand import premise
+    from iaso.approvals import approval_items
+    from iaso.understand import premise
 
     digest = log_prompt(repo, "B")
     write_record(repo, intent_text(1, "B", "Two logs", prompt=digest,
@@ -137,8 +137,8 @@ def test_the_stored_question_and_the_parent_are_part_of_a_requirement_premise(
 
 
 def test_validate_flags_a_premise_whose_digest_differs(repo: Path) -> None:
-    from plumb.understand import premise
-    from plumb.validate import validate
+    from iaso.understand import premise
+    from iaso.validate import validate
 
     core = open_core(repo)
     core.log_append("events", "premise", {"digest": "sha256:" + hashlib.sha256(

@@ -15,10 +15,10 @@ from typing import Any
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "capture"))
-from capture_helpers import run as plumb_run  # noqa: E402
+from capture_helpers import run as iaso_run  # noqa: E402
 
-from plumb.api import open_core  # noqa: E402
-from plumb.understand import clarify, files, jobs, read  # noqa: E402
+from iaso.api import open_core  # noqa: E402
+from iaso.understand import clarify, files, jobs, read  # noqa: E402
 from understand import test_judge_cascade  # noqa: E402
 from understand.fakes import FakeDispatcher, as_worker  # noqa: E402
 from understand.test_cascade_fast_track import approvals, judged, model_for, write  # noqa: E402
@@ -95,7 +95,7 @@ def test_ex4_the_prompt_hook_freezes_the_context_of_an_ordinary_message(
     judge worker has no transcript), for an ordinary message as for a commanded one."""
     from types import SimpleNamespace
 
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     words = "the reminders should go by email"
     reply = "Here are the notification settings: reminders go by push, quiet hours are off."
@@ -119,7 +119,7 @@ def test_ex4_the_prompt_hook_freezes_the_context_of_an_ordinary_message(
 def capture_intent(repo: Path, intent: dict) -> int:
     path = repo / "capture.json"
     path.write_text(json.dumps({"intent": intent}), encoding="utf-8")
-    return plumb_run(repo, "capture", "--file", str(path))
+    return iaso_run(repo, "capture", "--file", str(path))
 
 
 @pytest.mark.sr("SR-212")

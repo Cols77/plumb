@@ -7,7 +7,7 @@ from pathlib import Path
 
 from capture_helpers import JevStub, record_text, use_jev
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 LOW_MARKERS = ("won't:", "not:", "not true", "UNFAITHFUL")
 
@@ -29,7 +29,7 @@ def owner_decisions(repo: Path, write_record, *, intents: int = 20, revoked: int
                     requirements: int = 0, revoked_requirements: int = 0) -> None:
     """``intents`` INT read-backs and ``requirements`` SRs the owner confirmed, and
     ``revoked`` / ``revoked_requirements`` the owner confirmed then revoked."""
-    from plumb.approvals import approve, revoke
+    from iaso.approvals import approve, revoke
 
     for n in range(intents + revoked):
         bad = n >= intents
@@ -63,7 +63,7 @@ def calibrated(repo: Path, write_record, monkeypatch, *, requirements: bool = Fa
                noul=None) -> JevStub:
     """A repository with JEV configured against a stub and a passing calibration (the
     intent read-back kind; the requirement kind too with ``requirements``)."""
-    from plumb.capture.calibrate import calibrate
+    from iaso.capture.calibrate import calibrate
 
     stub = JevStub(noul or default_noul)
     use_jev(repo, stub, monkeypatch)

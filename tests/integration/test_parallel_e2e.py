@@ -1,27 +1,27 @@
 """End-to-end: parallel work in two real worktrees (SP6 spec 14 items 2 and 3, R10, R17).
 
-A temporary repository is adopted with ``plumb init``, which also sets up the record merge
+A temporary repository is adopted with ``iaso init``, which also sets up the record merge
 driver and the quick merge check in git. It holds one feature, one intent and one confirmed
 requirement, SR-001 "relay checks". Two worktrees, ``feat-a`` and ``feat-b``, then work at
-once, driven through plumb's CLI and its real hook commands (each its own process, with the
+once, driven through iaso's CLI and its real hook commands (each its own process, with the
 JSON Claude Code sends):
 
-1. each proposes a new requirement: the IDs are distinct (``refs/plumb/ids``);
+1. each proposes a new requirement: the IDs are distinct (``refs/iaso/ids``);
 2. each changes SR-001's statement differently and adds its own link from it; the
    session-start hook and the prompt hook of each worktree warn, in the owner's terms, that
    SR-001 is also being changed on the other branch;
 3. ``main`` merges ``feat-a`` (the owner confirmed its records there), then ``feat-b``: the
    new requirement and both links land on their own; the two statements become one intent
    conflict, which git's pre-merge-commit hook holds (no merge commit). Once the agent has
-   repinned the links whose source the merge changed, ``plumb merge-check`` reports exit 4
+   repinned the links whose source the merge changed, ``iaso merge-check`` reports exit 4
    with the conflict card: the merge waits for the owner, and nothing is chosen for him.
    The owner's choice, in his own terminal, then settles it: the check no longer lists it.
 
 A second scenario covers clones (spec 14 item 3): a clone and its origin both create
-SR-002; the merge stops on the add/add, and ``plumb merge-fix`` renumbers the incoming
+SR-002; the merge stops on the add/add, and ``iaso merge-fix`` renumbers the incoming
 record, carries the clone owner's ok of its unchanged words and leaves history untouched.
 
-Every owner-visible SP6 text captured here names no bare ``plumb <verb>`` (spec 11.1, R14).
+Every owner-visible SP6 text captured here names no bare ``iaso <verb>`` (spec 11.1, R14).
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.present.owner_text import bare_cli_verbs
+from iaso.present.owner_text import bare_cli_verbs
 
 pytestmark = [pytest.mark.sr(sr) for sr in (
     "SR-070", "SR-071", "SR-072", "SR-073", "SR-075", "SR-076", "SR-077", "SR-078",
@@ -48,7 +48,7 @@ OVERLAP_B = 'SR-001 "relay checks" is also being changed on branch feat-b'
 
 
 def _env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     env["PYTHONUTF8"] = "1"
     return env
 
@@ -61,14 +61,14 @@ def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
     return result
 
 
-def plumb(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-m", "plumb", *args], cwd=root, input=stdin,
+def iaso(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, "-m", "iaso", *args], cwd=root, input=stdin,
                           capture_output=True, text=True, encoding="utf-8", env=_env())
 
 
 def ok(root: Path, *args: str) -> str:
-    result = plumb(root, *args)
-    assert result.returncode == 0, f"plumb {' '.join(args)}: {result.stdout}{result.stderr}"
+    result = iaso(root, *args)
+    assert result.returncode == 0, f"iaso {' '.join(args)}: {result.stdout}{result.stderr}"
     return result.stdout
 
 
@@ -76,7 +76,7 @@ def hook(root: Path, event: str, name: str, **fields: object) -> str:
     """One hook command as Claude Code runs it: its own process, the event JSON on stdin."""
     data = {"session_id": f"session-{root.name}", "transcript_path": "", "cwd": str(root),
             "hook_event_name": name, **fields}
-    result = plumb(root, "hook", event, "--root", str(root), stdin=json.dumps(data))
+    result = iaso(root, "hook", event, "--root", str(root), stdin=json.dumps(data))
     assert result.returncode in (0, 2), f"{event}: {result.stdout}{result.stderr}"
     return result.stdout + result.stderr
 
@@ -94,7 +94,7 @@ def new_requirement(root: Path, title: str, statement: str) -> str:
 
 def change_statement(root: Path, statement: str) -> None:
     """The agent edits SR-001 with its Edit tool; the PostToolUse hook notes the path."""
-    path = root / ".plumb" / "requirements" / "SR-001.md"
+    path = root / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace(BASE_STATEMENT, statement),
                     encoding="utf-8")
     hook(root, "post-edit", "PostToolUse", tool_name="Edit",
@@ -102,7 +102,7 @@ def change_statement(root: Path, statement: str) -> None:
 
 
 def frontmatter(path: Path) -> dict:
-    from plumb.model import load_yaml, split_frontmatter
+    from iaso.model import load_yaml, split_frontmatter
 
     return load_yaml(split_frontmatter(path.read_text(encoding="utf-8"))[0])
 
@@ -124,8 +124,8 @@ def repo(tmp_path: Path) -> Path:
        "--readback", "Relay the owner's ok to the records it names.")
     ok(root, "new", "requirement", "--title", "relay checks", "--statement", BASE_STATEMENT,
        "--feature", "FEAT-001")
-    from plumb.api import open_core
-    from plumb.approvals import approve
+    from iaso.api import open_core
+    from iaso.approvals import approve
 
     approve(open_core(root), ["SR-001"])                     # the owner, in the terminal
     commit(root, "relay records\n\nSR: SR-001")
@@ -166,8 +166,8 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     status = ok(wt_b, "status")
     assert "feat-a" in status, status
 
-    from plumb.api import open_core
-    from plumb.approvals import approve
+    from iaso.api import open_core
+    from iaso.approvals import approve
 
     approve(open_core(wt_a), ["SR-001", sr_a])               # the owner confirms feat-a's work
     # no SR trailers: the records are touched by their files, and a trailer would deliver
@@ -186,31 +186,31 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     assert merged_b.returncode != 0, output                  # held before git records it
     assert git(repo, "rev-parse", "HEAD").stdout.strip() == before
     assert git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD").stdout.strip()
-    assert "/plumb conflicts" in output and "no test run" in output, output
+    assert "/iaso conflicts" in output and "no test run" in output, output
     assert bare_cli_verbs(output) == [], output
-    assert git(repo, "ls-files", "-u", "--", ".plumb").stdout == ""   # nothing unmerged
+    assert git(repo, "ls-files", "-u", "--", ".iaso").stdout == ""   # nothing unmerged
 
-    records = repo / ".plumb" / "requirements"
+    records = repo / ".iaso" / "requirements"
     assert (records / f"{sr_a}.md").is_file() and (records / f"{sr_b}.md").is_file()
     sr1 = frontmatter(records / "SR-001.md")
     targets = {(link.get("kind"), link.get("to")) for link in sr1.get("links") or []}
     assert {("relates_to", sr_a), ("relates_to", sr_b)} <= targets, sr1.get("links")
-    feature = frontmatter(repo / ".plumb" / "features" / "FEAT-001.md")
+    feature = frontmatter(repo / ".iaso" / "features" / "FEAT-001.md")
     assert {sr_a, sr_b} <= set(feature.get("requirements") or [sr_a, sr_b])
     assert "conflict" in sr1, sr1                            # the clash, an intent conflict
 
     # SR-001's content changed in the merge, so its links' pins and the early decision's
     # pin on it show stale (spec 7.3); the agent reviews them and repins (never a
     # confirmation). The conflict is the owner's.
-    held = plumb(repo, "merge-check", "main", "--no-run")
+    held = iaso(repo, "merge-check", "main", "--no-run")
     assert held.returncode == 1 and "stale link SR-001" in held.stdout, held.stdout
     ok(repo, "repin", "--all-stale", "--note", "reviewed after the merge")
-    check = plumb(repo, "merge-check", "main", "--no-run")
+    check = iaso(repo, "merge-check", "main", "--no-run")
     assert check.returncode == 4, check.stdout + check.stderr   # waits for the owner
-    assert "intent conflicts wait for your choice (/plumb conflicts):" in check.stdout
+    assert "intent conflicts wait for your choice (/iaso conflicts):" in check.stdout
     assert "IC-001 on \"relay checks\"" in check.stdout and "on SR-001" not in check.stdout, check.stdout
     assert A_STATEMENT in check.stdout and B_STATEMENT in check.stdout, check.stdout
-    data = json.loads(plumb(repo, "merge-check", "main", "--no-run", "--json").stdout)
+    data = json.loads(iaso(repo, "merge-check", "main", "--no-run", "--json").stdout)
     data = data.get("merge", data)
     assert [c["record"] for c in data["intent_conflicts"]] == ["SR-001"]
     assert data["id_collisions"] == [] and data["unmerged"] == []
@@ -225,13 +225,13 @@ def test_two_worktrees_propose_change_and_merge(repo: Path, tmp_path: Path) -> N
     assert status.confirmation != "confirmed"                # no side is chosen for the owner
 
     # the owner chooses a side in his own terminal (spec 14 item 2): the conflict is gone
-    from plumb import cli
+    from iaso import cli
 
     assert cli.main(["conflict", "choose", "IC-001", "--take", "feat-b",
                      "--root", str(repo)]) == 0
     sr1 = frontmatter(records / "SR-001.md")
     assert "conflict" not in sr1 and sr1["statement"] == B_STATEMENT, sr1
-    after = json.loads(plumb(repo, "merge-check", "main", "--no-run", "--json").stdout)
+    after = json.loads(iaso(repo, "merge-check", "main", "--no-run", "--json").stdout)
     after = after.get("merge", after)
     assert after["intent_conflicts"] == [], after["intent_conflicts"]
 
@@ -243,21 +243,21 @@ def test_clone_collision_is_renumbered_at_merge(tmp_path: Path) -> None:
     from ids import scenario
 
     s = scenario.build(tmp_path)                             # merge stopped on SR-002
-    held = plumb(s.origin, "merge-check", "main", "--no-run", "--json")
+    held = iaso(s.origin, "merge-check", "main", "--no-run", "--json")
     data = json.loads(held.stdout)
     data = data.get("merge", data)
     assert [c["id"] for c in data["id_collisions"]] == ["SR-002"], data["id_collisions"]
-    fixed = plumb(s.origin, "merge-fix")
+    fixed = iaso(s.origin, "merge-fix")
     assert fixed.returncode == 0, fixed.stdout + fixed.stderr
     assert '"export csv"' in fixed.stdout and "SR-003" in fixed.stdout, fixed.stdout
     assert "approval carried" in fixed.stdout, fixed.stdout
     assert bare_cli_verbs(fixed.stdout) == [], fixed.stdout
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     core = open_core(s.origin)
     assert core.index()["SR-003"].title == "export csv"
     assert core.status(["SR-003"])["SR-003"].carried_from == "SR-002"
-    after = json.loads(plumb(s.origin, "merge-check", "main", "--no-run", "--json").stdout)
+    after = json.loads(iaso(s.origin, "merge-check", "main", "--no-run", "--json").stdout)
     after = after.get("merge", after)
     assert after["id_collisions"] == [] and after["unmerged"] == []
     assert git(s.clone, "log", "--format=%H %B", "main").stdout == s.clone_log  # history

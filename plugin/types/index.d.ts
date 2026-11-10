@@ -1,27 +1,27 @@
-// plumb's mod: the values it keeps in $.state (SP7 5.6) and the shapes it reads from plumb
-// (status.json, `plumb intent status --json`; present.json from plumb.mod.handshake).
+// iaso's mod: the values it keeps in $.state (SP7 5.6) and the shapes it reads from iaso
+// (status.json, `iaso intent status --json`; present.json from iaso.mod.handshake).
 
 /** present.json: what the stop hook hands the panel for a turn (sp7-realign-sp8 C7). */
-export type PlumbPresent = {
+export type IasoPresent = {
   turn: number
   turn_id: string
   written_at: string
   confirmations: string[]
 }
 
-/** The session's link to plumb: where it runs and the key only the panel holds (DEC-025). */
-export type PlumbLink = {
+/** The session's link to iaso: where it runs and the key only the panel holds (DEC-025). */
+export type IasoLink = {
   session: string
   root: string
   python: string
   key: string
 }
 
-/** SR-126: the session the panel said it could not reach plumb in, and why (`no-python`,
+/** SR-126: the session the panel said it could not reach iaso in, and why (`no-python`,
  * `failed`, `refused`): said once per session; a missing interpreter, and what `retry` marks
  * (a resumed session's old panel still registered, a .venv tried before host.json), is tried
  * again each turn. */
-export type PlumbTold = {
+export type IasoTold = {
   session: string
   why: string
   retry?: boolean
@@ -30,16 +30,16 @@ export type PlumbTold = {
 /** The session's open intent loop as the band draws it (SR-291): its current step, the
  * step's task (no total: the elapsed time, read when the status was), and what a refused gate
  * left it waiting for. */
-export type PlumbLoop = {
+export type IasoLoop = {
   step: string
   task: { label: string; done: number; total: number | null; elapsed: string } | null
   stopped: string
 }
 
-/** The status the band's first line draws: plumb's status card, SP8's progress and the count
+/** The status the band's first line draws: iaso's status card, SP8's progress and the count
  * of questions waiting for the owner (SR-337); `loop` while an intent loop is open; `study` the
  * title of a study the owner has not opened yet (SR-294). */
-export type PlumbStatus = {
+export type IasoStatus = {
   /** SR-415: the session's name, which the band's line begins with; '' when none */
   name?: string
   state: string
@@ -47,7 +47,7 @@ export type PlumbStatus = {
   progress: string
   /** status.json's `awaiting`: the questions waiting for the owner, the head's "N await you" */
   awaiting: number
-  loop?: PlumbLoop | null
+  loop?: IasoLoop | null
   study?: string
   /** the new study's slug, which the band's press opens in the room (SR-294) */
   studySlug?: string
@@ -58,14 +58,14 @@ export type PlumbStatus = {
   /** study ideas the agent proposed, waiting for the owner's choice, oldest first: the band's
    * brass idea line, whose press shows the why and the depths (SR-294 EX-7, DEC-207) */
   ideas?: { title: string; slug: string; why: string; recommend: string }[]
-  /** the accepted study being written now, with `plumb study progress` once the agent reports it */
+  /** the accepted study being written now, with `iaso study progress` once the agent reports it */
   writing?: { title: string; step?: string; done?: number; total?: number }
   /** written studies one of whose records changed, the owner not asked yet: the band's brass
    * line offering a rewrite at the same depth (SR-360 EX-2, DEC-336) */
   outdated?: { title: string; slug: string; changed: string }[]
   /** the requirements a judge approved (auto-jev, auto-model), counted in the head (SR-251) */
   judged?: number
-  /** red lines: each misalignment of the running plumb, its local main and its repository (SR-358), a judge that cannot settle and why
+  /** red lines: each misalignment of the running iaso, its local main and its repository (SR-358), a judge that cannot settle and why
    * (SR-359); each until it is fixed */
   red?: string[]
   /** the build lines and the judge lines of `red`, apart, for the band's two chips (SR-409) */
@@ -73,16 +73,16 @@ export type PlumbStatus = {
   judgeLines?: string[]
   /** the name of each judge in judgeLines, in the same order: its row's key in the pane (SR-413) */
   judgeNames?: string[]
-  /** SR-358: plumb's repository could not be read, so the build is not checked (never red) */
+  /** SR-358: iaso's repository could not be read, so the build is not checked (never red) */
   unchecked?: string
-  /** the judge's questions plumb set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
+  /** the judge's questions iaso set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
   setAside?: string[]
 }
 
-/** What the loop pane shows (SR-305), as `plumb intent status --json` gives the open loop:
+/** What the loop pane shows (SR-305), as `iaso intent status --json` gives the open loop:
  * its steps' gates with the low findings left, the task and the tasks left, the records of
  * its intent by title, and each requirement's proof shown or not. */
-export type PlumbLoopPane = {
+export type IasoLoopPane = {
   step: string
   stopped: string
   stages: Record<string, { state: string; left: string[] }>
@@ -91,20 +91,20 @@ export type PlumbLoopPane = {
   proofs: { title: string; shown: boolean }[]
 }
 
-/** The known problems (SR-367), as `plumb mod known --json` answers them: how many are open
+/** The known problems (SR-367), as `iaso mod known --json` answers them: how many are open
  * (the band's one line), and each with its symptom, cause, fix, state and case history, open
- * ones first (the pane). `seen`: the register's files as last read, so plumb runs only when they
+ * ones first (the pane). `seen`: the register's files as last read, so iaso runs only when they
  * moved. */
-export type PlumbKnown = {
+export type IasoKnown = {
   seen: string
   open: number
   issues: { id: string; title: string; symptom: string; cause: string; fix: string; fixed: string;
     state: string; history: string[] }[]
 }
 
-/** One loop of the project as `plumb mod loops --json` gives it (SR-393): an intent loop, a
+/** One loop of the project as `iaso mod loops --json` gives it (SR-393): an intent loop, a
  * problem being fixed or an evaluate run, live or idle. */
-export type PlumbLoopRow = {
+export type IasoLoopRow = {
   kind: string
   id: string
   goal: string
@@ -127,36 +127,36 @@ export type PlumbLoopRow = {
 }
 
 /** The loops of the project (SR-393): the band's count and the pane's rows. `stamp`: the one
- * file plumb moves whenever a loop changes; `seen`: its text when the list was read, so plumb
+ * file iaso moves whenever a loop changes; `seen`: its text when the list was read, so iaso
  * runs again only when it moved. */
-export type PlumbLoops = {
+export type IasoLoops = {
   seen: string
   stamp: string
   live: number
   idle: number
   counts: Record<string, { live: number; idle: number }>
-  rows: PlumbLoopRow[]
-  /** SR-375: plumb is reading the loops again; the band says so and keeps the last list */
+  rows: IasoLoopRow[]
+  /** SR-375: iaso is reading the loops again; the band says so and keeps the last list */
   updating?: boolean
 }
 
 /** The loops pane's own state: the type shown, the rows whose detail is open and the loops a
  * reopen press is opening (SR-394: a second press on one does nothing). */
-export type PlumbLoopsPane = { type: string; open: string[]; opening?: string[] }
+export type IasoLoopsPane = { type: string; open: string[]; opening?: string[] }
 
 /** The one pane's state (SR-410): the class shown, the one expanded row, the loops type, the known flag. */
-export type PlumbPane = { loop: PlumbLoopPane | null; known?: boolean; loops?: PlumbLoopsPane | null; cls?: string; row?: string; step?: string }
+export type IasoPane = { loop: IasoLoopPane | null; known?: boolean; loops?: IasoLoopsPane | null; cls?: string; row?: string; step?: string }
 
-/** What the panel draws, as plumb last answered it. */
-export type PlumbView = {
-  present: PlumbPresent | null
-  status: PlumbStatus | null
+/** What the panel draws, as iaso last answered it. */
+export type IasoView = {
+  present: IasoPresent | null
+  status: IasoStatus | null
   /** The last press's answer, as the owner reads it. */
   line: string
 }
 
 /** How the owner left the band: hidden until the owner presses Show, whatever arrives (SR-337). */
-export type PlumbBand = {
+export type IasoBand = {
   isHidden: boolean
   /** the loop section folded to its title (SR-305) */
   loopFolded?: boolean
@@ -164,16 +164,16 @@ export type PlumbBand = {
 
 declare module 'claude-code' {
   interface PluginState {
-    plumb: {
-      link: PlumbLink | null
+    iaso: {
+      link: IasoLink | null
       degraded: boolean
-      told: PlumbTold | null
-      view: PlumbView
-      band: PlumbBand
+      told: IasoTold | null
+      view: IasoView
+      band: IasoBand
       /** the loop the pane shows (SR-305); `known`: the known problems pane was opened (SR-367); `loops`: the loops pane's state (SR-393) */
-      pane: PlumbPane
-      known: PlumbKnown
-      loops: PlumbLoops
+      pane: IasoPane
+      known: IasoKnown
+      loops: IasoLoops
     }
   }
 }

@@ -1,4 +1,4 @@
-"""M1: ``plumb.boundary.merge_report``, ``render`` and ``exit_code`` (sp3 3.1, 9)."""
+"""M1: ``iaso.boundary.merge_report``, ``render`` and ``exit_code`` (sp3 3.1, 9)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from merge_helpers import INT, SR2, commit, git, repin_all, write
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.boundary import MergeReport, exit_code, merge_report, render
-from plumb.contracts import Target
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.boundary import MergeReport, exit_code, merge_report, render
+from iaso.contracts import Target
 
 SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: Both ends are pinned.\n---\n"
 SR3 = "---\nid: SR-003\ntitle: Third\nstatement: A third behaviour.\n---\n"
@@ -20,9 +20,9 @@ SR3 = "---\nid: SR-003\ntitle: Third\nstatement: A third behaviour.\n---\n"
 @pytest.fixture
 def base(repo: Path) -> tuple[Path, str]:
     """INT-001, SR-001 (implemented by src/mod.py), SR-002; no tests."""
-    write(repo, ".plumb/intents/INT-001.md", INT)
-    write(repo, ".plumb/requirements/SR-001.md", SR1)
-    write(repo, ".plumb/requirements/SR-002.md", SR2)
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR1)
+    write(repo, ".iaso/requirements/SR-002.md", SR2)
     write(repo, "src/mod.py", "x = 1\n")
     core = open_core(repo)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
@@ -46,8 +46,8 @@ def test_touched_unconfirmed_is_listed_and_does_not_hold(base) -> None:
     assert exit_code(report) == 0 == report.exit
     text = "\n".join(render(report))
     assert "SR-001 (proposed) Links pin both ends" in text
-    assert "plumb: waiting on a judge: 2 records" in text     # counted (SR-267)
-    assert "plumb approve" not in text
+    assert "iaso: waiting on a judge: 2 records" in text     # counted (SR-267)
+    assert "iaso approve" not in text
 
 
 @pytest.mark.sr("SR-260")
@@ -71,10 +71,10 @@ def test_validate_merge_and_merge_check_agree(base, capsys) -> None:
 
 
 def _escalated(root: Path) -> None:
-    write(root, ".plumb/intents/INT-002.md",
+    write(root, ".iaso/intents/INT-002.md",
           "---\nid: INT-002\ntitle: Escalated spec\nquote: q\nreadback: r\nmode: escalated\n"
           "members: [SR-001, SR-003]\n---\n")
-    write(root, ".plumb/requirements/SR-003.md", SR3)
+    write(root, ".iaso/requirements/SR-003.md", SR3)
 
 
 @pytest.mark.sr("SR-260")

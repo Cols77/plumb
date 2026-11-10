@@ -2,7 +2,7 @@
 
 ``FakeDispatcher(script)``: answers by job kind (a mapping) or through a callable, records
 every job, can block on an event or raise ``DispatchError``. ``as_worker(root, session)``: a
-context manager that writes a ``worker.lock`` with a token and sets ``PLUMB_WORKER``, for
+context manager that writes a ``worker.lock`` with a token and sets ``IASO_WORKER``, for
 tests that apply a kind in process. ``fake_claude``: a stand-in ``claude`` executable that
 records its argv, working directory, environment and stdin.
 
@@ -32,7 +32,7 @@ from typing import Any
 
 import pytest
 
-from plumb.contracts import (
+from iaso.contracts import (
     Applied,
     DispatchError,
     Job,
@@ -89,22 +89,22 @@ class FakeDispatcher:
 
 @contextlib.contextmanager
 def as_worker(root: Path, session: str) -> Iterator[str]:
-    """Write ``.plumb/session/<session>/worker.lock`` with a fresh token and set
-    ``PLUMB_WORKER`` to it, for the block; yields the token."""
+    """Write ``.iaso/session/<session>/worker.lock`` with a fresh token and set
+    ``IASO_WORKER`` to it, for the block; yields the token."""
     token = secrets.token_hex(16)
-    lock = Path(root) / ".plumb" / "session" / session / "worker.lock"
+    lock = Path(root) / ".iaso" / "session" / session / "worker.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text(json.dumps({"pid": os.getpid(), "heartbeat": time.time(), "token": token}),
                     encoding="utf-8")
-    old = os.environ.get("PLUMB_WORKER")
-    os.environ["PLUMB_WORKER"] = token
+    old = os.environ.get("IASO_WORKER")
+    os.environ["IASO_WORKER"] = token
     try:
         yield token
     finally:
         if old is None:
-            os.environ.pop("PLUMB_WORKER", None)
+            os.environ.pop("IASO_WORKER", None)
         else:
-            os.environ["PLUMB_WORKER"] = old
+            os.environ["IASO_WORKER"] = old
 
 
 _FAKE_CLAUDE = '''\
@@ -167,10 +167,10 @@ _BARE_ID = re.compile(r"(?<![\w-])(?:(?:INT|SR|DEC|FEAT)-\d{3,}|NC-\d{4,})(?![\w
 
 
 def owner_level(text: str) -> list[str]:
-    """The offences of both owner-text scanners on ``text``: bare ``plumb <verb>`` commands
-    (``bare_cli_verbs``), then plumb internals ("job", "dispatcher", "hash", "worker") and bare
+    """The offences of both owner-text scanners on ``text``: bare ``iaso <verb>`` commands
+    (``bare_cli_verbs``), then iaso internals ("job", "dispatcher", "hash", "worker") and bare
     record IDs. An empty list means the text is at the owner's level."""
-    from plumb.present.owner_text import bare_cli_verbs
+    from iaso.present.owner_text import bare_cli_verbs
 
     return [*bare_cli_verbs(text), *(m.group(0) for m in _INTERNAL_WORDS.finditer(text)),
             *(m.group(0) for m in _BARE_ID.finditer(text))]
@@ -188,7 +188,7 @@ class FakeKind:
     describe: Callable[[Job], str] | None = None
 
     def module(self) -> types.ModuleType:
-        module = types.ModuleType(f"plumb_test_kind_{self.kind}")
+        module = types.ModuleType(f"iaso_test_kind_{self.kind}")
         module.kind = self.kind  # type: ignore[attr-defined]
         module.schema = dict(self.schema)  # type: ignore[attr-defined]
         module.build = self.build or (  # type: ignore[attr-defined]
@@ -204,7 +204,7 @@ class FakeKind:
 def fake_kinds(monkeypatch: pytest.MonkeyPatch, kinds: Mapping[str, FakeKind]) -> None:
     """Install a module per fake kind in ``sys.modules`` and ``kinds.KIND_MODULES`` (undone
     with the test)."""
-    from plumb.understand import kinds as registry
+    from iaso.understand import kinds as registry
 
     for name, fake in kinds.items():
         module = fake.module()
@@ -222,9 +222,9 @@ class EngineStandins:
 
 
 def _standin_functions(box: EngineStandins) -> dict[tuple[str, str], Callable[..., Any]]:
-    from plumb.log import append, stream_of
-    from plumb.understand import files
-    from plumb.understand.kinds import KINDS
+    from iaso.log import append, stream_of
+    from iaso.understand import files
+    from iaso.understand.kinds import KINDS
 
     def enqueue(core: Any, job: Job) -> None:
         path = files.jobs_dir(core.root, job.session) / f"{job.id}.json"
@@ -341,14 +341,14 @@ def install_engine_standins(monkeypatch: pytest.MonkeyPatch,
     and ``queue.consecutive_failures`` by in-process versions of the same contract. A name whose
     real code has landed (no ``__stub__``) is left alone; ``enqueue`` carries no marker, so it
     is replaced while ``worker.run_once`` is still a stub (ENGINE lands them together)."""
-    from plumb.understand import queue, worker
+    from iaso.understand import queue, worker
 
     box = EngineStandins(dispatcher or FakeDispatcher())
     modules = {"queue": queue, "worker": worker}
     engine_landed = not getattr(worker.run_once, "__stub__", False)
     if engine_landed:
         # the real worker runs; it only gets the fake model (the one configured dispatcher)
-        from plumb.understand import dispatch
+        from iaso.understand import dispatch
 
         monkeypatch.setattr(dispatch, "configured", lambda core, model=None: box.dispatcher)
     for (module_name, name), func in _standin_functions(box).items():

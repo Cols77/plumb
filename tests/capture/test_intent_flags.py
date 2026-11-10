@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from plumb.api import open_core
-from plumb.capture.flags import flag_line, intent_flags
-from plumb.judgment import FakeBackend, JudgmentUnavailable
+from iaso.api import open_core
+from iaso.capture.flags import flag_line, intent_flags
+from iaso.judgment import FakeBackend, JudgmentUnavailable
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -19,7 +19,7 @@ DATA = yaml.safe_load(FIXTURE.read_text(encoding="utf-8"))
 
 @pytest.fixture
 def confirmed(repo: Path, write_record):
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     for text in DATA["records"].values():
         write_record(repo, text)
@@ -51,7 +51,7 @@ class Judge(FakeBackend):
         return dataclasses.replace(judgment, reasons=("the request reverses EX-1", *reasons))
 
     def _judgment(self, action, subject, verdict, confidence, *inputs):
-        from plumb.contracts import Judgment
+        from iaso.contracts import Judgment
 
         return Judgment(action=action, subject=subject, verdict=verdict,
                         confidence=confidence, tier="escalate-llm", backend="scripted",
@@ -98,7 +98,7 @@ def test_proposed_record_never_flagged(repo: Path, write_record) -> None:
 
 
 def _live_provider() -> str | None:
-    from plumb.judgment import jev
+    from iaso.judgment import jev
 
     for provider, name in (("openrouter", "OPENROUTER_API_KEY"),
                            ("typesafe", "TYPESAFE_API_KEY")):
@@ -115,7 +115,7 @@ def test_precision_fixture_all_contradictions_no_benign(confirmed) -> None:
     provider = _live_provider()
     if provider is None:
         pytest.skip("jev_live: no JEV credential resolves")
-    (confirmed.root / ".plumb" / "config.yaml").write_text(
+    (confirmed.root / ".iaso" / "config.yaml").write_text(
         f"judgment:\n  backend: jev\n  jev: {{provider: {provider}}}\n", encoding="utf-8")
     confirmed = open_core(confirmed.root)
     live = {}

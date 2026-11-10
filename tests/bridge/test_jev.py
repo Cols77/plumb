@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Link, LinkState, Pin, Target
-from plumb.judgment import JudgmentUnavailable, get_backend
-from plumb.judgment import jev as jev_mod
-from plumb.judgment.model import JudgmentQuestion, JudgmentRequest
-from plumb.judgment.state import assemble_state, is_secret_path
+from iaso.api import open_core
+from iaso.contracts import Link, LinkState, Pin, Target
+from iaso.judgment import JudgmentUnavailable, get_backend
+from iaso.judgment import jev as jev_mod
+from iaso.judgment.model import JudgmentQuestion, JudgmentRequest
+from iaso.judgment.state import assemble_state, is_secret_path
 
 pytestmark = pytest.mark.sr("SR-245")
 
@@ -97,7 +97,7 @@ def jev_repo(repo: Path, write_record, stub, monkeypatch, tmp_path: Path):
     write_record(repo, SR_004)
     (repo / "src").mkdir()
     (repo / "src" / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  hook_timeout_ms: 300\n"
         f"  jev: {{base_url: '{url}'}}\n", encoding="utf-8")
     monkeypatch.setenv("TYPESAFE_API_KEY", KEY)
@@ -147,13 +147,13 @@ def test_parses_noul_choice_score_answers(jev_repo) -> None:
 
 
 def jev_repo_url(state: Stub, repo: Path) -> str:
-    config = (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+    config = (repo / ".iaso" / "config.yaml").read_text(encoding="utf-8")
     return config.split("base_url: '", 1)[1].split("'", 1)[0]
 
 
 def test_fidelity_score_with_version_drift(jev_repo) -> None:
     repo, state = jev_repo
-    from plumb.judgment.fidelity import build_packet
+    from iaso.judgment.fidelity import build_packet
 
     core = open_core(repo)
     backend = get_backend(core, hook=False)
@@ -163,7 +163,7 @@ def test_fidelity_score_with_version_drift(jev_repo) -> None:
     state.model = "jev-1.14.0"
     j = get_backend(open_core(repo), hook=False).fidelity(build_packet(core, None, "SR-004"))
     assert j.tier == "escalate-llm"  # accept suspended on version drift
-    from plumb.judgment.fidelity import unjudged
+    from iaso.judgment.fidelity import unjudged
 
     # only the accepted score covers the current hashes; the escalated one does not
     assert unjudged(open_core(repo), ["SR-004"]) == ()
@@ -214,10 +214,10 @@ def test_key_from_user_store(jev_repo, monkeypatch, tmp_path: Path) -> None:
 def test_key_never_read_from_repository(jev_repo, monkeypatch) -> None:
     repo, _ = jev_repo
     monkeypatch.delenv("TYPESAFE_API_KEY")
-    inside = repo / ".config" / "plumb" / "jev"
+    inside = repo / ".config" / "iaso" / "jev"
     inside.parent.mkdir(parents=True)
     inside.write_text(KEY, encoding="utf-8")
-    (repo / ".plumb" / "jev").write_text(KEY, encoding="utf-8")
+    (repo / ".iaso" / "jev").write_text(KEY, encoding="utf-8")
     monkeypatch.setattr(jev_mod, "user_store_path", lambda: inside)
     assert jev_mod.resolve_key(repo) is None
     with pytest.raises(JudgmentUnavailable):
@@ -238,8 +238,8 @@ def test_state_excludes_secret_paths_and_truncates(repo: Path) -> None:
     assert state.excluded == {".env": "secret-path", "keys/server.pem": "secret-path",
                               "untracked.py": "untracked", "../outside.py": "outside-project"}
     assert "[redacted-env]" in state.text and state.redactions == 1
-    assert is_secret_path("config/secrets/x.yaml") and not is_secret_path("src/plumb/a.py")
-    from plumb.judgment.state import ContextLimits
+    assert is_secret_path("config/secrets/x.yaml") and not is_secret_path("src/iaso/a.py")
+    from iaso.judgment.state import ContextLimits
 
     (repo / "big.py").write_text("x = 1\n" * 1000, encoding="utf-8")
     small = assemble_state(repo, ["big.py"], tracked={"big.py"},
@@ -310,8 +310,8 @@ def test_credential_read_from_the_named_variable(jev_repo, monkeypatch) -> None:
     repo, state = jev_repo
     monkeypatch.delenv("TYPESAFE_API_KEY")
     monkeypatch.setenv("MY_JEV_KEY", KEY)
-    config = (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
-    (repo / ".plumb" / "config.yaml").write_text(
+    config = (repo / ".iaso" / "config.yaml").read_text(encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text(
         config.replace("jev: {", "jev: {credential_env: MY_JEV_KEY, "), encoding="utf-8")
     backend = get_backend(open_core(repo), hook=True)
     assert backend.name == "jev"
@@ -345,7 +345,7 @@ OR_KEY = "sk-or-test-key-0123456789abcdef"
 
 
 def _or_config(repo: Path, url: str, extra: str = "") -> None:
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  hook_timeout_ms: 2000\n"
         f"  jev: {{provider: openrouter, base_url: '{url}'{extra}}}\n", encoding="utf-8")
 
@@ -357,7 +357,7 @@ def _repo_bytes(repo: Path) -> bytes:
 
 @pytest.mark.sr("SR-243")
 def test_provider_preset_defaults_and_explicit_values_win() -> None:
-    from plumb.config import config_from_mapping
+    from iaso.config import config_from_mapping
 
     default = config_from_mapping({}).judgment.jev
     assert (default["provider"], default["base_url"], default["path"]) == (
@@ -495,7 +495,7 @@ def test_backend_through_the_env_file_never_writes_the_key(repo: Path, stub, tmp
 
 
 def _live_provider(repo: Path) -> str | None:
-    """The provider whose credential resolves (environment, env file or user store), in plumb's order."""
+    """The provider whose credential resolves (environment, env file or user store), in iaso's order."""
     for provider, name in (("openrouter", "OPENROUTER_API_KEY"),
                            ("typesafe", "TYPESAFE_API_KEY")):
         source = jev_mod.key_source(repo, name=name)
@@ -509,13 +509,13 @@ def _live_provider(repo: Path) -> str | None:
 def test_live_entailment(repo: Path, capsys) -> None:
     """One tiny synthetic request (no repository content) through whichever credential
     resolves, the env file included; skipped when none does."""
-    from plumb.judgment.tiers import normalize_version, same_version
+    from iaso.judgment.tiers import normalize_version, same_version
 
     provider = _live_provider(repo)
     if provider is None:
         pytest.skip("jev_live: no JEV credential resolves (OPENROUTER_API_KEY, "
-                    "TYPESAFE_API_KEY, ~/.config/plumb/jev.json)")
-    (repo / ".plumb" / "config.yaml").write_text(
+                    "TYPESAFE_API_KEY, ~/.config/iaso/jev.json)")
+    (repo / ".iaso" / "config.yaml").write_text(
         f"judgment:\n  backend: jev\n  jev: {{provider: {provider}}}\n", encoding="utf-8")
     backend = get_backend(open_core(repo), hook=False)
     assert backend.name == "jev"

@@ -1,5 +1,5 @@
 """The intent loop's step and tasks as the band draws them (SR-291): the loop file's ``step``,
-``tasks`` and ``stopped``, and ``plumb intent progress``."""
+``tasks`` and ``stopped``, and ``iaso intent progress``."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from plumb.understand import cmd_intent, files
+from iaso.understand import cmd_intent, files
 from understand import test_intent_loop
 from understand.test_intent_loop import DIGEST, SESSION, _findings, _run
 
@@ -69,7 +69,7 @@ def test_sr291_ex4_intent_done_closes_the_loop(intent: Path, tmp_path: Path,
     for stage in ("clarify", "plan"):
         assert _run(intent, "gate", stage, "--intent", "INT-001",
                     "--findings", _findings(tmp_path)) == 0
-    from plumb.capture import proof
+    from iaso.capture import proof
     monkeypatch.setattr(proof, "not_shown", lambda core, ids: [])
     assert _run(intent, "done", "--intent", "INT-001") == 0
     assert _loop(intent) is None      # SR-308: the ended loop's state file is removed
@@ -89,10 +89,10 @@ def test_sr291_ex6_a_refused_gate_marks_the_step_stopped(intent: Path, tmp_path:
 
 
 @pytest.mark.parametrize("gate", ["passed", "failed"])
-def test_sr291_ex7_ex8_a_workflow_phase_gate_reports_through_plumb(intent: Path, tmp_path: Path,
+def test_sr291_ex7_ex8_a_workflow_phase_gate_reports_through_iaso(intent: Path, tmp_path: Path,
                                                                    gate: str) -> None:
-    """SR-291 EX-7: the colours slice's gate passed, slice 2 of 4, reported through plumb.
-    SR-291 EX-8: a phase's gate failed: the task names the phase, and no agents of plumb's own."""
+    """SR-291 EX-7: the colours slice's gate passed, slice 2 of 4, reported through iaso.
+    SR-291 EX-8: a phase's gate failed: the task names the phase, and no agents of iaso's own."""
     for stage in ("clarify", "plan"):
         assert _run(intent, "gate", stage, "--intent", "INT-001",
                     "--findings", _findings(tmp_path)) == 0
@@ -120,8 +120,8 @@ def test_report_d7f2612b_evidence_recorded_redraws_the_stale_phase_gate_line(
     """report-d7f2612b: the band kept 'plan gate passed 1/4' long after the build was proven.
     Evidence recorded for the intent's requirement redraws the build task from the loop's real
     state: the proofs shown over those required, none left."""
-    from plumb.api import open_core
-    from plumb.capture import proof
+    from iaso.api import open_core
+    from iaso.capture import proof
 
     _build_with_a_phase_gate_line(intent, tmp_path)
     core = open_core(intent)
@@ -150,8 +150,8 @@ def test_report_d7f2612b_a_refused_intent_done_redraws_the_task_from_the_proofs(
 def test_report_d7f2612b_evidence_outside_the_build_step_leaves_the_task_alone(
         intent: Path, tmp_path: Path) -> None:
     """The plan step's task stays its own words: proofs are the build's state."""
-    from plumb.api import open_core
-    from plumb.capture import proof
+    from iaso.api import open_core
+    from iaso.capture import proof
 
     assert _run(intent, "gate", "clarify", "--intent", "INT-001",
                 "--findings", _findings(tmp_path)) == 0
@@ -188,7 +188,7 @@ def test_sr291_a_new_loop_and_intent_done_reset_the_band_head(intent: Path, tmp_
     import json
 
     sdir = files.session_dir(intent, SESSION)
-    status = intent / ".plumb" / "session" / "status.json"
+    status = intent / ".iaso" / "session" / "status.json"
 
     def stale() -> None:
         (sdir / "intent.json").write_text(json.dumps({"id": "INT-001"}), encoding="utf-8")
@@ -210,7 +210,7 @@ def test_sr291_a_new_loop_and_intent_done_reset_the_band_head(intent: Path, tmp_
     for stage in ("clarify", "plan"):
         assert _run(intent, "gate", stage, "--intent", "INT-001",
                     "--findings", _findings(tmp_path)) == 0
-    from plumb.capture import proof
+    from iaso.capture import proof
     monkeypatch.setattr(proof, "not_shown", lambda core, ids: [])
     assert _run(intent, "done", "--intent", "INT-001") == 0
     clean()

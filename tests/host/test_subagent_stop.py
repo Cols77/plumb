@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 
 from core.stale_asked import asked
-from plumb import stale
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.hosts.claude_code import subagent_stop
+from iaso import stale
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.hosts.claude_code import subagent_stop
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -45,7 +45,7 @@ def project(repo: Path, write_record) -> Path:
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "setup")
     (repo / "src" / "calc.py").write_text("def add(a, b):\n    return b + a\n", "utf-8")
-    roots = repo / ".plumb" / "session" / "agent_roots.json"
+    roots = repo / ".iaso" / "session" / "agent_roots.json"
     roots.parent.mkdir(parents=True, exist_ok=True)
     roots.write_text(json.dumps({"a1": {str(repo): ["SR-001#0"]}}), "utf-8")
     return repo
@@ -75,7 +75,7 @@ def test_ex1_second_stop_lets_go_with_a_question(project: Path, hook_input) -> N
 
 
 def test_other_agents_roots_are_not_held(project: Path, hook_input, tmp_path: Path) -> None:
-    (project / ".plumb" / "session" / "agent_roots.json").write_text(
+    (project / ".iaso" / "session" / "agent_roots.json").write_text(
         json.dumps({"a1": {str(tmp_path): ["SR-001#0"]}}), "utf-8")
     assert _stop(project, hook_input, agent="a1") == {}
 
@@ -96,7 +96,7 @@ def test_a_recorded_link_fixed_before_the_stop_is_not_held(project: Path, hook_i
 
 def test_only_the_links_edit_check_recorded_are_checked(project: Path, hook_input) -> None:
     """Stale links the agent's notices did not name (older debt) are not its to resolve."""
-    (project / ".plumb" / "session" / "agent_roots.json").write_text(
+    (project / ".iaso" / "session" / "agent_roots.json").write_text(
         json.dumps({"a1": {str(project): []}}), "utf-8")
     assert _stop(project, hook_input) == {}
 

@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
-from plumb.verify.evidence import apply_entry, single_evidence
-from plumb.verify.policy import is_regression, regression_instruction
+from iaso.api import open_core
+from iaso.verify import open_verify
+from iaso.verify.evidence import apply_entry, single_evidence
+from iaso.verify.policy import is_regression, regression_instruction
 
 
 def _run(index: dict, run_id: str, outcomes: dict[str, str], test_hash: str = "T") -> None:
@@ -67,7 +67,7 @@ def test_regression_notes_test_source_changed() -> None:
     assert ev.regression is True
     assert ev.test_changed_since_pass is True
     text = regression_instruction("t.py::a", "r1", True)
-    assert text == ("plumb: regression: t.py::a passed in run r1 and now fails (test source "
+    assert text == ("iaso: regression: t.py::a passed in run r1 and now fails (test source "
                     "changed since the pass). Tell the owner, with a read-back, and ask how to "
                     "proceed.")
     assert "(test source" not in regression_instruction("t.py::a", "r1", False)

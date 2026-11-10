@@ -9,8 +9,8 @@ from pathlib import Path
 
 import yaml
 
-from plumb.api import open_core
-from plumb.understand import judge
+from iaso.api import open_core
+from iaso.understand import judge
 from understand.test_judge_cascade import world  # noqa: F401
 from understand.test_judge_job import SESSION, log_prompt
 
@@ -50,7 +50,7 @@ def test_a_question_answered_in_the_owners_message_and_captured_is_not_open(
 
 def test_a_question_about_a_superseded_decision_is_not_open(
         world: Path, write_record) -> None:  # noqa: F811
-    """The decision asked about was replaced (``plumb decide --supersede``): the question asks
+    """The decision asked about was replaced (``iaso decide --supersede``): the question asks
     about a choice no longer standing; its successor is judged on its own."""
     _decision(world, write_record, 1, "Keep playing", [{"kind": "decides", "to": "SR-001"}])
     _ask_about(world, "DEC-001")

@@ -8,19 +8,19 @@ from pathlib import Path
 
 import pytest
 
-from plumb.evaluate import run
-from plumb.evaluate.tasks import Task
+from iaso.evaluate import run
+from iaso.evaluate.tasks import Task
 
 
 @pytest.fixture(autouse=True)
 def no_scratch_left(tmp_path_factory, monkeypatch):
-    """report-0ab44aff: a run leaves no plumb-eval-* folder in the temp folder."""
+    """report-0ab44aff: a run leaves no iaso-eval-* folder in the temp folder."""
     import tempfile
 
     temp = tmp_path_factory.mktemp("systemp")
     monkeypatch.setattr(tempfile, "tempdir", str(temp))
     yield
-    assert list(temp.glob("plumb-eval-*")) == []
+    assert list(temp.glob("iaso-eval-*")) == []
 
 
 class Claude:
@@ -63,7 +63,7 @@ def test_the_run_leaves_a_run_folder_and_no_scratch_repository(tmp_path):
     result = go(tmp_path, claude)
     assert not result.scratch.exists() and not result.scratch.parent.exists()
     assert [c[2] for c in claude.calls] == ["one", "two"]
-    for name in ("transcript.jsonl", "score.json", "issues.jsonl", "plumb"):
+    for name in ("transcript.jsonl", "score.json", "issues.jsonl", "iaso"):
         assert (result.run_dir / name).exists()
     assert json.loads((result.run_dir / "score.json").read_text())["checks_total"] == 0
 
@@ -110,9 +110,9 @@ def test_an_owner_who_asks_nothing_is_called_once_per_request(tmp_path):
 
 
 @pytest.mark.sr("SR-344")
-def test_claude_turn_lets_the_agent_run_python_and_plumb(tmp_path, monkeypatch):
+def test_claude_turn_lets_the_agent_run_python_and_iaso(tmp_path, monkeypatch):
     """The headless call allows the shell commands the task needs and puts the benchmark
-    interpreter's plumb command on the agent's PATH (found in the first live run)."""
+    interpreter's iaso command on the agent's PATH (found in the first live run)."""
     import subprocess
     import sys
 
@@ -127,7 +127,7 @@ def test_claude_turn_lets_the_agent_run_python_and_plumb(tmp_path, monkeypatch):
     got = run.claude_turn("claude", tmp_path, "hi", model="haiku", session_id=None,
                           system="brief", timeout_s=5)
     assert got["session_id"] == "s9" and not got["capped"]
-    assert "Bash(python:*)" in seen["argv"] and "Bash(plumb:*)" in seen["argv"]
+    assert "Bash(python:*)" in seen["argv"] and "Bash(iaso:*)" in seen["argv"]
     assert seen["env"]["PATH"].startswith(str(Path(sys.executable).parent))
 
 
@@ -191,7 +191,7 @@ def test_claude_turn_gives_the_agent_the_stand_in_question_tool(tmp_path, monkey
     owner's brief sits in a file outside the scratch repository."""
     import subprocess
 
-    from plumb.hosts.claude_code import ask_gate
+    from iaso.hosts.claude_code import ask_gate
 
     seen = {}
 
@@ -199,7 +199,7 @@ def test_claude_turn_gives_the_agent_the_stand_in_question_tool(tmp_path, monkey
         config = json.loads(Path(argv[argv.index("--mcp-config") + 1]).read_text())
         seen.update(argv=argv, env=kw["env"], config=config, cwd=kw["cwd"])
         server = config["mcpServers"][ask_gate.STAND_IN_SERVER]
-        seen["ask"] = json.loads(Path(server["env"]["PLUMB_ASK_CONFIG"]).read_text())
+        seen["ask"] = json.loads(Path(server["env"]["IASO_ASK_CONFIG"]).read_text())
         return subprocess.CompletedProcess(argv, 0, json.dumps({"result": "ok"}), "")
 
     monkeypatch.setattr(run.subprocess, "run", fake_run)
@@ -212,8 +212,8 @@ def test_claude_turn_gives_the_agent_the_stand_in_question_tool(tmp_path, monkey
     assert argv[argv.index("--append-system-prompt") + 1].startswith("brief")
     assert ask_gate.STAND_IN_TOOL in argv[argv.index("--append-system-prompt") + 1]
     server = seen["config"]["mcpServers"][ask_gate.STAND_IN_SERVER]
-    assert server["args"] == ["-m", "plumb.evaluate.ask_server"]
-    assert seen["ask"] == ask and not str(tmp_path) in server["env"]["PLUMB_ASK_CONFIG"]
+    assert server["args"] == ["-m", "iaso.evaluate.ask_server"]
+    assert seen["ask"] == ask and not str(tmp_path) in server["env"]["IASO_ASK_CONFIG"]
     assert seen["env"][ask_gate.STAND_IN_ENV] == "1"
     assert seen["env"].get("CLAUDE_CODE_SESSION_ATTENDED") != "1"
 
@@ -223,7 +223,7 @@ def test_claude_turn_without_ask_adds_no_question_tool(tmp_path, monkeypatch):
     """Without ``ask`` there is no stand-in: no MCP config, no allowed tool, no hook flag."""
     import subprocess
 
-    from plumb.hosts.claude_code import ask_gate
+    from iaso.hosts.claude_code import ask_gate
 
     seen = {}
 
@@ -242,7 +242,7 @@ def test_claude_turn_without_ask_adds_no_question_tool(tmp_path, monkeypatch):
 @pytest.mark.sr("SR-344")
 def test_the_scratch_repository_hears_the_stand_in_tool(tmp_path):
     """DEC-407: the scratch settings log the stand-in's answers with the question-answer hook."""
-    from plumb.hosts.claude_code import ask_gate
+    from iaso.hosts.claude_code import ask_gate
 
     scratch = run.scratch_repo(tmp_path)
     groups = json.loads((scratch / ".claude" / "settings.json").read_text())["hooks"]["PostToolUse"]
@@ -254,7 +254,7 @@ def test_the_scratch_repository_hears_the_stand_in_tool(tmp_path):
 def test_the_scratch_repository_has_a_judge_by_default(tmp_path):
     """eval-8ba65c4a: with no judge named, the agent's capture is never checked, and the agent
     may not change the config to fix that."""
-    from plumb.config import load_config
+    from iaso.config import load_config
 
     scratch = run.scratch_repo(tmp_path)
     assert load_config(scratch).judgment.backend == "jev"
@@ -263,14 +263,14 @@ def test_the_scratch_repository_has_a_judge_by_default(tmp_path):
 @pytest.mark.sr("SR-344")
 def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
     """The credential's provider is the host's: the preset default would look for another key."""
-    from plumb.config import load_config
+    from iaso.config import load_config
 
     root = tmp_path / "root"
-    (root / ".plumb").mkdir(parents=True)
-    (root / ".plumb" / "config.yaml").write_text(
+    (root / ".iaso").mkdir(parents=True)
+    (root / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", encoding="utf-8")
     kept = tmp_path / "kept"
-    shutil.copytree(go(tmp_path, Claude()).run_dir / "plumb", kept / ".plumb")
+    shutil.copytree(go(tmp_path, Claude()).run_dir / "iaso", kept / ".iaso")
     judgment = load_config(kept).judgment
     assert judgment.backend == "jev"
     assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"

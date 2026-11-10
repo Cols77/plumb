@@ -8,9 +8,9 @@ import pytest
 from conftest import git
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import envid, open_verify
-from plumb.verify.evidence import apply_entry, load_index, payload_checksum, single_evidence
+from iaso.api import open_core
+from iaso.verify import envid, open_verify
+from iaso.verify.evidence import apply_entry, load_index, payload_checksum, single_evidence
 
 
 @pytest.fixture
@@ -114,7 +114,7 @@ def test_index_rebuilt_from_log_after_cache_delete(repo: Path) -> None:
             "run_id": run_id, "env": {"env_key": "E"},
             "nodes": [{"id": "t.py::a", "outcome": outcome, "closure": "C", "test_hash": "T"}]})
     first = load_index(open_core(repo))
-    cache = repo / ".plumb" / "cache" / "evidence_index.json"
+    cache = repo / ".iaso" / "cache" / "evidence_index.json"
     assert cache.exists()
     cache.unlink()
     again = load_index(open_core(repo))
@@ -167,7 +167,7 @@ class _Map:
 
 @pytest.mark.sr("SR-352")
 def test_a_parameter_dropped_from_a_later_run_does_not_keep_the_test_failing() -> None:
-    from plumb.verify.evidence import node_evidence
+    from iaso.verify.evidence import node_evidence
 
     index = {"v": 0, "nodes": {}}
     for run, outcomes in (("1", {"t.py::test_p[a]": "passed", "t.py::test_p[old]": "passed"}),
@@ -202,7 +202,7 @@ def test_a_parameter_a_later_run_no_longer_has_is_not_a_merge_regression(project
 def test_a_test_parametrized_since_its_failure_does_not_keep_the_test_failing() -> None:
     """The bare id a test had before it was parametrized: the newest run of its family wins,
     whether the file, the family or the bare id is asked for."""
-    from plumb.verify.evidence import node_evidence
+    from iaso.verify.evidence import node_evidence
 
     index = {"v": 0, "nodes": {}}
     for run, outcomes in (("1", {"t.py::test_p": "failed"}),   # before parametrize

@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from present_helpers import FEAT1, FEAT2, INT1, SR1, SR2, SR3, write_all
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.present.resolve import resolve
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.present.resolve import resolve
 
 pytestmark = pytest.mark.sr("SR-202")
 
@@ -77,7 +77,7 @@ def test_a_chain_is_one_answer(records: Path) -> None:
 
 
 def test_explain_takes_plain_words(records: Path, capsys) -> None:
-    """EX-1: plumb explain how numbers are added explains SR-001 with its examples."""
+    """EX-1: iaso explain how numbers are added explains SR-001 with its examples."""
     assert cli.main(["explain", "--root", str(records), "how", "numbers", "are",
                      "added"]) == 0
     out = capsys.readouterr().out

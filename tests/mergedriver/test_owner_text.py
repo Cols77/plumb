@@ -1,4 +1,4 @@
-"""sp6 11.1: every MERGEDRIVER surface the owner sees names a /plumb command or plain words,
+"""sp6 11.1: every MERGEDRIVER surface the owner sees names a /iaso command or plain words,
 never a shell command (R14). One test per surface, each rendering it for real."""
 
 from __future__ import annotations
@@ -15,18 +15,18 @@ from mergedriver.mdhelpers import (
     ex,
     install_driver,
     make_repo,
-    plumb,
+    iaso,
     reads_keep,
     record,
     run_git,
     write_record,
 )
-from plumb import cli
-from plumb.api import open_core
-from plumb.boundary.premerge import install_hook
-from plumb.mergedriver import conflict_card, merge_texts, open_conflicts, status
-from plumb.present import owner_text
-from plumb.present.owner_text import bare_cli_verbs
+from iaso import cli
+from iaso.api import open_core
+from iaso.boundary.premerge import install_hook
+from iaso.mergedriver import conflict_card, merge_texts, open_conflicts, status
+from iaso.present import owner_text
+from iaso.present.owner_text import bare_cli_verbs
 
 LABELS = ("main", "feat-x")
 
@@ -67,7 +67,7 @@ def test_driver_status(tmp_path: Path, capsys) -> None:
            if "merge driver" in line or "pre-merge-commit" in line or "pre-push" in line
            or "prepare-commit-msg" in line]
     _clean("\n".join(out))
-    from plumb.present import owner_text
+    from iaso.present import owner_text
 
     _clean(owner_text.PREPUSH_INSTALLED)
     _clean(owner_text.FOREIGN_PREPUSH_HOOK)
@@ -76,7 +76,7 @@ def test_driver_status(tmp_path: Path, capsys) -> None:
 @pytest.mark.sr("SR-260")
 def test_unmerged_section(tmp_path: Path) -> None:
     """modify/delete, an unparsable side and no driver, through the merge report."""
-    from plumb.mergedriver.unmerged import unmerged_lines, unmerged_rows
+    from iaso.mergedriver.unmerged import unmerged_lines, unmerged_rows
 
     root = make_repo(tmp_path / "r")
     write_record(root, record(statement="a"))
@@ -85,20 +85,20 @@ def test_unmerged_section(tmp_path: Path) -> None:
     other = tmp_path / "feat"
     run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
     write_record(root, record(statement="main's"))
-    (root / ".plumb" / "requirements" / "SR-006.md").write_text(
+    (root / ".iaso" / "requirements" / "SR-006.md").write_text(
         "---\nid: SR-006\ntitle: [broken\n---\n", encoding="utf-8")
     commit_all(root, "main")
-    (other / ".plumb" / "requirements" / "SR-005.md").unlink()
+    (other / ".iaso" / "requirements" / "SR-005.md").unlink()
     write_record(other, record("SR-006", "other", statement="feat's"))
     commit_all(other, "feat")
     run_git(root, "merge", "--no-edit", "feat-x", check=False)  # no driver configured
     rows = unmerged_rows(open_core(root))
     assert {r["how"] for r in rows} == {"modify/delete", "no-driver"}
     _clean("\n".join(unmerged_lines(rows)))
-    report = plumb(root, "merge-check", "main", "--no-run")
+    report = iaso(root, "merge-check", "main", "--no-run")
     assert report.returncode == 1
     assert 'say "keep the changed one" or "keep it removed"' in report.stdout
-    assert "/plumb init installs the record merge" in report.stdout
+    assert "/iaso init installs the record merge" in report.stdout
     run_git(root, "merge", "--abort")
     install_driver(root)
     run_git(root, "merge", "--no-edit", "feat-x", check=False)
@@ -115,16 +115,16 @@ def test_conflict_card(repo: Path) -> None:
     conflicted(repo, base=base, ours=ours, theirs=theirs)
     core = open_core(repo)
     _clean("\n".join(conflict_card(core, open_conflicts(core)[0])))
-    _clean(plumb(repo, "conflicts").stdout)
-    _clean(plumb(repo, "show", "IC-001").stdout)
+    _clean(iaso(repo, "conflicts").stdout)
+    _clean(iaso(repo, "show", "IC-001").stdout)
 
 
 @pytest.mark.sr("SR-256")
 def test_choose_messages(repo: Path, capsys: pytest.CaptureFixture) -> None:
     """The refusal (the agent's shell, a pipe) and the applied choice."""
     conflicted(repo)
-    refused = plumb(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n",
-                    env={"PLUMB_AGENT_SESSION": "claude-code"})
+    refused = iaso(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n",
+                    env={"IASO_AGENT_SESSION": "claude-code"})
     assert refused.returncode == 3
     _clean(refused.stderr)
     assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
@@ -157,7 +157,7 @@ def test_premerge_hook_output(tmp_path: Path) -> None:
     run_git(root, "merge", "--abort")
     hook = root / ".git" / "hooks" / "pre-merge-commit"
     hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    foreign = plumb(root, "merge-check", "--install-pre-merge-commit")
+    foreign = iaso(root, "merge-check", "--install-pre-merge-commit")
     assert foreign.returncode == 1
     _clean(foreign.stdout + foreign.stderr)
 
@@ -168,12 +168,12 @@ def test_commit_hold_output(operation: str) -> None:
     """The quick check's lines for a step held on what git will not record, a record it
     cannot read and an open conflict, for a merge and for a rebase or cherry-pick step;
     and the commit hook's install texts."""
-    from plumb.boundary.premerge import PremergeReport, render
+    from iaso.boundary.premerge import PremergeReport, render
 
     report = PremergeReport(
         merging="feat-x", into="main", operation=operation, exit=1,
-        unstaged=(".plumb/requirements/SR-005.md",),
-        unreadable=({"path": ".plumb/requirements/SR-006.md",
+        unstaged=(".iaso/requirements/SR-005.md",),
+        unreadable=({"path": ".iaso/requirements/SR-006.md",
                      "line": "  " + owner_text.UNPARSABLE.format(record="SR-006",
                                                                  title="totals")},))
     lines = render(report)
@@ -190,7 +190,7 @@ def test_commit_hold_output(operation: str) -> None:
 def test_hold_headers_say_held_only_into_default(into_default: bool) -> None:
     """DEC-271: questions and failing tests hold only a merge into the default branch, so
     only that merge's lines say they hold it; a work branch's merge lists them."""
-    from plumb.boundary.premerge import PremergeReport, render
+    from iaso.boundary.premerge import PremergeReport, render
 
     lines = render(PremergeReport(
         merging="feat-x", into="main" if into_default else "work", into_default=into_default,

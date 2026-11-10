@@ -13,14 +13,14 @@ import pytest
 from boundary.test_landing import docs, head, land_branch
 from core.test_log_compaction import put
 from mergedriver.mdhelpers import commit_all, run_git
-from plumb.boundary import landing
-from plumb.boundary.premerge import install_land_hook, unstaged_plumb
+from iaso.boundary import landing
+from iaso.boundary.premerge import install_land_hook, unstaged_iaso
 
 
 @pytest.mark.sr("SR-296")
 def test_ex7_a_held_merge_finished_with_git_commit_starts_the_landing(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", "1")
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", "1")
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).parents[2] / "src"))
     install_land_hook(repo, sys.executable)
     run_git(repo, "checkout", "-q", "-b", "feat")
@@ -42,7 +42,7 @@ def _tree_with_loop(repo: Path, tmp_path: Path) -> Path:
     run_git(repo, "worktree", "add", "-q", "-b", "feat", str(tree))
     docs(tree, "work.md")
     commit_all(tree, "work")
-    path = tree / ".plumb" / "session" / "s9" / "intent" / "abc.json"
+    path = tree / ".iaso" / "session" / "s9" / "intent" / "abc.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"intent": "INT-001", "stages": {"clarify": {"state": "open"}}}),
                     "utf-8")  # an adopted loop: it names no path and no branch
@@ -61,7 +61,7 @@ def test_ex9_an_open_loop_in_the_worktrees_own_session_keeps_it(repo: Path,
 
 
 def _entries(repo: Path) -> set[str]:
-    out = run_git(repo, "status", "--porcelain", "--untracked-files=all", "--", ".plumb/log")
+    out = run_git(repo, "status", "--porcelain", "--untracked-files=all", "--", ".iaso/log")
     return {line[3:] for line in out.stdout.splitlines()}
 
 
@@ -74,18 +74,18 @@ def test_ex1_ex2_the_tidy_commit_takes_every_shared_entry_and_no_local_one(repo:
     landing.land(repo, sha, before)
     assert {p for p in _entries(repo) if "/verdict/" not in p} == set()
     shown = run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
-    assert sum(p.startswith(".plumb/log/waiver/") for p in shown) == 3
+    assert sum(p.startswith(".iaso/log/waiver/") for p in shown) == 3
     assert not any("/verdict/" in p for p in shown)
-    assert list((repo / ".plumb" / "log" / "verdict").glob("*.json"))
+    assert list((repo / ".iaso" / "log" / "verdict").glob("*.json"))
 
 
 @pytest.mark.sr("SR-329")
 def test_ex3_main_s_own_uncommitted_shared_entries_do_not_hold_a_merge(repo: Path) -> None:
     put(repo, "waiver", {"n": 1})
-    assert unstaged_plumb(repo) == []
-    (repo / ".plumb" / "requirements").mkdir(exist_ok=True)
-    (repo / ".plumb" / "requirements" / "SR-900.md").write_text("x\n", encoding="utf-8")
-    assert unstaged_plumb(repo) == [".plumb/requirements/SR-900.md"]
+    assert unstaged_iaso(repo) == []
+    (repo / ".iaso" / "requirements").mkdir(exist_ok=True)
+    (repo / ".iaso" / "requirements" / "SR-900.md").write_text("x\n", encoding="utf-8")
+    assert unstaged_iaso(repo) == [".iaso/requirements/SR-900.md"]
 
 
 @pytest.mark.sr("SR-329")

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import hookio
+from iaso.hosts.claude_code import hookio
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -32,7 +32,7 @@ def _locale_env() -> dict[str, str]:
 
 def _call(root: Path, *args: str, payload: dict | None = None) -> bytes:
     raw = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")
-    result = subprocess.run([sys.executable, "-m", "plumb", *args, "--root", str(root)],
+    result = subprocess.run([sys.executable, "-m", "iaso", *args, "--root", str(root)],
                             input=raw, capture_output=True, check=False, timeout=30,
                             env=_locale_env())
     assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
@@ -47,10 +47,10 @@ def _payload(root: Path, event: str, **fields: object) -> dict:
 def test_prompt_hook_logs_non_ascii_prompt_verbatim(repo: Path) -> None:
     prompt = "ok, très bien “go ahead” → go"
     _call(repo, "hook", "prompt", payload=_payload(repo, "UserPromptSubmit", prompt=prompt))
-    log = repo / ".plumb" / "session" / "prompts.jsonl"
+    log = repo / ".iaso" / "session" / "prompts.jsonl"
     entries = [json.loads(line) for line in log.read_text("utf-8").splitlines() if line]
     assert entries and entries[-1]["text"] == prompt
-    errors = repo / ".plumb" / "session" / "errors.log"
+    errors = repo / ".iaso" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
 
@@ -61,13 +61,13 @@ def test_prompt_hook_prints_non_ascii_record_text(repo: Path, write_record) -> N
                 payload=_payload(repo, "UserPromptSubmit", prompt="fix SR-001 links"))
     text = out.decode("utf-8")
     assert "links pin hashes → staleness, naïve" in text
-    errors = repo / ".plumb" / "session" / "errors.log"
+    errors = repo / ".iaso" / "session" / "errors.log"
     assert not errors.exists(), errors.read_text("utf-8")
 
 
 def test_statusline_reads_utf8_input(repo: Path) -> None:
     out = _call(repo, "statusline", payload={"cwd": str(repo), "model": {"name": "é→"}})
-    assert out.decode("utf-8").startswith("plumb |")
+    assert out.decode("utf-8").startswith("iaso |")
 
 
 def test_failed_write_still_prints_the_skip_notice(repo: Path, hook_input) -> None:
@@ -78,5 +78,5 @@ def test_failed_write_still_prints_the_skip_notice(repo: Path, hook_input) -> No
                     budget_ms=500)
     out.flush()
     assert raw.getvalue().decode("cp1252").strip() == hookio.SKIP_ERROR
-    log = (repo / ".plumb" / "session" / "errors.log").read_text("utf-8")
+    log = (repo / ".iaso" / "session" / "errors.log").read_text("utf-8")
     assert "UnicodeEncodeError" in log

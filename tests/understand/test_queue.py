@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import Core
-from plumb.contracts import JobResult
-from plumb.understand import files, jobs, ledger, queue, worker
+from iaso.api import Core
+from iaso.contracts import JobResult
+from iaso.understand import files, jobs, ledger, queue, worker
 
 pytestmark = pytest.mark.sr("SR-273")
 
@@ -29,7 +29,7 @@ def _count(repo: Path, session: str = "s1") -> int:
 
 def test_ex4_same_inputs_queued_twice_run_once(repo: Path, spawned,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import dispatch
+    from iaso.understand import dispatch
     from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
     fake = FakeDispatcher({"read": {"ok": True}})
@@ -99,8 +99,8 @@ def test_ex1_prompt_hook_returns_within_budget_without_waiting(
     import io
     import threading
 
-    from plumb.hosts.claude_code import hookio, prompt
-    from plumb.understand import dispatch, read
+    from iaso.hosts.claude_code import hookio, prompt
+    from iaso.understand import dispatch, read
     from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
     blocked = FakeDispatcher({"read": {}}, block=threading.Event())
@@ -135,9 +135,9 @@ def test_one_job_per_turn_one_per_capture_with_fake_kinds(
     """One read job covers every shown record of a turn; one judge job per capture."""
     import io
 
-    from plumb.capture import capture as capture_module
-    from plumb.hosts.claude_code import prompt
-    from plumb.understand import judge, read
+    from iaso.capture import capture as capture_module
+    from iaso.hosts.claude_code import prompt
+    from iaso.understand import judge, read
     from understand.fakes import FakeKind, fake_kinds
 
     monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
@@ -151,7 +151,7 @@ def test_one_job_per_turn_one_per_capture_with_fake_kinds(
     fake_kinds(monkeypatch, {"read": FakeKind("read", build=build)})
 
     def on_prompt(ctx, core, entry):
-        from plumb.understand.kinds import KINDS
+        from iaso.understand.kinds import KINDS
 
         job = KINDS["read"].build(core, "s1", message=str(entry["text"]))
         queue.enqueue(core, job)

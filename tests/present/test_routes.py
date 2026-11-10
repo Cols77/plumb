@@ -1,4 +1,4 @@
-"""P6: every advertised verb is available and /plumb why stays fixed (sp5 6.4, SR-068)."""
+"""P6: every advertised verb is available and /iaso why stays fixed (sp5 6.4, SR-068)."""
 
 from __future__ import annotations
 
@@ -8,20 +8,20 @@ from pathlib import Path
 import pytest
 from present_helpers import SR1, write_all
 
-from plumb import cli
+from iaso import cli
 
 pytestmark = pytest.mark.sr("SR-202")
 
 TEMPLATE = (Path(cli.__file__).parent / "hosts" / "claude_code" / "templates"
-            / "plumb-command.md")
+            / "iaso-command.md")
 
 
 def _command_file_verbs() -> set[str]:
     text = TEMPLATE.read_text(encoding="utf-8")
     hint = next(line for line in text.splitlines() if line.startswith("argument-hint:"))
     verbs = {part.split()[0] for part in hint.split('"')[1].split("|")}
-    verbs |= set(re.findall(r"Bash\(\{plumb\} ([a-z-]+):\*\)", text))
-    verbs |= set(re.findall(r"`\{plumb\} ([a-z-]+)", text))
+    verbs |= set(re.findall(r"Bash\(\{iaso\} ([a-z-]+):\*\)", text))
+    verbs |= set(re.findall(r"`\{iaso\} ([a-z-]+)", text))
     return verbs - {"go", "undo"}      # typed as the whole message: the prompt hook does them
 
 
@@ -40,8 +40,8 @@ def _help_verbs() -> set[str]:
 
 
 def test_every_advertised_verb_is_routed_and_its_help_exits_zero(capsys) -> None:
-    """EX-1: each verb of the installed /plumb command and of plumb --help is routed, and
-    plumb <verb> --help exits 0."""
+    """EX-1: each verb of the installed /iaso command and of iaso --help is routed, and
+    iaso <verb> --help exits 0."""
     advertised = _command_file_verbs() | _help_verbs()
     assert {"status", "explain", "why", "review", "impact", "resolve",
             "align"} <= advertised
@@ -53,7 +53,7 @@ def test_every_advertised_verb_is_routed_and_its_help_exits_zero(capsys) -> None
 
 def test_why_prints_the_same_explanation_as_explain(repo: Path, write_record,
                                                     capsys) -> None:
-    """EX-2: plumb why SR-001 prints what plumb explain SR-001 prints."""
+    """EX-2: iaso why SR-001 prints what iaso explain SR-001 prints."""
     write_all(repo, write_record, SR1)
     assert cli.main(["explain", "--root", str(repo), "SR-001"]) == 0
     explained = capsys.readouterr().out
@@ -63,7 +63,7 @@ def test_why_prints_the_same_explanation_as_explain(repo: Path, write_record,
 
 
 def test_help_lists_only_importable_verbs(monkeypatch) -> None:
-    monkeypatch.setitem(cli.ROUTES, "ghost", "plumb.no_such_module_here")
+    monkeypatch.setitem(cli.ROUTES, "ghost", "iaso.no_such_module_here")
     monkeypatch.setattr(cli, "_HELP", cli._HELP.replace(
         "records and integrity:\n",
         "records and integrity:\n  ghost        haunts the build\n                still\n")
@@ -75,20 +75,20 @@ def test_help_lists_only_importable_verbs(monkeypatch) -> None:
 
 
 @pytest.mark.sr("SR-243")
-def test_plumb_command_routes_jev_setup_and_status() -> None:
-    """R14: the owner reaches JEV setup and status through /plumb, never a shell."""
+def test_iaso_command_routes_jev_setup_and_status() -> None:
+    """R14: the owner reaches JEV setup and status through /iaso, never a shell."""
     text = TEMPLATE.read_text(encoding="utf-8")
-    assert "Bash({plumb} jev status:*)" in text and "Bash({plumb} jev setup:*)" in text
+    assert "Bash({iaso} jev status:*)" in text and "Bash({iaso} jev setup:*)" in text
     assert "`jev status`" in text and "`jev setup" in text
-    assert "{plumb} jev setup --provider openrouter" in text
-    assert "{plumb} jev status --probe" in text
+    assert "{iaso} jev setup --provider openrouter" in text
+    assert "{iaso} jev status --probe" in text
 
 
 @pytest.mark.sr("SR-243")
-def test_plumb_command_routes_jev_calibrate() -> None:
-    """R14: the owner reaches calibration as /plumb jev calibrate; the agent runs the CLI."""
+def test_iaso_command_routes_jev_calibrate() -> None:
+    """R14: the owner reaches calibration as /iaso jev calibrate; the agent runs the CLI."""
     text = TEMPLATE.read_text(encoding="utf-8")
     hint = next(line for line in text.splitlines() if line.startswith("argument-hint:"))
     assert "jev calibrate" in hint
-    assert "Bash({plumb} jev calibrate:*)" in text and "`jev calibrate`" in text
-    assert "run `{plumb} jev calibrate`" in text
+    assert "Bash({iaso} jev calibrate:*)" in text and "`jev calibrate`" in text
+    assert "run `{iaso} jev calibrate`" in text

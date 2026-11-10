@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from understand.test_judge_cascade import calibrate_to, configure, world  # noqa: F401
 
-from plumb.api import open_core
-from plumb.contracts import DispatchError
+from iaso.api import open_core
+from iaso.contracts import DispatchError
 
 pytestmark = pytest.mark.sr("SR-242")
 
@@ -36,8 +36,8 @@ def test_ex1_the_evaluation_run_is_judged_by_the_judge_model_and_logs_it(
         seen.append(model)
         return Recorder(model)
 
-    monkeypatch.setattr("plumb.understand.dispatch.configured", configured)
-    from plumb.understand import evalrun
+    monkeypatch.setattr("iaso.understand.dispatch.configured", configured)
+    from iaso.understand import evalrun
 
     assert evalrun.run("eval", ["--root", str(world)]) == 0
     (run,) = [e for e in open_core(world).events() if e.kind == "eval-run"]
@@ -46,7 +46,7 @@ def test_ex1_the_evaluation_run_is_judged_by_the_judge_model_and_logs_it(
 
 
 def test_ex2_a_logged_calibration_fingerprint_names_the_judge_model(world: Path) -> None:  # noqa: F811
-    from plumb.capture.calibrate import fingerprint
+    from iaso.capture.calibrate import fingerprint
 
     assert fingerprint(configure(world, SETTINGS))["model"] == "sonnet"
 
@@ -54,8 +54,8 @@ def test_ex2_a_logged_calibration_fingerprint_names_the_judge_model(world: Path)
 def test_ex3_clarify_and_read_jobs_keep_the_understand_model(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
     core = configure(world, SETTINGS)
-    monkeypatch.delenv("PLUMB_FAKE_DISPATCH", raising=False)
-    from plumb.understand import dispatch
+    monkeypatch.delenv("IASO_FAKE_DISPATCH", raising=False)
+    from iaso.understand import dispatch
 
     assert dispatch.configured(core).model == "haiku"       # what the worker asks for a clarify or read job
     assert dispatch.configured(core, model=core.config.understand.judge_model).model == "sonnet"

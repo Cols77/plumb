@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.commands import status_data
+from iaso.api import open_core
+from iaso.commands import status_data
 
 pytestmark = pytest.mark.sr("SR-233")
 
@@ -44,12 +44,12 @@ def test_ex1_a_supersedes_link_to_a_deleted_record_is_not_dangling(repo: Path,
                                                                    write_record) -> None:
     """SR-289 EX-1 (DEC-145): the replaced record's file is gone; the supersedes link stands,
     counts as retired, and validate reports no dangling link for it."""
-    from plumb.links import link_states
-    from plumb.validate import validate
+    from iaso.links import link_states
+    from iaso.validate import validate
 
     write_record(repo, OLD)
     write_record(repo, NEW)
-    (repo / ".plumb" / "requirements" / "SR-001.md").unlink()
+    (repo / ".iaso" / "requirements" / "SR-001.md").unlink()
     core = open_core(repo)
     [state] = link_states(core, ["SR-002"])
     assert state.state == "retired"
@@ -62,7 +62,7 @@ def test_ex7_a_failing_approval_of_a_gone_record_is_not_reported(repo: Path,
                                                                  write_record) -> None:
     """SR-289 EX-7 (DEC-145): a button approval of SR-001, which left the tree, fails its
     re-check (no drawn offer) but validate does not report it."""
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     write_record(repo, NEW)
     core = open_core(repo)

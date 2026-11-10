@@ -8,8 +8,8 @@
   (trigger 3) runs, even on a repository whose test map is not built and cannot be built
   within the hook's budget (a fresh clone).
 
-Entry points: the Claude Code hooks (``plumb hook prompt|stop``), the CLI-only fallback
-(``plumb turn start|end``) and the Codex, Pi and Hermes adapters (``plumb hook <event>
+Entry points: the Claude Code hooks (``iaso hook prompt|stop``), the CLI-only fallback
+(``iaso turn start|end``) and the Codex, Pi and Hermes adapters (``iaso hook <event>
 --host X``), all through the same ``VerifyAPI`` and stop handler.
 """
 
@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 from hosts_helpers import git
 
-from plumb.api import open_core
-from plumb.cli import main
+from iaso.api import open_core
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-282")
 
@@ -56,7 +56,7 @@ links:
 
 @pytest.fixture
 def project(repo: Path, write_record, monkeypatch) -> Path:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     write_record(repo, INT1)
     write_record(repo, SR2)
@@ -66,7 +66,7 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
     (repo / "tests" / "test_calc.py").write_text(
         "from calc import sub\n\n\ndef test_sub():\n    assert sub(5, 3) == 2\n", "utf-8")
     approve(open_core(repo), ["INT-001", "SR-002"])  # the owner's terminal (test)
-    from plumb.links import repin
+    from iaso.links import repin
 
     for state in open_core(repo).link_states(["SR-002"]):
         if state.state == "stale":
@@ -74,9 +74,9 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "setup")
     monkeypatch.chdir(repo)
-    monkeypatch.setenv("PLUMB_NO_BACKGROUND_MAP", "1")
-    import plumb.judgment as judgment
-    from plumb.contracts import Judgment
+    monkeypatch.setenv("IASO_NO_BACKGROUND_MAP", "1")
+    import iaso.judgment as judgment
+    from iaso.contracts import Judgment
 
     class Flagging(judgment.FakeBackend):
         """The configured judge, scripted (INT-029): a low-confidence flag on a prompt that
@@ -153,13 +153,13 @@ def test_heuristic_flag_alone_never_shows_an_intent_change_card(
 def no_map(project: Path, monkeypatch) -> list[Path]:
     """No test map, and one that cannot be built within a hook (as on a fresh clone of a
     real repository): every inline parse is over the hook's limit."""
-    import plumb.verify.api as verify_api
+    import iaso.verify.api as verify_api
 
     started: list[Path] = []
     monkeypatch.setattr(verify_api, "HOOK_PARSE_MAX", 0)
     monkeypatch.setattr(verify_api, "spawn_map_build", lambda root: started.append(root))
-    for path in (project / ".plumb" / "cache" / "test_map.json",
-                 project / ".plumb" / "test_map.txt"):
+    for path in (project / ".iaso" / "cache" / "test_map.json",
+                 project / ".iaso" / "test_map.txt"):
         path.unlink(missing_ok=True)
     return started
 
@@ -185,12 +185,12 @@ def test_without_a_test_map_a_turn_samples_sets_pending_and_checks_regressions(
     # trigger 3 ran without the map: the regression of this turn's run is asked, and as
     # SR-373's one next action it comes before the covering tests' instruction
     assert "regression: tests/test_calc.py::test_sub" in first
-    assert "plumb tests run --paths src/calc.py" not in first
+    assert "iaso tests run --paths src/calc.py" not in first
     second = stop(project, entry, monkeypatch, capsys, active=True)
     # the status card is the status line's: the pending state is in the snapshot it reads
-    status = project / ".plumb" / "session" / "status.json"
+    status = project / ".iaso" / "session" / "status.json"
     assert "full pending" in second or json.loads(status.read_text("utf-8"))["full_pending"]
     assert "regressions not checked" not in first + second
     assert "check skipped" not in first + second
     assert no_map, "the map build was not started outside the hook"
-    assert not (project / ".plumb" / "cache" / "test_map.json").exists()
+    assert not (project / ".iaso" / "cache" / "test_map.json").exists()

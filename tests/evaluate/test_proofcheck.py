@@ -10,13 +10,13 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.capture import proof
-from plumb.capture.records import CaptureError
-from plumb.contracts import Target
-from plumb.evaluate import loop, proofcheck, tasks
-from plumb.understand import cmd_intent
+from iaso import cli
+from iaso.api import open_core
+from iaso.capture import proof
+from iaso.capture.records import CaptureError
+from iaso.contracts import Target
+from iaso.evaluate import loop, proofcheck, tasks
+from iaso.understand import cmd_intent
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: Ground the work.\n---\n"
 SR = """---
@@ -85,7 +85,7 @@ def test_sr397_ex1_verified_records_evidence_and_confirms(core) -> None:
 def test_sr397_ex3_could_not_check_asks_the_owner_and_writes_nothing(core, fake) -> None:
     rows = go(core, ["SR-001"], fake)
     line = proofcheck.lines(rows)[0]
-    assert "could not be checked" in line and "plumb proof SR-001 --ask" in line
+    assert "could not be checked" in line and "iaso proof SR-001 --ask" in line
     assert "evidence" not in open_core(core.root).index()["SR-001"].fields
 
 
@@ -100,8 +100,8 @@ def test_sr397_ex7_fresh_session_with_only_the_subject_outside_the_repo(core) ->
     assert core.root not in call["scratch"].parents
 
 
-def test_sr397_ex8_case_folder_loads_and_plumb_evaluate_case_runs_it(tmp_path, monkeypatch) -> None:
-    assert "plumb evaluate case" in proofcheck.BRIEF
+def test_sr397_ex8_case_folder_loads_and_iaso_evaluate_case_runs_it(tmp_path, monkeypatch) -> None:
+    assert "iaso evaluate case" in proofcheck.BRIEF
     folder = tmp_path / "mycase"
     folder.mkdir()
     (folder / "requests.json").write_text('["hello"]', encoding="utf-8")
@@ -109,7 +109,7 @@ def test_sr397_ex8_case_folder_loads_and_plumb_evaluate_case_runs_it(tmp_path, m
     assert (task.name, task.requests, task.agent_brief, task.owner_brief) == \
         ("mycase", ["hello"], "", "")
     seen = []
-    monkeypatch.setattr("plumb.evaluate.run.run_task", lambda root, t, **kw: seen.append(t))
+    monkeypatch.setattr("iaso.evaluate.run.run_task", lambda root, t, **kw: seen.append(t))
     assert cli.main(["evaluate", "case", str(folder), "--root", str(tmp_path)]) == 0
     assert seen == [task]
 
@@ -162,9 +162,9 @@ def _answer(core, answer: str) -> None:
 
 
 def test_sr396_ex3_a_pick_needs_the_owners_answer_in_this_loop(core, monkeypatch, capsys) -> None:
-    from plumb.capture.capture import capture
+    from iaso.capture.capture import capture
 
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s")
+    monkeypatch.setenv("IASO_SESSION_ID", "s")
     pick = ["proof", "SR-003", "--evaluator", "--root", str(core.root)]
     loop_file = cmd_intent.loop_path(Path(core.root), "s", "d" * 64)
     assert cli.main(pick) != 0 and "did not pick" in capsys.readouterr().err   # never offered
@@ -237,11 +237,11 @@ def test_sr397_ex1_the_cli_prints_the_lines_and_exits_by_the_verdicts(core, monk
 
 def test_sr396_ex5_check_runs_once_before_merge_and_a_reason_stops_the_merge(
         tmp_path, monkeypatch, capsys) -> None:
-    from plumb.evaluate import issues
-    monkeypatch.setattr("plumb.api.open_core", lambda root: object())
-    monkeypatch.setattr("plumb.debug.all_cases", lambda root: [])
-    monkeypatch.setattr("plumb.debug.report", lambda root, i, text: reports.append(i))
-    monkeypatch.setattr("plumb.debug._update", lambda root, ids, **fields: 0)
+    from iaso.evaluate import issues
+    monkeypatch.setattr("iaso.api.open_core", lambda root: object())
+    monkeypatch.setattr("iaso.debug.all_cases", lambda root: [])
+    monkeypatch.setattr("iaso.debug.report", lambda root, i, text: reports.append(i))
+    monkeypatch.setattr("iaso.debug._update", lambda root, ids, **fields: 0)
     monkeypatch.setattr(issues, "open_cases", lambda root, found: ["eval-1", "eval-2"])
     reports, order = [], []
     run = lambda root, task, *, model, **kw: NS(issues=[1], score={})  # noqa: E731
@@ -258,11 +258,11 @@ def test_sr396_ex5_check_runs_once_before_merge_and_a_reason_stops_the_merge(
 
 
 def test_check_fix_returns_empty_when_verified(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("plumb.selfdebug._checked_out", lambda root, branch: tmp_path)
+    monkeypatch.setattr("iaso.selfdebug._checked_out", lambda root, branch: tmp_path)
     ok = lambda tree, name, text, **kw: proofcheck.Verdict(name, "verified", "fine", tmp_path)  # noqa: E731
     no = lambda tree, name, text, **kw: proofcheck.Verdict(name, "could not check", "why", tmp_path)  # noqa: E731
     case = {"id": "c1", "detail": "it broke"}
     assert proofcheck.check_fix(tmp_path, case, "b", run=ok) == ""
     assert proofcheck.check_fix(tmp_path, case, "b", run=no) == "why"
-    monkeypatch.setattr("plumb.selfdebug._checked_out", lambda root, branch: None)
+    monkeypatch.setattr("iaso.selfdebug._checked_out", lambda root, branch: None)
     assert "no worktree" in proofcheck.check_fix(tmp_path, case, "b", run=ok)

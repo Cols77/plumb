@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, run_git
-from plumb.awareness import gitfiles
+from iaso.awareness import gitfiles
 
 pytestmark = pytest.mark.sr("SR-258")
 

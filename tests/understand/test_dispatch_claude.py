@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.contracts import DispatchError, Job
-from plumb.understand import agents
-from plumb.understand.dispatch import claude_code
+from iaso.contracts import DispatchError, Job
+from iaso.understand import agents
+from iaso.understand.dispatch import claude_code
 from understand.fakes import fake_claude
 
 pytestmark = pytest.mark.sr("SR-273")
@@ -51,7 +51,7 @@ def test_ex6_command_selects_agent_and_isolates(tmp_path: Path, repo: Path,
 
     monkeypatch.setattr(claude_code.shutil, "rmtree", spy)
     monkeypatch.chdir(repo)
-    (repo / "CLAUDE.md").write_text("PROJECT RULES <!-- plumb:begin --> x <!-- plumb:end -->\n",
+    (repo / "CLAUDE.md").write_text("PROJECT RULES <!-- iaso:begin --> x <!-- iaso:end -->\n",
                                     encoding="utf-8")
     answer = _dispatcher(fake).run(JOB, system=agents.load("read"), user='{"message": "hi"}',
                                    schema=SCHEMA, on_step=lambda step: None)
@@ -61,15 +61,15 @@ def test_ex6_command_selects_agent_and_isolates(tmp_path: Path, repo: Path,
     for flag in ("-p", "--no-session-persistence", "--strict-mcp-config",
                  "--disable-slash-commands"):
         assert flag in argv
-    assert _flag(argv, "--agent") == "plumb-read"
+    assert _flag(argv, "--agent") == "iaso-read"
     assert _flag(argv, "--model") == "haiku"
     assert _flag(argv, "--tools") == ""
     assert _flag(argv, "--setting-sources") == ""
     assert _flag(argv, "--output-format") == "json"
     assert json.loads(_flag(argv, "--json-schema")) == SCHEMA
     definition = json.loads(_flag(argv, "--agents"))
-    assert set(definition) == {"plumb-read"}
-    assert "You read the owner's answer." in definition["plumb-read"]["prompt"]
+    assert set(definition) == {"iaso-read"}
+    assert "You read the owner's answer." in definition["iaso-read"]["prompt"]
     assert "--bare" not in argv
     # a neutral, empty working directory that is not the repository
     assert Path(call["cwd"]).resolve() != repo.resolve()
@@ -77,19 +77,19 @@ def test_ex6_command_selects_agent_and_isolates(tmp_path: Path, repo: Path,
     assert listed == [[]]
     # nothing of the project's own instructions reaches the model
     for text in (call["stdin"], json.dumps(definition)):
-        assert "PROJECT RULES" not in text and "plumb:begin" not in text
+        assert "PROJECT RULES" not in text and "iaso:begin" not in text
     assert call["stdin"] == '{"message": "hi"}'
 
 
-def test_env_has_plumb_job(tmp_path: Path) -> None:
+def test_env_has_iaso_job(tmp_path: Path) -> None:
     fake = fake_claude(tmp_path / "bin", _answer({"n": 1}))
     base = fake.env()
-    base["PLUMB_WORKER"] = "ab" * 16
+    base["IASO_WORKER"] = "ab" * 16
     claude_code.ClaudeCodeDispatcher(model="haiku", timeout_s=30, env=base).run(
         JOB, system="s", user="u", schema=SCHEMA, on_step=lambda step: None)
     (call,) = fake.calls()
-    assert call["env"]["PLUMB_JOB"] == JOB.id
-    assert "PLUMB_WORKER" not in call["env"]
+    assert call["env"]["IASO_JOB"] == JOB.id
+    assert "IASO_WORKER" not in call["env"]
 
 
 def test_missing_binary_is_a_plain_error(tmp_path: Path) -> None:

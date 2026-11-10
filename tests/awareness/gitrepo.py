@@ -1,7 +1,7 @@
 """Temporary git repositories and worktrees for the AWARENESS lane's tests.
 
 The phase-0 ``tests/gitrepo.py`` was not on ``main`` when this lane started; these helpers
-are the lane's own (sp6 plan 2) and never touch the plumb repository itself.
+are the lane's own (sp6 plan 2) and never touch the iaso repository itself.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ def run_git(root: Path, *args: str, check: bool = True) -> str:
 
 
 def make_repo(path: Path) -> Path:
-    """A git repository adopted by plumb, with one commit on ``main``."""
-    from plumb.commands import init_repo
+    """A git repository adopted by iaso, with one commit on ``main``."""
+    from iaso.commands import init_repo
 
     path.mkdir(parents=True, exist_ok=True)
     run_git(path, "init", "-q", "-b", "main")
@@ -52,7 +52,7 @@ def write_record(root: Path, record_id: str, title: str, **fields: object) -> Pa
     import yaml
 
     data = {"id": record_id, "title": title, **fields}
-    path = root / ".plumb" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
+    path = root / ".iaso" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(("---\n" + yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
                       + "---\n").encode("utf-8"))

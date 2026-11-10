@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, project, repin_all, write
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.boundary import merge_report, render
+from iaso import approvals
+from iaso.api import open_core
+from iaso.boundary import merge_report, render
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -40,12 +40,12 @@ def test_undeclared_path_is_named_and_does_not_hold(confirmed) -> None:
     assert report.verification.get("full_pending")
     text = _text(report)
     assert "undeclared path src/pkg/extra.py" in text
-    assert "plumb link SR-002 implemented_by src/pkg/extra.py" in text
+    assert "iaso link SR-002 implemented_by src/pkg/extra.py" in text
 
 
 def test_unclaimed_commit_with_required_trailer_is_listed(confirmed) -> None:
     root, sha = confirmed
-    write(root, ".plumb/claims.yaml", "require_trailer: true\n")
+    write(root, ".iaso/claims.yaml", "require_trailer: true\n")
     write(root, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
     repin_all(root)
     commit(root, "no trailer")
@@ -65,7 +65,7 @@ def test_stale_link_on_touched_record_exits_1(confirmed) -> None:
     assert report.exit == 1
     text = _text(report)
     assert "stale link SR-001#1 implemented_by src/pkg/mod.py (target moved)" in text
-    assert "plumb repin SR-001#1" in text
+    assert "iaso repin SR-001#1" in text
 
 
 def test_dangling_link_exits_1(confirmed) -> None:
@@ -82,11 +82,11 @@ def test_exit_precedence_1_5_4(confirmed) -> None:
     """SR-049 EX-3, SR-260 EX-6: a failing confirmed acceptance test holds (5) beside an
     unconfirmed touched record and an undeclared path (listed); a broken log beats both."""
     root, sha = confirmed
-    from plumb.verify import open_verify
+    from iaso.verify import open_verify
 
     write(root, "src/pkg/mod.py", "def add(a, b):\n    return a - b\n")
     open_verify(open_core(root)).run(nodes=["tests/test_mod.py"])
-    write(root, ".plumb/requirements/SR-002.md",
+    write(root, ".iaso/requirements/SR-002.md",
           "---\nid: SR-002\ntitle: Other\nstatement: Changed.\n---\n")
     write(root, "notes.txt", "n\n")
     repin_all(root)

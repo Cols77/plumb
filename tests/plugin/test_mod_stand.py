@@ -30,7 +30,7 @@ def test_no_test_files_in_the_plugin() -> None:
 
 
 def test_the_stand_holds_the_mod_and_its_tests(tmp_path: Path) -> None:
-    stand = _stand().assemble(tmp_path / "plumb")
+    stand = _stand().assemble(tmp_path / "iaso")
     assert (stand / ".claude-plugin" / "plugin.json").is_file()
     assert (stand / "hooks" / "register.tsx").is_file()
     assert (stand / "types" / "index.d.ts").is_file()

@@ -14,16 +14,16 @@ from mergedriver.mdhelpers import (
     events,
     ex,
     parse,
-    plumb,
+    iaso,
     record,
     write_record,
 )
-from plumb import cli
-from plumb.api import open_core
-from plumb.mergedriver import open_conflicts
+from iaso import cli
+from iaso.api import open_core
+from iaso.mergedriver import open_conflicts
 
 pytestmark = pytest.mark.sr("SR-256")
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 
 
 def _record(repo: Path) -> dict:
@@ -50,7 +50,7 @@ def test_choose_refused_without_terminal(repo: Path) -> None:
     """No marker, stdin a pipe holding "y": exit 3, nothing written."""
     conflicted(repo)
     before = (repo / SR).read_bytes()
-    out = plumb(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n")
+    out = iaso(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n")
     assert out.returncode == 3
     assert "only the owner chooses a side" in out.stderr
     assert (repo / SR).read_bytes() == before
@@ -61,8 +61,8 @@ def test_choose_refused_under_marker_without_prompt(repo: Path) -> None:
     """SR-076 EX-4: the agent runs the choice in its shell: exit 3, nothing changes."""
     conflicted(repo)
     before = (repo / SR).read_bytes()
-    out = plumb(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n",
-                env={"PLUMB_AGENT_SESSION": "claude-code"})
+    out = iaso(repo, "conflict", "choose", "IC-001", "--take", "theirs", stdin="y\n",
+                env={"IASO_AGENT_SESSION": "claude-code"})
     assert out.returncode == 3
     assert (repo / SR).read_bytes() == before
     assert events(repo, "conflict-resolution") == []
@@ -70,7 +70,7 @@ def test_choose_refused_under_marker_without_prompt(repo: Path) -> None:
 
 def test_choosing_a_confirmed_side_reconfirms(repo: Path) -> None:
     """SR-076 EX-3: feat-x's version was confirmed: choosing it confirms SR-005 again."""
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     theirs = record(statement=THEIRS_STATEMENT, examples=[ex(1)])
     write_record(repo, theirs)
@@ -117,12 +117,12 @@ def test_plain_words_name_the_conflict(repo: Path) -> None:
 
 
 def test_deny_rule_present_in_three_launcher_forms() -> None:
-    from plumb.hosts.claude_code.install import Launcher, deny_rules, is_plumb_deny
+    from iaso.hosts.claude_code.install import Launcher, deny_rules, is_iaso_deny
 
-    rules = deny_rules(Launcher("uv", "uv run --no-sync plumb", "uv run --no-sync plumb"))
-    for prefix in ("plumb", "uv run plumb", "python -m plumb"):
+    rules = deny_rules(Launcher("uv", "uv run --no-sync iaso", "uv run --no-sync iaso"))
+    for prefix in ("iaso", "uv run iaso", "python -m iaso"):
         rule = f"Bash({prefix} conflict choose:*)"
-        assert rule in rules and is_plumb_deny(rule)
+        assert rule in rules and is_iaso_deny(rule)
     assert not any("conflict relay" in r for r in rules)
 
 
@@ -131,10 +131,10 @@ def test_deny_rule_present_in_three_launcher_forms() -> None:
 def test_no_template_or_skill_names_the_relay() -> None:
     """SR-150 EX-3, back under DEC-057: no conflict relay or quoted choose is named in the
     skills and command."""
-    from plumb.hosts.claude_code import install
+    from iaso.hosts.claude_code import install
 
     root = Path(install.__file__).parent / "templates"
-    for path in (*root.rglob("*.md"), root / "plumb-command.md"):
+    for path in (*root.rglob("*.md"), root / "iaso-command.md"):
         text = path.read_text(encoding="utf-8")
         assert "conflict relay" not in text, path
         assert not ("conflict choose" in text and "--quote" in text), path

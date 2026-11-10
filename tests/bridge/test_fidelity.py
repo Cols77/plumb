@@ -1,4 +1,4 @@
-"""BRIDGE B3: fidelity packets for the host agent, ``plumb judge`` and ``unjudged`` (8.3)."""
+"""BRIDGE B3: fidelity packets for the host agent, ``iaso judge`` and ``unjudged`` (8.3)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import NodeEvidence
-from plumb.judgment.fidelity import MAX_END_CHARS, build_packet, judge, unjudged
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import NodeEvidence
+from iaso.judgment.fidelity import MAX_END_CHARS, build_packet, judge, unjudged
 
 pytestmark = pytest.mark.sr("SR-246")
 
@@ -137,7 +137,7 @@ def test_judgment_never_confirms_or_freshens(fid: Path) -> None:
 @pytest.mark.parametrize("batch", [False, True])
 @pytest.mark.parametrize("stream,kind", [("events", "judgment"), ("evidence", "test-run")])
 def test_boundary_backend_view_suppresses_log_mutations(fid: Path, batch, stream, kind) -> None:
-    from plumb.boundary.fidelity import _NoWriteCore
+    from iaso.boundary.fidelity import _NoWriteCore
 
     core = open_core(fid)
     original = core.log_append(stream, kind, {"original": True})
@@ -162,7 +162,7 @@ def test_merge_lists_unjudged_fidelity(fid: Path, capsys) -> None:
     # the fidelity list is advisory and never changes the exit
     assert cli.main(["validate", "--merge", base, "--root", str(fid)]) == 5
     out = capsys.readouterr().out
-    assert "plumb fidelity SR-001" in out
+    assert "iaso fidelity SR-001" in out
 
 
 def test_fidelity_and_judge_cli(fid: Path, capsys) -> None:
@@ -170,7 +170,7 @@ def test_fidelity_and_judge_cli(fid: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "f adds one to its argument." in out
     assert "src/mod.py" in out
-    assert "plumb judge SR-001 --verdict fits|drifts|unsure" in out
+    assert "iaso judge SR-001 --verdict fits|drifts|unsure" in out
     assert cli.main(["fidelity", "SR-001", "--json", "--root", str(fid)]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["requirement"] == "SR-001"

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.config import load_config
+from iaso.config import load_config
 
 pytestmark = pytest.mark.sr("SR-198", "SR-255")
 
@@ -18,8 +18,8 @@ def test_defaults(tmp_path: Path) -> None:
 
 
 def test_config_yaml_overrides_each_key(tmp_path: Path) -> None:
-    (tmp_path / ".plumb").mkdir()
-    (tmp_path / ".plumb" / "config.yaml").write_text(
+    (tmp_path / ".iaso").mkdir()
+    (tmp_path / ".iaso" / "config.yaml").write_text(
         "hooks:\n  stale_holds_max: 1\nverify:\n  coverage: 'off'\n", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.hooks.stale_holds_max == 1

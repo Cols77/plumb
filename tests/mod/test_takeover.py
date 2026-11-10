@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from mod.helpers import DIGEST, OTHER_KEY, mod_json, run_mod
-from plumb.mod import session as mod_session
+from iaso.mod import session as mod_session
 
 pytestmark = pytest.mark.sr("SR-350")
 

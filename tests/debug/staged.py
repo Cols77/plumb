@@ -39,7 +39,7 @@ class Stage:
 
 
 def diagnosis(cause: str = CAUSE) -> dict[str, Any]:
-    return {"cause": cause, "path": "src/plumb/calc.py"}
+    return {"cause": cause, "path": "src/iaso/calc.py"}
 
 
 OK = {"ok": True, "findings": []}

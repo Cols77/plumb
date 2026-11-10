@@ -1,5 +1,5 @@
-"""CAPTURE CS2: plumb jev status and setup; the secret is never read into, printed by or
-written by plumb (R8 commands; sp2 7.3, SR-039)."""
+"""CAPTURE CS2: iaso jev status and setup; the secret is never read into, printed by or
+written by iaso (R8 commands; sp2 7.3, SR-039)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from capture_helpers import KEY, JevStub, run, use_jev
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-243")
 
@@ -25,7 +25,7 @@ def test_setup_records_only_the_name(repo: Path, monkeypatch, capsys) -> None:
     assert run(repo, "jev", "setup", "--env-var", "MY_KEY") == 0
     out = capsys.readouterr().out
     assert "MY_KEY" in out and SECRET not in out
-    assert "/plumb jev status" in out
+    assert "/iaso jev status" in out
     assert "export " not in out and "$env:" not in out  # R14: no shell for the owner
     core = open_core(repo)
     assert core.config.judgment.backend == "jev"
@@ -34,7 +34,7 @@ def test_setup_records_only_the_name(repo: Path, monkeypatch, capsys) -> None:
     assert event.payload["credential_env"] == "MY_KEY"
     assert SECRET.encode() not in all_bytes(repo)
     # the commented template stays
-    assert "# plumb configuration." in (repo / ".plumb" / "config.yaml").read_text("utf-8")
+    assert "# iaso configuration." in (repo / ".iaso" / "config.yaml").read_text("utf-8")
     assert run(repo, "jev", "setup", "--env-var", "not a name") == 2
 
 
@@ -59,7 +59,7 @@ def test_status_never_prints_the_secret(repo: Path, monkeypatch, capsys) -> None
 @pytest.mark.sr("SR-359")
 def test_answered_probe_clears_the_red_line(repo: Path, monkeypatch, capsys) -> None:
     """SR-359 EX-3: a no-key line left from before setup goes once the probe is answered."""
-    from plumb.judgment import _judges, judge_down
+    from iaso.judgment import _judges, judge_down
 
     stub = JevStub()
     try:
@@ -86,7 +86,7 @@ OR_SECRET = "sk-or-secret-value-0123456789"
 
 
 def _user_config(monkeypatch, tmp_path: Path) -> Path:
-    from plumb.judgment import jev as jev_mod
+    from iaso.judgment import jev as jev_mod
 
     path = tmp_path / "userhome" / "jev.json"
     monkeypatch.setattr(jev_mod, "user_config_path", lambda: path)
@@ -111,7 +111,7 @@ def test_setup_openrouter_with_an_env_file(repo: Path, tmp_path: Path, monkeypat
     assert (jev["provider"], jev["model"], jev["credential_env"]) == (
         "openrouter", "typesafe/jev-1.13", "OPENROUTER_API_KEY")
     assert jev["base_url"] == "https://openrouter.ai"
-    raw = (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+    raw = (repo / ".iaso" / "config.yaml").read_text(encoding="utf-8")
     assert "provider: openrouter" in raw and "base_url" not in raw
     assert json.loads(config_path.read_text(encoding="utf-8")) == {
         "credential_env": "OPENROUTER_API_KEY", "env_file": str(env_file.resolve())}
@@ -119,7 +119,7 @@ def test_setup_openrouter_with_an_env_file(repo: Path, tmp_path: Path, monkeypat
     assert OR_SECRET not in config_path.read_text(encoding="utf-8")
     [event] = list(open_core(repo).log_read("events", ["jev-setup"]))
     assert event.payload["provider"] == "openrouter"
-    from plumb.judgment.jev import key_source
+    from iaso.judgment.jev import key_source
 
     assert key_source(repo, name="OPENROUTER_API_KEY") == "env-file"
 
@@ -132,7 +132,7 @@ def test_setup_refuses_an_env_file_inside_the_repository(repo: Path, tmp_path: P
                "--env-file", str(repo / ".env")) == 2
     assert "inside the repository" in capsys.readouterr().err
     assert not config_path.exists()
-    assert "openrouter" not in (repo / ".plumb" / "config.yaml").read_text(encoding="utf-8")
+    assert "openrouter" not in (repo / ".iaso" / "config.yaml").read_text(encoding="utf-8")
 
 
 def test_setup_openrouter_defaults_the_variable_name(repo: Path, tmp_path: Path,
@@ -158,7 +158,7 @@ def test_status_shows_provider_endpoint_source_and_normalized_version(
         config_path.write_text(json.dumps({"credential_env": "OPENROUTER_API_KEY",
                                            "env_file": str(env_file)}), encoding="utf-8")
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        (repo / ".plumb" / "config.yaml").write_text(
+        (repo / ".iaso" / "config.yaml").write_text(
             "judgment:\n  backend: jev\n"
             f"  jev: {{provider: openrouter, base_url: '{stub.url}'}}\n", encoding="utf-8")
         assert run(repo, "jev", "status", "--probe") == 0
@@ -183,14 +183,14 @@ def test_status_shows_provider_endpoint_source_and_normalized_version(
         stub.close()
 
 
-# -- R14/R18: jev status names /plumb commands, never a CLI command (SR-039)
+# -- R14/R18: jev status names /iaso commands, never a CLI command (SR-039)
 
 
 def _cli_commands(text: str) -> list[str]:
-    """Every ``plumb <verb>`` in ``text`` that is not the owner's ``/plumb <verb>``."""
+    """Every ``iaso <verb>`` in ``text`` that is not the owner's ``/iaso <verb>``."""
     import re
 
-    return re.findall(r"(?<![/\w])plumb (?:jev|config|triage|revoke|confirm)\b[^\n]*", text)
+    return re.findall(r"(?<![/\w])iaso (?:jev|config|triage|revoke|confirm)\b[^\n]*", text)
 
 
 def test_status_names_slash_commands_never_the_cli(repo: Path, monkeypatch, capsys) -> None:
@@ -201,13 +201,13 @@ def test_status_names_slash_commands_never_the_cli(repo: Path, monkeypatch, caps
     text = capsys.readouterr().out
     assert run(repo, "jev", "status", "--json") == 0
     data = capsys.readouterr().out
-    assert "/plumb jev calibrate" in text
+    assert "/iaso jev calibrate" in text
     assert _cli_commands(text) == [] and _cli_commands(data) == []
     # set up, auto-approve mirrored on without the owner's own switch
     stub = JevStub()
     try:
         use_jev(repo, stub, monkeypatch)
-        from plumb.capture.configfile import update_section
+        from iaso.capture.configfile import update_section
 
         update_section(repo, "auto_approve", {"enabled": True, "backend": "jev"})
         assert run(repo, "jev", "status", "--probe") == 0
@@ -230,13 +230,13 @@ def test_switching_provider_drops_the_earlier_providers_values(repo: Path, tmp_p
     _user_config(monkeypatch, tmp_path)
     assert run(repo, "jev", "setup", "--provider", "typesafe",
                "--base-url", "https://old.example") == 0
-    from plumb.capture.configfile import update_section
+    from iaso.capture.configfile import update_section
 
     update_section(repo, "judgment", {"jev": {"path": "/v0/old", "validated_against":
                                               "jev-1.12.0", "thresholds": {"accept": 0.95}}})
     assert run(repo, "jev", "setup", "--provider", "openrouter") == 0
     capsys.readouterr()
-    raw = yaml.safe_load((repo / ".plumb" / "config.yaml").read_text(encoding="utf-8"))
+    raw = yaml.safe_load((repo / ".iaso" / "config.yaml").read_text(encoding="utf-8"))
     jev_raw = raw["judgment"]["jev"]
     assert {"base_url", "path", "validated_against"}.isdisjoint(jev_raw)
     assert jev_raw["thresholds"] == {"accept": 0.95}

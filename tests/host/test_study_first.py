@@ -16,13 +16,13 @@ from mod.helpers import DIGEST, KEY, run_mod
 from study.helpers import drawn
 from understand.test_judge_job import SESSION
 
-from plumb import study
-from plumb.api import open_core
-from plumb.browser import launch
-from plumb.hosts.claude_code import question_answer, snapshot
-from plumb.present import owner_text
-from plumb.study import cli
-from plumb.understand import cmd_clarify, files, judge
+from iaso import study
+from iaso.api import open_core
+from iaso.browser import launch
+from iaso.hosts.claude_code import question_answer, snapshot
+from iaso.present import owner_text
+from iaso.study import cli
+from iaso.understand import cmd_clarify, files, judge
 
 pytestmark = pytest.mark.sr("SR-336")
 

@@ -1,4 +1,4 @@
-"""CAPTURE CS3: plumb jev calibrate measures JEV on the owner's own decisions (R12.1,
+"""CAPTURE CS3: iaso jev calibrate measures JEV on the owner's own decisions (R12.1,
 R13 Q1; sp2 8.3, SR-042)."""
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ import pytest
 from capture_helpers import JevStub, event_kinds, run, use_jev
 from jev_fixtures import default_noul, owner_decisions
 
-from plumb.api import open_core
-from plumb.capture.calibrate import calibrate, labelled_set
+from iaso.api import open_core
+from iaso.capture.calibrate import calibrate, labelled_set
 
 pytestmark = pytest.mark.sr("SR-252")
 
@@ -37,7 +37,7 @@ def test_mixed_evidence_passes_and_records_the_split(repo: Path, write_record, m
     assert result["false_accept"] == 0.0 and result["recall"] == 1.0
     assert entry.payload["model_version"] == "jev-1.13.0"
     assert not entry.payload["per_kind"]["example-restatement"]["passing"]
-    # plumb jev status shows the real/generated split (R13 Q1)
+    # iaso jev status shows the real/generated split (R13 Q1)
     assert run(repo, "jev", "status") == 0
     status = capsys.readouterr().out
     assert "calibrated against: jev-1.13.0" in status
@@ -54,7 +54,7 @@ def test_fewer_than_twenty_decisions_is_not_passing(repo: Path, write_record, mo
     assert not result["passing"] and "18 of your decisions, 20 needed" in result["reasons"]
     capsys.readouterr()
     assert run(repo, "config", "auto-approve", "on") == 0  # EX-1 (DEC-143): on needs none
-    from plumb.capture.autoapprove import auto_approve_state
+    from iaso.capture.autoapprove import auto_approve_state
 
     assert auto_approve_state(open_core(repo)).effective and "config" in event_kinds(repo)
 

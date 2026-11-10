@@ -1,5 +1,5 @@
-// What plumb's panel says to the owner (SP7 6.3: titles and plain words, never IDs, paths of
-// plumb's own files, hashes or commands).
+// What iaso's panel says to the owner (SP7 6.3: titles and plain words, never IDs, paths of
+// iaso's own files, hashes or commands).
 
 export const GLYPHS: Record<string, string> = {
   aligned: '✓',
@@ -9,7 +9,7 @@ export const GLYPHS: Record<string, string> = {
   'two versions': '⇄',
 }
 
-/** plumb's own colours wherever the mod draws (SR-159, SR-290; the room's `--plumb` and
+/** iaso's own colours wherever the mod draws (SR-159, SR-290; the room's `--iaso` and
  * `--brass` in ui/src/app.css hold the same values): plum for its text, the darker shade on a
  * light theme, and brass for fills and highlights. Never Claude Code's orange, lavender, cyan or green. */
 export const PLUM = { dark: '#B05FB0', light: '#8E3B8E' }
@@ -23,13 +23,13 @@ const isLight = (theme: unknown) => typeof theme === 'string' && theme.startsWit
 
 /** The plum for the host's theme (`theme` in /config, as `light`, `light-daltonized`, ...);
  * the dark shade when the surface does not say. */
-export const plumbColor = (theme: unknown): string => (isLight(theme) ? PLUM.light : PLUM.dark)
+export const iasoColor = (theme: unknown): string => (isLight(theme) ? PLUM.light : PLUM.dark)
 
 /** The brass for the host's theme, by the same check as the plum. */
 export const brassColor = (theme: unknown): string => (isLight(theme) ? BRASS_LIGHT : BRASS)
 
 export const T = {
-  name: 'plumb',
+  name: 'iaso',
   awaiting: (n: number) => (n === 1 ? '1 awaits you' : `${n} await you`),
   nothingAwaits: 'nothing awaits you',
   stopped: (what: string) => `stopped, waits for ${what}`,
@@ -51,13 +51,13 @@ export const T = {
   // SR-360 EX-2: a study whose records changed, and the offer to rewrite it at the same depth
   outOfDate: (title: string, changed: string) => `study out of date: ${title} (${changed} changed)`,
   rewrite: 'Rewrite it',
-  refreshFailed: 'plumb could not record that; the study stays as it is. Try again.',
-  chooseFailed: 'plumb could not record that choice; nothing changed. Try again.',
+  refreshFailed: 'iaso could not record that; the study stays as it is. Try again.',
+  chooseFailed: 'iaso could not record that choice; nothing changed. Try again.',
   judged: (n: number) => `${n} judge-approved`,
-  unchecked: "plumb could not check its repository for a newer version",
+  unchecked: "iaso could not check its repository for a newer version",
   setAside: (question: string, why: string) => `the judge's question was set aside: "${question}" (${why})`,
-  roomFailed: 'plumb could not open the study in the browser room; nothing changed. Try again.',
-  loopTitle: 'plumb: the intent loop',
+  roomFailed: 'iaso could not open the study in the browser room; nothing changed. Try again.',
+  loopTitle: 'iaso: the intent loop',
   // SR-367: the known problems, one band line and a pane
   knownOpen: (n: number) => (n === 1 ? '1 known problem open' : `${n} known problems open`),
   studiesChip: (n: number) => `studies ${n}`,
@@ -65,7 +65,7 @@ export const T = {
   problemsChip: (n: number) => `problems ${n}`,
   judgeChip: (n: number) => `judge ${n}`,
   buildChip: (n: number) => `build ${n}`,
-  knownTitle: 'plumb: known problems',
+  knownTitle: 'iaso: known problems',
   knownState: (state: string, fixed: string) => (state === 'open' ? 'open' : `fixed${fixed ? ` ${fixed}` : ''}`),
   knownSymptom: (s: string) => `  symptom: ${s}`,
   knownCause: (s: string) => `  cause: ${s}`,
@@ -73,22 +73,22 @@ export const T = {
   knownHistory: (h: string) => `  history: ${h}`,
   // SR-393: the project's loops, one band count and a pane with a switch between the types
   loopsLive: (n: number, idle: number) => (n ? `loops ${n}${idle ? ` · ${idle} idle` : ''}` : `${idle} idle loop${idle === 1 ? '' : 's'}`),
-  loopsTitle: 'plumb: loops',
-  paneTitle: 'plumb',
+  loopsTitle: 'iaso: loops',
+  paneTitle: 'iaso',
   loopsType: (shown: boolean, type: string, live: number, idle: number) =>
     `${shown ? '●' : '○'} ${type} ${live}${idle ? ` +${idle} idle` : ''}`,
   loopsIdle: 'idle',
   loopsReopen: 'reopen in a new session',
   loopsOpening: 'opening a new session…',
   loopsUpdating: 'updating…',
-  reopenStarted: 'plumb is opening a new session on that loop; its window can take a few seconds',
+  reopenStarted: 'iaso is opening a new session on that loop; its window can take a few seconds',
   loopsShow: 'show its window',
-  reopenFailed: 'plumb could not open a new session for that loop',
+  reopenFailed: 'iaso could not open a new session for that loop',
   // SR-395: a message to a working loop's session, typed on its row or told to the agent
   loopSay: 'a message to the session working on this loop',
   loopSend: 'send',
   loopTell: 'tell the agent of this session what to send',
-  sendFailed: 'plumb could not send that message',
+  sendFailed: 'iaso could not send that message',
   loopsIdleSince: (date: string) => `idle since ${date}`,
   loopsNone: { intent: 'no intent loop is open', debug: 'no problem is being fixed', evaluate: 'no evaluate run is going' } as Record<string, string>,
   loopGoal: (s: string) => `  goal: ${s}`,
@@ -106,13 +106,13 @@ export const T = {
   hide: 'Hide',
   show: 'Show',
   recommended: ' (recommended)',
-  degraded: "plumb's panel is off for this session; plumb keeps working in the background.",
-  // SR-126: why the panel could not reach plumb, said once per session
+  degraded: "iaso's panel is off for this session; iaso keeps working in the background.",
+  // SR-126: why the panel could not reach iaso, said once per session
   noPython: (looked: string[]) =>
-    `plumb's panel is off: no Python for plumb was found (looked in ${looked.join(', ')}); ` +
-    'it tries again at your next message, and plumb keeps working in the background.',
+    `iaso's panel is off: no Python for iaso was found (looked in ${looked.join(', ')}); ` +
+    'it tries again at your next message, and iaso keeps working in the background.',
   helloFailed: (error: string) =>
-    `plumb's panel is off: plumb could not start it (${error}); plumb keeps working in the background.`,
+    `iaso's panel is off: iaso could not start it (${error}); iaso keeps working in the background.`,
   helloRefused: (reason: string) =>
-    `plumb's panel is off: plumb refused it (${reason}); plumb keeps working in the background.`,
+    `iaso's panel is off: iaso refused it (${reason}); iaso keeps working in the background.`,
 }

@@ -11,7 +11,7 @@ from study.helpers import written
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
-from plumb import study
+from iaso import study
 
 from .test_server import auth, request
 
@@ -21,8 +21,8 @@ intent = test_intent_loop.intent
 @pytest.fixture
 def room(intent, tmp_path):
     """A written study 'slug', and the room's server (not a browser)."""
-    from plumb.browser.server import make_server
-    from plumb.browser.service import BrowserService
+    from iaso.browser.server import make_server
+    from iaso.browser.service import BrowserService
 
     body = tmp_path / "body.md"
     body.write_text("A dispatcher hands each job to a worker.\n", encoding="utf-8")

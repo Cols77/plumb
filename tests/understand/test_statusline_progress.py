@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 from understand.fakes import owner_level
 
-from plumb.hosts.claude_code import snapshot, statusline
-from plumb.present import owner_text
-from plumb.understand import files
+from iaso.hosts.claude_code import snapshot, statusline
+from iaso.present import owner_text
+from iaso.understand import files
 
 pytestmark = pytest.mark.sr("SR-272")
 
@@ -45,7 +45,7 @@ def _line(repo: Path, session: str | None = SESSION) -> str:
 
 
 def _snap():
-    from plumb.contracts import StatusSnapshot
+    from iaso.contracts import StatusSnapshot
 
     return StatusSnapshot(at="2026-10-06T04:00:00Z", requirements_total=14,
                           requirements_confirmed=12, proposed=2, stale_links=1,
@@ -61,13 +61,13 @@ def _dead_pid() -> int:
 def test_sr108_ex3_merge_check_line(repo: Path) -> None:
     _progress(repo, None, step="running the full suite", kind="merge-check", done=120,
               total=400)
-    assert _line(repo) == "plumb ⏳ merge check: running the full suite · 120/400"
+    assert _line(repo) == "iaso ⏳ merge check: running the full suite · 120/400"
 
 
 def test_sr108_ex6_backlog_line(repo: Path) -> None:
     _progress(repo, SESSION, step="judging the backlog", kind="judge", done=10, total=160)
     line = _line(repo)
-    assert line.startswith("plumb ▲ drift")          # the card stays
+    assert line.startswith("iaso ▲ drift")          # the card stays
     assert line.endswith("judging the backlog · 10/160")
     assert owner_level("judging the backlog · 10/160") == []
 
@@ -158,7 +158,7 @@ def test_a_stream_that_cannot_print_the_glyph_falls_back(repo: Path) -> None:
 
 
 def test_the_status_line_never_signals_the_process_it_checks() -> None:
-    from plumb.progress import _alive
+    from iaso.progress import _alive
 
     assert _alive(os.getpid()) is True               # and we are still here to say so
     assert _alive(_dead_pid()) is False

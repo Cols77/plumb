@@ -1,0 +1,48 @@
+SR-287 proof, 2026-11-03, on a throwaway copy of land/eval-fixes
+
+== entries per kind before the compaction
+answer-bound       live      5 archived      0
+approval           live     17 archived     31
+browser-hello      live      6 archived      0
+calibration        live     19 archived      0
+card-withdrawn     live     15 archived      0
+config             live      1 archived      0
+gate               live      1 archived      0
+judgment           live      2 archived  29980
+mod-hello          live      0 archived     30
+offer              live  14954 archived  15429
+pre-intent         live      5 archived      0
+prompt             live      5 archived      0
+question-answer    live     37 archived      0
+question-pushback  live     20 archived      0
+question-ruling    live     18 archived      0
+rejection          live     30 archived      0
+repin              live    476 archived      0
+selfdebug-review   live    176 archived      0
+test-run           live   2617 archived   1176
+verdict            live     25 archived      0
+
+== after (57 paths moved)
+answer-bound       live      5 archived      0
+approval           live     17 archived     31
+browser-hello      live      6 archived      0
+calibration        live     19 archived      0
+card-withdrawn     live     15 archived      0
+config             live      1 archived      0
+gate               live      1 archived      0
+judgment           live      0 archived  29982
+mod-hello          live      0 archived     30
+offer              live  14954 archived  15429
+pre-intent         live      5 archived      0
+prompt             live      0 archived      5
+question-answer    live     37 archived      0
+question-pushback  live     20 archived      0
+question-ruling    live     18 archived      0
+rejection          live     30 archived      0
+repin              live    476 archived      0
+selfdebug-review   live    176 archived      0
+test-run           live   2570 archived   1223
+verdict            live     25 archived      0
+
+iaso validate: 0 errors, 34 warnings
+strace of 'iaso hook session-start' (the hook's own process): archive files opened: 0

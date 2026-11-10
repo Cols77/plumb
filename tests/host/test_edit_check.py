@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import stale
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.hosts.claude_code import edit_check, install
+from iaso import stale
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.hosts.claude_code import edit_check, install
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -36,7 +36,7 @@ examples:
 ---
 """
 CODE = "def f(a, b):\n    return a + b\n\n\ndef g(x):\n    return x\n"
-NOTICE = ("plumb: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
+NOTICE = ("iaso: SR-005's link to src/x.py is stale: the file changed; rerun its tests and "
           "repin, reword SR-005, or ask the owner with the question tool")
 
 
@@ -100,7 +100,7 @@ def test_at_most_five_then_more(project: Path, hook_input, write_record) -> None
     _edit(project)
     text = json.loads(_run(project, hook_input))["hookSpecificOutput"]["additionalContext"]
     lines = text.splitlines()
-    assert len(lines) == 6 and lines[-1] == "plumb: +3 more"
+    assert len(lines) == 6 and lines[-1] == "iaso: +3 more"
 
 
 def test_link_added_after_the_map_is_still_seen(project: Path, hook_input, write_record) -> None:
@@ -121,7 +121,7 @@ def test_direct_record_edit_names_derived_records(repo: Path, hook_input, write_
     time.sleep(0.05)
     write_record(repo, "---\nid: INT-016\ntitle: Add multiply\nquote: add multiply\n"
                        "readback: Add multiply and divide\nwill:\n- a product\n---\n")
-    out = json.loads(_run(repo, hook_input, rel=".plumb/intents/INT-016.md"))
+    out = json.loads(_run(repo, hook_input, rel=".iaso/intents/INT-016.md"))
     assert out["hookSpecificOutput"]["additionalContext"] == (
         "SR-032 derives from INT-016, which was reworded: check that it still agrees")
 
@@ -130,7 +130,7 @@ def test_budget_300_min_of_5(project: Path, hook_input) -> None:
     runs = []
     for _ in range(5):
         _edit(project)
-        stale_told = project / ".plumb" / "session" / "test-session" / "stale_told.json"
+        stale_told = project / ".iaso" / "session" / "test-session" / "stale_told.json"
         stale_told.unlink(missing_ok=True)
         start = time.monotonic()
         _run(project, hook_input)
@@ -139,13 +139,13 @@ def test_budget_300_min_of_5(project: Path, hook_input) -> None:
 
 
 def test_install_adds_sync_entry_after_async_one(repo: Path) -> None:
-    uv = install.Launcher("uv", "uv run --no-sync plumb", "uv run --no-sync plumb")
+    uv = install.Launcher("uv", "uv run --no-sync iaso", "uv run --no-sync iaso")
     install.install(repo, launcher=uv, hooks=("post-edit", "edit-check", "stop"))
     settings = json.loads((repo / ".claude" / "settings.json").read_text(encoding="utf-8"))
     groups = settings["hooks"]["PostToolUse"]
     commands = [g["hooks"][0]["command"] for g in groups]
-    assert commands == ["uv run --no-sync plumb hook post-edit",
-                        "uv run --no-sync plumb hook edit-check"]
+    assert commands == ["uv run --no-sync iaso hook post-edit",
+                        "uv run --no-sync iaso hook edit-check"]
     assert groups[0]["hooks"][0]["async"] is True
     assert "async" not in groups[1]["hooks"][0]
     assert groups[1]["matcher"] == "Edit|Write|MultiEdit|NotebookEdit"
@@ -153,11 +153,11 @@ def test_install_adds_sync_entry_after_async_one(repo: Path) -> None:
 
 
 def test_own_records_inside_budget(hook_input) -> None:
-    """On plumb's own records and a warm link map the check stays inside the budget."""
+    """On iaso's own records and a warm link map the check stays inside the budget."""
     root = Path(__file__).resolve().parents[2]
-    if not (root / ".plumb" / "requirements").is_dir():
+    if not (root / ".iaso" / "requirements").is_dir():
         pytest.skip("no records")
-    from plumb.hosts.claude_code import hookio  # noqa: F401
+    from iaso.hosts.claude_code import hookio  # noqa: F401
 
     core = open_core(root)
     stale.ensure_linkmap(core)
@@ -165,7 +165,7 @@ def test_own_records_inside_budget(hook_input) -> None:
     for _ in range(5):
         out = io.StringIO()
         payload = hook_input("PostToolUse", tool_name="Edit", session_id="perf-own",
-                             tool_input={"file_path": str(root / "src/plumb/links.py")})
+                             tool_input={"file_path": str(root / "src/iaso/links.py")})
         start = time.monotonic()
         edit_check.main(stdin=io.StringIO(payload), stdout=out, root=root)
         runs.append((time.monotonic() - start) * 1000)
@@ -175,7 +175,7 @@ def test_own_records_inside_budget(hook_input) -> None:
 def test_sr166_edit_outside_the_root_uses_the_files_own_root(project: Path, hook_input,
                                                              tmp_path: Path, write_record) -> None:
     other = tmp_path / "wt"
-    (other / ".plumb").mkdir(parents=True)
+    (other / ".iaso").mkdir(parents=True)
     (other / "src").mkdir()
     (other / "src" / "x.py").write_text(CODE, encoding="utf-8")
     write_record(other, SR5)
@@ -187,7 +187,7 @@ def test_sr166_edit_outside_the_root_uses_the_files_own_root(project: Path, hook
                          tool_input={"file_path": str(other / "src" / "x.py")})
     assert edit_check.main(stdin=io.StringIO(payload), stdout=out, root=project) == 0
     assert NOTICE in out.getvalue()
-    roots = json.loads((project / ".plumb" / "session" / "agent_roots.json").read_text("utf-8"))
+    roots = json.loads((project / ".iaso" / "session" / "agent_roots.json").read_text("utf-8"))
     assert roots == {"a1": {str(other.resolve()): ["SR-005#0"]}}  # what subagent-stop rechecks
 
 
@@ -196,7 +196,7 @@ def test_sr166_a_worktree_no_session_prompted_in_gets_its_map_built(project: Pat
                                                                     tmp_path: Path,
                                                                     write_record) -> None:
     other = tmp_path / "wt"
-    (other / ".plumb").mkdir(parents=True)
+    (other / ".iaso").mkdir(parents=True)
     (other / "src").mkdir()
     (other / "src" / "x.py").write_text(CODE, encoding="utf-8")
     write_record(other, SR5)
@@ -216,5 +216,5 @@ def test_sr166_an_edit_that_makes_nothing_stale_records_no_link(project: Path,
                                                                 hook_input) -> None:
     (project / "src" / "x.py").write_text(CODE.replace("return x", "return -x"), "utf-8")
     assert _run(project, hook_input) == ""
-    roots = json.loads((project / ".plumb" / "session" / "agent_roots.json").read_text("utf-8"))
+    roots = json.loads((project / ".iaso" / "session" / "agent_roots.json").read_text("utf-8"))
     assert roots == {"main": {str(project): []}}

@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log
-from plumb.api import Core
-from plumb.contracts import Applied, DispatchError, Job
-from plumb.understand import dispatch, files, jobs, ledger, queue, worker
+from iaso import log
+from iaso.api import Core
+from iaso.contracts import Applied, DispatchError, Job
+from iaso.understand import dispatch, files, jobs, ledger, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds
 
 pytestmark = pytest.mark.sr("SR-273", "SR-223")
@@ -60,7 +60,7 @@ def test_an_answer_queued_during_the_backlog_runs_before_its_remaining_jobs(
         repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
     """The owner's answer arrives while the backlog pass runs: it goes next, not last."""
     # one at a time (understand.parallel_calls: 1): what this test is about
-    with (repo / ".plumb" / "config.yaml").open("a", encoding="utf-8") as fh:
+    with (repo / ".iaso" / "config.yaml").open("a", encoding="utf-8") as fh:
         fh.write("\nunderstand:\n  parallel_calls: 1\n")
     core = Core(repo)
     first, second = (jobs.new_job("a", "s1", "a.v1", {"pass": "backlog", "n": n},
@@ -264,7 +264,7 @@ def test_start_detached_runs_the_queue_in_another_process(
     script = repo / "script.json"
     # READ landed: its answer must hold the entries list the schema asks for (none here)
     script.write_text('{"read": {"entries": []}}', encoding="utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))   # under pytest only then it spawns
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))   # under pytest only then it spawns
     core = Core(repo)
     job = jobs.new_job("read", "s1", "read.v1", {"n": 1})
     queue.enqueue(core, job)                              # asks for the worker itself
@@ -274,13 +274,13 @@ def test_start_detached_runs_the_queue_in_another_process(
         time.sleep(0.2)
     result = jobs.result(repo, "s1", job.id)
     assert result is not None and result.status == "ok"
-    assert os.environ.get("PLUMB_WORKER") is None
+    assert os.environ.get("IASO_WORKER") is None
 
 
 def test_cmd_worker_runs_the_session_in_the_foreground(
         repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture) -> None:
-    from plumb.understand import cmd_worker
+    from iaso.understand import cmd_worker
 
     fake_kinds(monkeypatch, {"a": FakeKind("a")})
     core = Core(repo)

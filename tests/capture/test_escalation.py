@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from capture_helpers import agent_shell_setup, event_kinds, log_prompt, record_text, run
 
-from plumb.api import open_core
-from plumb.capture.escalation import escalation
-from plumb.contracts import DiffStats
-from plumb.judgment import FakeBackend
+from iaso.api import open_core
+from iaso.capture.escalation import escalation
+from iaso.contracts import DiffStats
+from iaso.judgment import FakeBackend
 
 pytestmark = pytest.mark.sr("SR-228")
 
@@ -38,7 +38,7 @@ def test_two_features_trigger_size(project: Path) -> None:
     found = escalation(open_core(project), matched=["SR-001", "SR-003"])
     assert triggers(found) == ["size"]
     assert found[0].reason == "touches 2 features (FEAT-001, FEAT-003)"
-    assert found[0].line == ("plumb: consider an up-front spec: touches 2 features "
+    assert found[0].line == ("iaso: consider an up-front spec: touches 2 features "
                              "(FEAT-001, FEAT-003); the owner decides")
 
 
@@ -49,7 +49,7 @@ def test_more_than_three_requirements_trigger_size(project: Path) -> None:
 
 
 def test_contradiction_of_confirmed_triggers(project: Path) -> None:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     approve(open_core(project), ["SR-001"])
     backend = FakeBackend({("intent-change", "SR-001"): ("change", 0.95),
@@ -62,7 +62,7 @@ def test_contradiction_of_confirmed_triggers(project: Path) -> None:
 
 def test_shared_surface_triggers(project: Path) -> None:
     found = escalation(open_core(project),
-                       diff=DiffStats(lines=10, files=1, paths=("src/plumb/cli.py",)))
+                       diff=DiffStats(lines=10, files=1, paths=("src/iaso/cli.py",)))
     assert triggers(found) == ["shared"]
     found = escalation(open_core(project),
                        diff=DiffStats(lines=1, files=1, paths=("tests/conftest.py",)))
@@ -113,7 +113,7 @@ def test_owner_decline_refused_without_terminal(project: Path, monkeypatch, caps
     assert run(project, "escalate", "decline", "--intent", "INT-021") == 3
     assert "not an interactive terminal" in capsys.readouterr().err
     assert "escalation-declined" not in event_kinds(project)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "s1")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "s1")
     assert run(project, "escalate", "decline", "--intent", "INT-021") == 3
     assert "escalation-declined" not in event_kinds(project)
 
@@ -121,5 +121,5 @@ def test_owner_decline_refused_without_terminal(project: Path, monkeypatch, caps
 def test_check_command_prints_one_line(project: Path, capsys) -> None:
     assert run(project, "escalate", "check", "--matched", "SR-001", "--matched", "SR-003") == 0
     assert capsys.readouterr().out.strip() == (
-        "plumb: consider an up-front spec: touches 2 features (FEAT-001, FEAT-003); "
+        "iaso: consider an up-front spec: touches 2 features (FEAT-001, FEAT-003); "
         "the owner decides")

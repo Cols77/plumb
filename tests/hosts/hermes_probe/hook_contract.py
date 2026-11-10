@@ -81,7 +81,7 @@ def _known_absent_fields(event: str, entry: dict) -> set[str]:
 
 
 def _load_plugin(root: Path, name: str):
-    path = root / ".hermes" / "plugins" / "plumb" / "plugin.py"
+    path = root / ".hermes" / "plugins" / "iaso" / "plugin.py"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -130,15 +130,15 @@ class _DispatchCapture:
 
 
 def _replay_callbacks(data: dict) -> dict:
-    from plumb.hosts.hermes import install as hermes_install
+    from iaso.hosts.hermes import install as hermes_install
 
-    with tempfile.TemporaryDirectory(prefix="plumb-hermes-hook-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="iaso-hermes-hook-") as temporary:
         root_a, root_b = (Path(temporary) / "A", Path(temporary) / "B")
         for root in (root_a, root_b):
-            (root / ".plumb").mkdir(parents=True)
+            (root / ".iaso").mkdir(parents=True)
             hermes_install.install(root, launcher="path")
-        plugin_a = _load_plugin(root_a, "plumb_plugin_a")
-        plugin_b = _load_plugin(root_b, "plumb_plugin_b")
+        plugin_a = _load_plugin(root_a, "iaso_plugin_a")
+        plugin_b = _load_plugin(root_b, "iaso_plugin_b")
         ctx_a, ctx_b = _Context(), _Context()
         plugin_a.register(ctx_a)
         plugin_b.register(ctx_b)

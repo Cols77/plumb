@@ -10,15 +10,15 @@ import pytest
 from capture_helpers import log_prompt, record_text, run, write_stated
 from logutil import legacy_relay
 
-from plumb.api import open_core
-from plumb.capture.confirmations import confirmation_counts, confirmation_label
+from iaso.api import open_core
+from iaso.capture.confirmations import confirmation_counts, confirmation_label
 
 pytestmark = pytest.mark.sr("SR-208")
 
 
 @pytest.fixture
 def project(repo: Path, write_record, monkeypatch) -> Path:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "session-1")
     write_record(repo, record_text("SR-001", "add returns the sum", statement="add sums"))
     write_record(repo, record_text("SR-002", "sub returns the difference",
                                    statement="sub subtracts"))
@@ -55,13 +55,13 @@ def test_hook_recorded_prompt_carries_no_label(project: Path) -> None:
 def test_prompt_hook_marks_its_entries(tmp_path: Path) -> None:
     import json
 
-    from plumb.hosts.claude_code.hookio import Deadline, HookContext
-    from plumb.hosts.claude_code.prompt import log_prompt as hook_log
+    from iaso.hosts.claude_code.hookio import Deadline, HookContext
+    from iaso.hosts.claude_code.prompt import log_prompt as hook_log
 
     root = tmp_path / "r"
-    (root / ".plumb" / "session").mkdir(parents=True)
+    (root / ".iaso" / "session").mkdir(parents=True)
     ctx = HookContext(name="prompt", data={}, root=root, session_id="s",
                       deadline=Deadline(5.0))
     hook_log(ctx, "hello")
-    line = (root / ".plumb" / "session" / "prompts.jsonl").read_text(encoding="utf-8")
+    line = (root / ".iaso" / "session" / "prompts.jsonl").read_text(encoding="utf-8")
     assert json.loads(line)["via"] == "hook"

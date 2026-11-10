@@ -11,7 +11,7 @@ from host.test_answer_rejudge import ASK, judge_asks, world  # noqa: F401
 from host.test_stop import _block, run_stop, start_turn
 from understand.test_judge_job import SESSION
 
-from plumb.hosts.claude_code import ask_gate, stop
+from iaso.hosts.claude_code import ask_gate, stop
 
 pytestmark = pytest.mark.sr("SR-361")
 
@@ -68,7 +68,7 @@ def test_dec435_the_prompt_hook_has_no_waiting_reminder_the_stop_hook_still_nudg
 
     from host.fakes import FakeBackend, FakeVerify
 
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     judge_asks(world, (ASK, ["SR-001"]))
     out = io.StringIO()
@@ -89,8 +89,8 @@ def test_ex9_an_answer_after_the_requirement_was_superseded_binds_to_its_replace
     from host.test_answer_rejudge import answer, logged
     from understand.test_judge_job import requirement_text
 
-    from plumb.api import open_core
-    from plumb.understand import judge
+    from iaso.api import open_core
+    from iaso.understand import judge
 
     judge_asks(world, (ASK, ["SR-001"]))
     write_record(world, requirement_text(2, "Pages", "Pages load in half a second",

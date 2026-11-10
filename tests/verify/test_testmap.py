@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.verify.testmap import build_map
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.verify.testmap import build_map
 
 
 @pytest.fixture
@@ -46,8 +46,8 @@ def test_map_from_import_closure(project: Path) -> None:
 @pytest.mark.sr("SR-255")
 def test_map_text_is_grepable(project: Path) -> None:
     build_map(open_core(project))
-    lines = (project / ".plumb" / "test_map.txt").read_text(encoding="utf-8").splitlines()
-    assert lines[0].startswith("# plumb test map v1")
+    lines = (project / ".iaso" / "test_map.txt").read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("# iaso test map v1")
     assert "src/pkg/mod.py -> tests/test_mod.py tests/test_helper.py" in lines
     assert "SR-001 -> tests/test_mod.py::test_add" in lines
     helper = next(line for line in lines if line.startswith("tests/test_helper.py <- "))

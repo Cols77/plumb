@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-278")
 
@@ -59,7 +59,7 @@ def test_brief_content(records: Path) -> None:
     approvals.approve(open_core(records), ["INT-001"])
     lines = open_core(records).brief_lines(30)
     text = "\n".join(lines)
-    assert lines[0].startswith("plumb brief")
+    assert lines[0].startswith("iaso brief")
     assert "FEAT-001 Records and integrity (3 SR)" in text
     assert "INT-001" in text and "make vibe coding grounded" in text
     assert "waiting on a judge:" in text and "your confirmation" not in text
@@ -77,7 +77,7 @@ def test_brief_respects_line_cap(repo: Path, write_record) -> None:
     core = open_core(repo)
     lines = core.brief_lines(30)
     assert len(lines) <= 30
-    assert any("+" in line and "more (plumb brief --all)" in line for line in lines)
+    assert any("+" in line and "more (iaso brief --all)" in line for line in lines)
     assert len(core.brief_lines(100)) <= 40  # hard cap
     assert len(core.brief_lines(10)) <= 10
 
@@ -85,7 +85,7 @@ def test_brief_respects_line_cap(repo: Path, write_record) -> None:
 def test_brief_and_status_commands(records: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["brief", "--root", str(records)]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("plumb brief") and len(out.splitlines()) <= 40
+    assert out.startswith("iaso brief") and len(out.splitlines()) <= 40
     assert cli.main(["brief", "--all", "--root", str(records)]) == 0
     assert cli.main(["status", "--root", str(records)]) == 0
     out = capsys.readouterr().out

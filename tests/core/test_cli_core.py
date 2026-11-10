@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
+from iaso import cli
 
 INT = """---
 id: INT-001
@@ -42,22 +42,22 @@ def test_init_is_idempotent_and_writes_ignore_and_attributes(tmp_path: Path) -> 
     root = tmp_path / "r"
     root.mkdir()
     assert cli.main(["init", "--root", str(root)]) == 0
-    plumb = root / ".plumb"
+    iaso = root / ".iaso"
     for name in ("intents", "requirements", "decisions", "features", "ncs", "log"):
-        assert (plumb / name).is_dir()
+        assert (iaso / name).is_dir()
     # one file per entry (SP6 6.5): init creates no JSONL log
-    assert not (plumb / "log" / "events.jsonl").exists()
-    assert not (plumb / "log" / "evidence.jsonl").exists()
-    ignore = (plumb / ".gitignore").read_text(encoding="utf-8").split()
+    assert not (iaso / "log" / "events.jsonl").exists()
+    assert not (iaso / "log" / "evidence.jsonl").exists()
+    ignore = (iaso / ".gitignore").read_text(encoding="utf-8").split()
     assert {"cache/", "session/", "test_map.txt"} <= set(ignore)
-    assert "merge=union" in (plumb / ".gitattributes").read_text(encoding="utf-8")
-    assert (plumb / "config.yaml").exists()
-    assert "require_trailer" in (plumb / "claims.yaml").read_text(encoding="utf-8")
-    (plumb / "config.yaml").write_text("verify:\n  turn_budget_s: 7\n", encoding="utf-8")
-    (plumb / "log" / "events.jsonl").write_text('{"x": 1}\n', encoding="utf-8")
-    before = {p: p.read_bytes() for p in plumb.rglob("*") if p.is_file()}
+    assert "merge=union" in (iaso / ".gitattributes").read_text(encoding="utf-8")
+    assert (iaso / "config.yaml").exists()
+    assert "require_trailer" in (iaso / "claims.yaml").read_text(encoding="utf-8")
+    (iaso / "config.yaml").write_text("verify:\n  turn_budget_s: 7\n", encoding="utf-8")
+    (iaso / "log" / "events.jsonl").write_text('{"x": 1}\n', encoding="utf-8")
+    before = {p: p.read_bytes() for p in iaso.rglob("*") if p.is_file()}
     assert cli.main(["init", "--root", str(root)]) == 0
-    after = {p: p.read_bytes() for p in plumb.rglob("*") if p.is_file()}
+    after = {p: p.read_bytes() for p in iaso.rglob("*") if p.is_file()}
     assert before == after
 
 
@@ -102,5 +102,5 @@ def test_link_cli_target_forms(repo: Path, write_record,
     assert cli.main(["link", "SR-001", "derives_from", "SR-001", *root]) == 1  # kind matrix
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_mod.py", "--example", "EX-9",
                      *root]) == 1
-    text = (repo / ".plumb" / "requirements" / "SR-001.md").read_text(encoding="utf-8")
+    text = (repo / ".iaso" / "requirements" / "SR-001.md").read_text(encoding="utf-8")
     assert "src/mod.py" in text and "EX-1" in text and "Body." in text

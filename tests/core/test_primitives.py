@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.config import load_config
-from plumb.contracts import Link, Pin, Record, Target
-from plumb.normalize import canonical_json, file_digest, normalize_text, sha256_bytes, sha256_text
-from plumb.paths import PlumbPaths, find_root
-from plumb.text import CHANGE_WORDS, overlap, terms
+from iaso import cli
+from iaso.config import load_config
+from iaso.contracts import Link, Pin, Record, Target
+from iaso.normalize import canonical_json, file_digest, normalize_text, sha256_bytes, sha256_text
+from iaso.paths import IasoPaths, find_root
+from iaso.text import CHANGE_WORDS, overlap, terms
 
 pytestmark = pytest.mark.sr("SR-230")
 
@@ -56,10 +56,10 @@ def test_file_digest_binary_uses_raw_bytes(tmp_path: Path) -> None:
     assert file_digest(text) == sha256_text("line")
 
 
-def test_find_root_prefers_plumb_dir(tmp_path: Path) -> None:
+def test_find_root_prefers_iaso_dir(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     inner = tmp_path / "pkg"
-    (inner / ".plumb").mkdir(parents=True)
+    (inner / ".iaso").mkdir(parents=True)
     deep = inner / "a" / "b"
     deep.mkdir(parents=True)
     assert find_root(deep) == inner.resolve()
@@ -70,23 +70,23 @@ def test_find_root_prefers_plumb_dir(tmp_path: Path) -> None:
 
 
 def test_config_yaml_overrides_and_cache(tmp_path: Path) -> None:
-    (tmp_path / ".plumb").mkdir()
-    (tmp_path / ".plumb" / "config.yaml").write_text(
+    (tmp_path / ".iaso").mkdir()
+    (tmp_path / ".iaso" / "config.yaml").write_text(
         "verify:\n  turn_budget_s: 5\n  infra_globs: [uv.lock, x.py]\n", encoding="utf-8")
     config = load_config(tmp_path)
     assert config.verify.turn_budget_s == 5
     assert config.verify.infra_globs == ("uv.lock", "x.py")
     assert config.verify.sample_size == 10
-    assert (tmp_path / ".plumb" / "cache" / "config.json").exists()
+    assert (tmp_path / ".iaso" / "cache" / "config.json").exists()
     assert load_config(tmp_path) == config
 
 
 def test_paths_attributes(tmp_path: Path) -> None:
-    paths = PlumbPaths(tmp_path)
-    assert paths.log_events == tmp_path / ".plumb" / "log" / "events.jsonl"
-    assert paths.prompts == tmp_path / ".plumb" / "session" / "prompts.jsonl"
-    assert paths.session_dir("s1") == tmp_path / ".plumb" / "session" / "s1"
-    for name in ("plumb", "config", "claims", "log_evidence", "cache", "session",
+    paths = IasoPaths(tmp_path)
+    assert paths.log_events == tmp_path / ".iaso" / "log" / "events.jsonl"
+    assert paths.prompts == tmp_path / ".iaso" / "session" / "prompts.jsonl"
+    assert paths.session_dir("s1") == tmp_path / ".iaso" / "session" / "s1"
+    for name in ("iaso", "config", "claims", "log_evidence", "cache", "session",
                  "test_map_txt", "test_map_json", "index_cache", "hash_cache",
                  "evidence_index", "env_identity", "lock", "status", "stated",
                  "escalations", "errors"):
@@ -120,15 +120,15 @@ def test_unknown_command_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
 def test_missing_module_reports_not_available(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setitem(cli.ROUTES, "ghost", "plumb.no_such_lane.cli")
+    monkeypatch.setitem(cli.ROUTES, "ghost", "iaso.no_such_lane.cli")
     assert cli.main(["ghost"]) == 2
-    assert "plumb: 'ghost' is not available in this build" in capsys.readouterr().err
+    assert "iaso: 'ghost' is not available in this build" in capsys.readouterr().err
 
 
 def test_every_route_names_a_module_path() -> None:
     expected = {"init", "new", "show", "link", "repin", "validate", "check", "status", "drift",
                 "debug",   # SR-220, SR-325: the debug workflow
-                # SR-148, SR-149: `plumb unlink`, `plumb relink`
+                # SR-148, SR-149: `iaso unlink`, `iaso relink`
                 "unlink", "relink",
                 "brief", "explain", "why", "tests", "map",
                 # SR-210: refused as gone, still routed so they say so
@@ -148,39 +148,39 @@ def test_every_route_names_a_module_path() -> None:
                 "heavy", "landing",
                 # sub-project 8 (understanding layer, phase C stubs)
                 "understand",
-                # INT-090: `plumb study add|list|candidates|mark`
+                # INT-090: `iaso study add|list|candidates|mark`
                 "study",
-                # sub-project 7 PLUGIN: `plumb plugin ignore|unignore|migrate`
+                # sub-project 7 PLUGIN: `iaso plugin ignore|unignore|migrate`
                 "plugin",
                 # sp7 slice 4: the panel's own commands (not advertised in --help)
                 "mod",
-                # SR-118: `plumb quotes recover`
+                # SR-118: `iaso quotes recover`
                 "quotes",
-                # SR-176: the browser issue workspace, `plumb ui`
+                # SR-176: the browser issue workspace, `iaso ui`
                 "ui",
-                # INT-105: `plumb evaluate`, the benchmark
+                # INT-105: `iaso evaluate`, the benchmark
                 "evaluate",
-                # SR-362: `plumb question reword`
+                # SR-362: `iaso question reword`
                 "question",
-                # SR-374: `plumb context <condition>`, the full picture of one condition
+                # SR-374: `iaso context <condition>`, the full picture of one condition
                 "context",
-                # SR-390: `plumb loops`, every loop of the project
+                # SR-390: `iaso loops`, every loop of the project
                 "loops"}
     assert set(cli.ROUTES) == expected
     for module in cli.ROUTES.values():
-        assert re.fullmatch(r"plumb(\.[a-z_]+)+", module)
+        assert re.fullmatch(r"iaso(\.[a-z_]+)+", module)
 
 
 def test_help_lists_commands(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "usage: plumb" in out
+    assert "usage: iaso" in out
     assert "validate" in out
 
 
 @pytest.mark.sr("SR-202")
 def test_help_lists_context_as_the_agents_command_not_an_owner_view() -> None:
-    """SR-374: `plumb context` is the agent's, never shown to the owner as an owner view."""
+    """SR-374: `iaso context` is the agent's, never shown to the owner as an owner view."""
     owner = cli._HELP.split("owner views")[1].split("\n\n")[0]
     assert "context" not in owner
     assert "  context " in cli._HELP.split("agent views")[1]
@@ -189,7 +189,7 @@ def test_help_lists_context_as_the_agents_command_not_an_owner_view() -> None:
 def test_entry_point_imports_stay_light() -> None:
     import subprocess
 
-    code = ("import sys; from plumb import cli; "
+    code = ("import sys; from iaso import cli; "
             "print(json.dumps(sorted(m for m in ('yaml','argparse','subprocess','ast') "
             "if m in sys.modules)))")
     out = subprocess.run([sys.executable, "-c", "import json; " + code], capture_output=True,
@@ -197,18 +197,18 @@ def test_entry_point_imports_stay_light() -> None:
     assert json.loads(out) == []
 
 
-def test_plumbs_own_home_is_never_taken_for_a_repository(tmp_path: Path) -> None:
-    """~/.plumb holds the plugin's environments (env/, current.json): a folder under the
+def test_iasos_own_home_is_never_taken_for_a_repository(tmp_path: Path) -> None:
+    """~/.iaso holds the plugin's environments (env/, current.json): a folder under the
     user's home walks past it, even when records were once written there by mistake."""
-    from plumb.paths import holds_records
+    from iaso.paths import holds_records
 
     home = tmp_path / "home"
-    (home / ".plumb" / "env").mkdir(parents=True)
-    (home / ".plumb" / "requirements").mkdir()             # left there by an earlier mistake
-    (home / ".plumb" / "config.yaml").write_text("{}\n", encoding="utf-8")
+    (home / ".iaso" / "env").mkdir(parents=True)
+    (home / ".iaso" / "requirements").mkdir()             # left there by an earlier mistake
+    (home / ".iaso" / "config.yaml").write_text("{}\n", encoding="utf-8")
     work = home / "scratch" / "x"
     work.mkdir(parents=True)
     assert holds_records(home) is False
     assert find_root(work) == work.resolve()
-    (work / ".plumb").mkdir()                              # a repository's own records count
+    (work / ".iaso").mkdir()                              # a repository's own records count
     assert holds_records(work) is True and find_root(work) == work.resolve()

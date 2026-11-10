@@ -14,13 +14,13 @@ from types import SimpleNamespace
 import pytest
 
 from core.stale_asked import asked
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.config import config_from_mapping
-from plumb.contracts import DispatchError, Target
-from plumb.understand import repin
-from plumb.understand.repin import JevTier, Meaning, ModelDiagnoser
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.config import config_from_mapping
+from iaso.contracts import DispatchError, Target
+from iaso.understand import repin
+from iaso.understand.repin import JevTier, Meaning, ModelDiagnoser
 
 pytestmark = pytest.mark.sr("SR-242")
 
@@ -102,7 +102,7 @@ class Backend:
         self.p, self.asked = p, []
 
     def _ask(self, questions, prefix):
-        from plumb.judgment import JudgmentUnavailable
+        from iaso.judgment import JudgmentUnavailable
 
         self.asked.append((questions, prefix))
         if self.p is None:
@@ -150,7 +150,7 @@ def test_ex1_jev_above_threshold_repins_without_sonnet(project: Path) -> None:
     # the question JEV is asked is the one the repin eval scores
     ((name, question),), prefix = backend.asked[0]
     assert question.instructions == repin.JEV_QUESTION
-    from plumb.understand import evalrepin
+    from iaso.understand import evalrepin
 
     assert evalrepin.JEV_QUESTION == repin.JEV_QUESTION
     assert "add returns the sum." in prefix and "+    return a  +  b" in prefix
@@ -186,7 +186,7 @@ def test_ex3_requirement_disagreeing_with_intent_is_reworded(project: Path) -> N
     (item,) = result.diagnoses
     assert item["outcome"] == "reword" and item["asked"] is False
     ((link, why),) = result.refused
-    assert link == LINK and "add returns the product." in why and "plumb capture" in why
+    assert link == LINK and "add returns the product." in why and "iaso capture" in why
     assert "development" not in why
     assert asked(project, "s1") == [] and _state(project) == "stale"
 
@@ -310,7 +310,7 @@ def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
     monkeypatch.setattr(repin, "open_judge", lambda core: Judge(False, "add now multiplies"))
     monkeypatch.setattr(repin, "open_diagnoser",
                         lambda core: ModelDiagnoser(Dispatcher(OWNER)))
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     assert main(["repin", "--after-tests", LINK, "--root", str(project)]) == 1
     out = capsys.readouterr()
     assert f"{LINK} needs the owner (question filed): Adds numbers" in out.out
@@ -328,8 +328,8 @@ def _snapshot(repo: Path) -> dict[str, bytes]:
     files = {}
     for path in repo.rglob("*"):
         rel = path.relative_to(repo).as_posix()
-        kept = not rel.startswith(".git/") or rel.startswith(".git/plumb")
-        if path.is_file() and kept and not rel.startswith(".plumb/cache/"):
+        kept = not rel.startswith(".git/") or rel.startswith(".git/iaso")
+        if path.is_file() and kept and not rel.startswith(".iaso/cache/"):
             files[rel] = path.read_bytes()
     return files
 
@@ -373,7 +373,7 @@ def test_sr166_default_runner_lets_the_meaning_judge_gate_when_no_test_covers(pr
         def run(self, changed, budget_s=None):
             return SimpleNamespace(run_id=None)
 
-    monkeypatch.setattr("plumb.verify.open_verify", lambda core: Lane())
+    monkeypatch.setattr("iaso.verify.open_verify", lambda core: Lane())
     ok, detail = links.default_runner(open_core(project))(["notes.md"])
     assert ok and detail == "no test covers notes.md: judged on meaning only"
 

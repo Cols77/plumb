@@ -10,10 +10,10 @@ import pytest
 
 from mergedriver.mdhelpers import commit_all, make_repo, run_git
 from mergedriver.test_merge_holds import _answer, _branch, _change, _sr001
-from plumb.api import open_core
-from plumb.boundary import landing
-from plumb.boundary.premerge import check
-from plumb.capture import proof
+from iaso.api import open_core
+from iaso.boundary import landing
+from iaso.boundary.premerge import check
+from iaso.capture import proof
 
 pytestmark = pytest.mark.sr("SR-341")
 
@@ -58,7 +58,7 @@ def test_ex2_the_turn_after_the_landing_asks_for_the_post_merge_proof(
     result = landing.land(root, head, before)
     assert result["post_merge"] == ["SR-001"]
     asks = [text for key, text in landing.lines(root) if key == "post-merge-proof:SR-001"]
-    assert len(asks) == 1 and PLAN in asks[0] and "plumb proof SR-001 --ask" in asks[0]
+    assert len(asks) == 1 and PLAN in asks[0] and "iaso proof SR-001 --ask" in asks[0]
     # shown and confirmed by the owner: the next turn no longer asks
     proof.set_evidence(open_core(root), "SR-001", "https://x.test/run", "the panel drew",
                        passed=True)

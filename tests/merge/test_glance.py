@@ -11,19 +11,19 @@ from logutil import legacy_relay
 from merge_helpers import INT, SR2, commit, repin_all, write
 from understand.fakes import as_worker
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.boundary import merge_report, render
-from plumb.contracts import Judgment, Target
+from iaso import approvals
+from iaso.api import open_core
+from iaso.boundary import merge_report, render
+from iaso.contracts import Judgment, Target
 
 SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: Both ends are pinned.\n---\n"
 
 
 @pytest.fixture
 def base(repo: Path) -> tuple[Path, str]:
-    write(repo, ".plumb/intents/INT-001.md", INT)
-    write(repo, ".plumb/requirements/SR-001.md", SR1)
-    write(repo, ".plumb/requirements/SR-002.md", SR2)
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR1)
+    write(repo, ".iaso/requirements/SR-002.md", SR2)
     write(repo, "src/mod.py", "x = 1\n")
     core = open_core(repo)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
@@ -34,7 +34,7 @@ def base(repo: Path) -> tuple[Path, str]:
 
 def _prompt(root: Path, text: str, **extra: object) -> str:
     digest = approvals.prompt_digest(text)
-    path = root / ".plumb" / "session" / "prompts.jsonl"
+    path = root / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         # logged as the host's prompt hook logs it (R13 Q4), unless the test says otherwise
@@ -66,7 +66,7 @@ def test_lists_agent_relayed_with_quote(base) -> None:
     assert relayed["self_recorded"] is False
     text = _glance_text(report)
     assert 'AGENT-RELAYED SR-002 quote "SR-002 looks good, approved"' in text
-    assert digest[:19] in text and "plumb revoke" not in text
+    assert digest[:19] in text and "iaso revoke" not in text
     assert "owner INT-001" in text
 
 
@@ -88,7 +88,7 @@ def test_lists_auto_jev_with_score(base) -> None:
     assert row["model_version"] == "jev-2026-09" and "revoke" not in row
     text = _glance_text(report)
     assert "INT-001 judge-approved (auto-jev, jev-2026-09, 0.96) (high)" in text
-    assert "plumb revoke" not in text
+    assert "iaso revoke" not in text
 
 
 @pytest.mark.sr("SR-260")
@@ -165,9 +165,9 @@ def test_fidelity_never_changes_exit(base) -> None:
     repin_all(root)
     report = merge_report(open_core(root), sha, run_full=False)
     assert [(f["id"], f["state"]) for f in report.fidelity] == [("SR-001", "unjudged")]
-    assert "plumb fidelity SR-001" in "\n".join(render(report))
+    assert "iaso fidelity SR-001" in "\n".join(render(report))
     assert report.exit == 0
-    from plumb.judgment.fidelity import judge
+    from iaso.judgment.fidelity import judge
 
     judge(open_core(root), "SR-001", "drifts", "the code ignores an example")
     report = merge_report(open_core(root), sha, run_full=False)
@@ -195,14 +195,14 @@ def test_jev_prescores_fidelity_without_recording(base, monkeypatch) -> None:
     as the host agent's judgment and the exit is unchanged."""
     root, _ = base
     approvals.approve(open_core(root), ["SR-001", "INT-001"])
-    write(root, ".plumb/config.yaml", "judgment:\n  backend: jev\n")
+    write(root, ".iaso/config.yaml", "judgment:\n  backend: jev\n")
     sha = commit(root, "confirmed")
     write(root, "src/mod.py", "x = 2\n")
     repin_all(root)
     fake = _FakeJev()
-    import plumb.judgment
+    import iaso.judgment
 
-    monkeypatch.setattr(plumb.judgment, "get_backend", lambda core, hook: fake)
+    monkeypatch.setattr(iaso.judgment, "get_backend", lambda core, hook: fake)
     before = len(open_core(root).events())
     report = merge_report(open_core(root), sha, run_full=False)
     assert fake.calls == ["SR-001"]

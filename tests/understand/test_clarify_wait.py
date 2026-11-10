@@ -1,4 +1,4 @@
-"""SHOW S3 (wait) and S5 (the skill): ``plumb clarify --wait`` (SR-103 EX-5, EX-6)."""
+"""SHOW S3 (wait) and S5 (the skill): ``iaso clarify --wait`` (SR-103 EX-5, EX-6)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from typing import Any
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb.api import open_core
-from plumb.understand import clarify, cmd_clarify, files, gate, hooks, worker
+from iaso.api import open_core
+from iaso.understand import clarify, cmd_clarify, files, gate, hooks, worker
 from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-223")
@@ -28,7 +28,7 @@ NO_GAP = {"intent": "yes", "topic": "export", "gap": False, "gaps": []}
 
 def _say(repo: Path, text: str = "let users export their data") -> tuple[Any, str]:
     core = open_core(repo)
-    text = "/plumb clarify " + text      # SR-171: only the command runs the check
+    text = "/iaso clarify " + text      # SR-171: only the command runs the check
     digest = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(SimpleNamespace(session_id=SESSION), core, {"digest": digest, "text": text})
     return core, digest
@@ -94,7 +94,7 @@ def test_ex6_late_result_collected_by_next_wait_no_build_started(
 def test_runs_the_job_itself_when_none_queued(repo: Path, engine_standins: Any) -> None:
     engine_standins.dispatcher.script = {"clarify": CARD}
     core = open_core(repo)
-    digest = log_prompt(repo, "/plumb clarify let users export their data", session=SESSION)
+    digest = log_prompt(repo, "/iaso clarify let users export their data", session=SESSION)
     assert not list(files.jobs_dir(repo, SESSION).glob("*.json"))
     outcome = cmd_clarify.wait(core, SESSION, timeout=5)
     assert outcome.state == "ask" and outcome.digest == digest
@@ -114,7 +114,7 @@ def test_same_job_never_runs_twice(repo: Path, engine_standins: Any) -> None:
 
 
 def test_the_same_words_sent_again_get_their_own_check(repo: Path, engine_standins: Any) -> None:
-    text = "/plumb clarify let users export their data"
+    text = "/iaso clarify let users export their data"
     ctx = SimpleNamespace(session_id=SESSION)
     engine_standins.dispatcher.failing("run", "the model could not be reached")
     digest = log_prompt(repo, text, session=SESSION, at="2026-10-06T10:00:00Z")
@@ -143,7 +143,7 @@ def test_a_result_with_no_ledger_entry_counts_for_nothing(repo: Path,
 def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
                                                capsys: pytest.CaptureFixture) -> None:
     engine_standins.dispatcher.script = {"clarify": CARD}
-    log_prompt(repo, "/plumb clarify let users export their data", session=SESSION)
+    log_prompt(repo, "/iaso clarify let users export their data", session=SESSION)
     assert cmd_clarify.run("clarify", ["--wait", "--json", "--root", str(repo),
                                        "--timeout", "5"]) == 0
     data = json.loads(capsys.readouterr().out)
@@ -152,7 +152,7 @@ def test_the_command_prints_the_result_as_json(repo: Path, engine_standins: Any,
 
 
 def test_without_wait_the_command_is_todays_helper(monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.capture import cli as capture_cli
+    from iaso.capture import cli as capture_cli
 
     seen: list[list[str]] = []
     monkeypatch.setattr(capture_cli, "run", lambda command, argv: seen.append(argv) or 0)
@@ -162,29 +162,29 @@ def test_without_wait_the_command_is_todays_helper(monkeypatch: pytest.MonkeyPat
 
 def test_a_typed_go_is_not_a_request_to_check(repo: Path, engine_standins: Any) -> None:
     core, digest = _say(repo)
-    log_prompt(repo, "/plumb go", session=SESSION)
+    log_prompt(repo, "/iaso go", session=SESSION)
     logged = cmd_clarify.latest_prompt(core, SESSION)
     assert logged is not None and logged["digest"] == digest
-    assert clarify.is_typed_go("/plumb go") and not clarify.is_typed_go("go")
+    assert clarify.is_typed_go("/iaso go") and not clarify.is_typed_go("go")
 
 
 def test_skill_first_action_is_clarify_wait(repo: Path) -> None:
-    from plumb.hosts.claude_code.install import install
+    from iaso.hosts.claude_code.install import install
 
     install(repo, launcher="path", commit_hook=False)
-    folder = repo / ".claude" / "skills" / "plumb-clarify"
+    folder = repo / ".claude" / "skills" / "iaso-clarify"
     skill = (folder / "SKILL.md").read_text(encoding="utf-8")
     # SR-379: the skill points to its state table, which opens with the first action
     assert "references/clarify-states.md" in skill
     text = (folder / "references" / "clarify-states.md").read_text(encoding="utf-8")
     first = text.split("\n\n")[1]
-    assert "first action" in first and "plumb clarify --wait" in first
+    assert "first action" in first and "iaso clarify --wait" in first
     assert "do not build" in first.lower() and "answered" in first
-    assert "{plumb}" not in text
+    assert "{iaso}" not in text
     # what the command returns, and what to do with each outcome
     for words in ("couldn't check", "work on", "ready"):
         assert words.lower() in text.lower(), words
-    assert "plumb go" not in text.replace("`/plumb go`", "")      # the agent never types it
+    assert "iaso go" not in text.replace("`/iaso go`", "")      # the agent never types it
 
 
 
@@ -207,7 +207,7 @@ def test_a_commanded_check_with_no_gap_still_hands_over_the_open_judge_questions
     not ``ready`` with none, or the agent never learns what to ask."""
     from understand.test_judge_job import intent_text
 
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     write_record(repo, intent_text(1, "Pages should load faster.", "Make pages load faster"))
     engine_standins.dispatcher.script = {"clarify": NO_GAP}

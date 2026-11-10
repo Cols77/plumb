@@ -1,4 +1,4 @@
-"""``plumb inflight``: list, check, drop, sync (R17, SR-080, SR-081)."""
+"""``iaso inflight``: list, check, drop, sync (R17, SR-080, SR-081)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from awareness.scenario import change, setup
-from plumb.cli import main as cli_main
+from iaso.cli import main as cli_main
 
 
 def _run(*argv: str) -> tuple[int, str]:
@@ -51,20 +51,20 @@ def test_check_exits_1_with_the_card(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-258")
 def test_sync_claims_plain_edits(tmp_path: Path) -> None:
     from awareness.gitrepo import requirement
-    from plumb.awareness import inflight
+    from iaso.awareness import inflight
 
     main, other = setup(tmp_path)
     requirement(other, "SR-006", "status card", "edited by hand", feature="FEAT-002")
-    from plumb.api import open_core
-    from plumb.awareness.publish import publish
+    from iaso.api import open_core
+    from iaso.awareness.publish import publish
 
-    publish(open_core(other), [".plumb/requirements/SR-006.md"])
+    publish(open_core(other), [".iaso/requirements/SR-006.md"])
     code, text = _run("inflight", "sync", "--root", str(other))
     assert code == 0 and "updated" in text
     _oid, data = inflight.read(main, allow_git=True)
     assert set(data["claims"][0]["records"]) == {"SR-006"}
     assert _run("inflight", "sync", "--root", str(other))[1] == (
-        "plumb: intent in flight already current\n")
+        "iaso: intent in flight already current\n")
 
 
 def test_unknown_action_is_usage(tmp_path: Path) -> None:

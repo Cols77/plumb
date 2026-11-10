@@ -1,0 +1,398 @@
+[
+ {
+  "name": "question-jev-low-risk",
+  "inputs": {
+   "message": {
+    "digest": "sha256:bd6c5822bd28ff8afa28c48ade7b609b0b0549d4a9b9d7e84f18a70bd7e6317e",
+    "text": "so why isnt JEV able to approve low risk ones? did you execute JEV?"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "present-the-records",
+  "inputs": {
+   "message": {
+    "digest": "sha256:249f6710e1d33f2c6e92502d3b51b62af3b1f3d5a5a6d5b9dc3d819e222c6afd",
+    "text": "ok present me the 20 records"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "present-them",
+  "inputs": {
+   "message": {
+    "digest": "sha256:ee745c7a54e14d2c6beda99c30580a198d9877990caf96941481e8b4f2d3922a",
+    "text": "ok present them to me"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "question-how-approvals-relayed",
+  "inputs": {
+   "message": {
+    "digest": "sha256:0039f87082aa2a4108333dff0091379ef7b7b19958f180b5e53d6607de363d98",
+    "text": "how are approvals relayed?"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "question-agents-context",
+  "inputs": {
+   "message": {
+    "digest": "sha256:b3cf08544d7a85a4b426b430ba120dce4ed4d6f4ad9fcf62381f32f8c6704880",
+    "text": "are all the agents injected with all the relevant context? intent, SR, tests and Idk what else"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "greeting",
+  "inputs": {
+   "message": {
+    "digest": "sha256:12998c017066eb0d2a70b94e6ed3192985855ce390f321bbdb832022888bd251",
+    "text": "hello there"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "continue-workflows",
+  "inputs": {
+   "message": {
+    "digest": "sha256:2b48b17b597ba3dee86da866c0520a632e3588f3268868163f0f8ba9794409ed",
+    "text": "continue the workflows that were interupted"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "keep-going",
+  "inputs": {
+   "message": {
+    "digest": "sha256:8f974730aaf346739817ddd8ea7cc02f1f598227042c600ff9e086abbf93f860",
+    "text": "keept going"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "remark-sr098",
+  "inputs": {
+   "message": {
+    "digest": "sha256:f4d1d01bb3a168cc4bba9c17555020e287f6bc9f3bdaed779e3600e7decf7054",
+    "text": "Wow that SR-098 sounds like complicated. I don't understand"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "answer-write-the-spec",
+  "inputs": {
+   "message": {
+    "digest": "sha256:6939685dbf5d29e7ce2c1539ff9cf556cd89ccbde5b072dcb76f07d9cd679b50",
+    "text": "yes, write the spec"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "lets-go",
+  "inputs": {
+   "message": {
+    "digest": "sha256:4cb98d06688b2277fcbdb2571b79001c5e9365822f47a80c47d22d562e1902dc",
+    "text": "let's go"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "no",
+   "gap": false
+  }
+ },
+ {
+  "name": "tidy-readme",
+  "inputs": {
+   "message": {
+    "digest": "sha256:940ae6aa42ca4eae45176d72c0b8ee36bbf78a19e6e7bdac025c251547b51b02",
+    "text": "tidy the README wording"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  }
+ },
+ {
+  "name": "tidy-status-line",
+  "inputs": {
+   "message": {
+    "digest": "sha256:1e79b7dbed08f3d437a5d7950fd5cedef502ce74eae0f7cd767c30e9620c8502",
+    "text": "Tidy the status line rendering for SR-013 without changing its output."
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  }
+ },
+ {
+  "name": "export-user-data",
+  "inputs": {
+   "message": {
+    "digest": "sha256:63e37784291471d497869f0827f4e27e8754f41508651d228b684b4d7074a375",
+    "text": "let users export their data"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "format",
+   "scope"
+  ]
+ },
+ {
+  "name": "vague-tweak-hashing",
+  "inputs": {
+   "message": {
+    "digest": "sha256:95e8398fa6c219ad7e4afb27dc25e65f62d4287d477cb3721be2d78782034d68",
+    "text": "tweak hashing"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "what to change"
+  ]
+ },
+ {
+  "name": "vague-refactor-links",
+  "inputs": {
+   "message": {
+    "digest": "sha256:9db60c2828a2c0d7c4b2b799af76c7b814695875036f3102cec6489fe797d4c6",
+    "text": "refactor links"
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "what to change"
+  ]
+ },
+ {
+  "name": "five-gaps-billing",
+  "inputs": {
+   "message": {
+    "digest": "sha256:11ba37c50d402f979b0f7ed08896950ec06202e8a826021ca1aaa711e2c01ac1",
+    "text": "Rebuild billing: let customers pay by card or bank transfer, in any currency, with refunds, taxes by country and a portal where they download invoices."
+   },
+   "touched": [],
+   "answered": []
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": true
+  },
+  "known_gaps": [
+   "payment methods",
+   "currencies",
+   "refund rules",
+   "tax rules",
+   "portal access"
+  ]
+ },
+ {
+  "name": "sr128-findings-after-review",
+  "inputs": {
+   "message": {
+    "digest": "sha256:b8df145a7ca1f19a95aacd597f3d5aa32ff80e61198a2dd2c34884a3c9de9e79",
+    "text": "Resolve all of the findings using a workflow."
+   },
+   "touched": [],
+   "answered": [],
+   "context": {
+    "last_reply": "…h` looks in `$CLAUDE_PROJECT_DIR/.iaso`, not in the root the hook found by walking up. If you start Claude Code in a subfolder, the gate never finds its file.\n\n4. **`plugin-clarify` misses one outcome.** It tells the agent `clarify --wait` returns \"four things\". The code has a fifth, `waiting` (`cmd_clarify.py:113`), and the skill says nothing about what to do with it.\n\n## Gaps in the command and skills\n\n- **`iaso init` doesn't work.** The session-start hook tells users to run `/iaso init to adopt this repository`, but the command has no `init` branch. It also has no branch for `go`, `approve`, `undo` or `settle`, and it ends with \"Change nothing else\", so the agent does nothing for them.\n- **`allowed-tools` doesn't match the body.** The command tells the agent to run `iaso validate` and the git merge steps (`git add .iaso`, `git merge --no-ff`, `git reset --keep`…), but none are allowed, so each will ask permission.\n- **`<digest>` is never explained.** It appears 5 times across the three files, but nothing says where the agent gets it. It comes from `.iaso/session/prompts.jsonl`, or from `clarify --wait --json` as `message_digest`.\n- **The always-on rule sits in a skill that doesn't always load.** \"Run `iaso clarify --wait` first, on every request\" is in `iaso-clarify`, whose description says it isn't for tidy-ups, yet the gate enforces it on every request. It belongs in the always-on skill.\n- **The command is too long.** It's about 1,450 words, and one bullet packs about 10 merge, rebase and hook scenarios into 19 lines. The conflict-relay steps are repeated in three places. Both would be better as `references/merge.md` and `references/conflicts.md`.\n- **The descriptions are weak triggers.** They aren't in the third person and don't name phrases an owner would actually say.\n\n## Packaging and portability\n\n- **Test files ship to every user.** `*.test.tsx`, `harness.ts` and `fixtures.ts` in `plugin/hooks/` go out with the plugin; move them under `tests/` and have `--check` refuse them.\n- **No hook sets a `timeout`.** A cold Python start on Windows would hold the turn until Claude Code's default timeout.\n- **Python is detected two different ways.** `iaso-hook` only looks for `uv` or `python3.12`, while `bin/iaso` also accepts `python` and `python3`. A normal Windows install, which has `python` or `py`, is wrongly told Python 3.12 is missing.\n- **The pre-tool hook starts Python too often.** It checks for \"iaso\" anywhere in the hook's input, including the folder path, so in this repo every Bash call starts Python. Check only `tool_input`.\n- **`iaso.cmd` probably won't run from cmd.exe.** It calls `sh`, which Git for Windows doesn't put on cmd.exe's PATH by default.\n- **No licence file.** The manifest says MIT, but there's no LICENSE file and no `plugin/README.md`.\n\n`★ Insight ─────────────────────────────────────`\n- In a plugin, the command and the skill share one name space (`plugin:name`), so two of them called `iaso` quietly cancel each other out. Only checking which components actually got listed shows it.\n- iaso's hooks do the cheap checks in plain `sh` before starting Python, which keeps them fast. But a text-pattern shortcut like the `iaso hook ` match is only as safe as the text it reads, and here it can turn off the gate.\n`─────────────────────────────────────────────────`\n\nThe four bugs above are the ones to fix first: they are cheap, and the exit code, `/iaso` and gate problems fail silently. Should I fix those four? Following this repo's rules, I'd record an SR for the change and link it to the code it changes.\n\nThe validator's last background check has finished, and it changes nothing in the review above:\n\n- **No secrets ship:** `fixtures.ts` holds only placeholder values.\n- **No timeouts:** none of the hooks sets one; only the post-edit hook is `async`.\n- **Test files ship:** nothing in the build leaves out the `*.test.tsx` files.\n\nThe question stands: should I fix the four silent-failure bugs first?",
+    "earlier_messages": [
+     "Using plugin-dev, review the plugin artifacts from iaso. Can you find any improvements?"
+    ]
+   },
+   "repository": {
+    "root": "C:\\coding\\iaso",
+    "git": true,
+    "branch": "main"
+   }
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  },
+  "never_says": [
+   "not a git repository",
+   "not a git repo"
+  ],
+  "says_any": [
+   [
+    "finding"
+   ]
+  ]
+ },
+ {
+  "name": "sr128-fixes-for-this-issue",
+  "inputs": {
+   "message": {
+    "digest": "sha256:2fc3978e83561f1736262513b911dd351e6698d7b66c85b6633d71929b954476",
+    "text": "I need several things to be modified. First of all these modifications should be done in a worktree, and it should be merged at the end of the execution. Also there is a parallel session going on that is probably doing modifications in parallel, you should warn it to make sure that proper worktrees are used if there's a risk of conflict. Then, I wish to capture those issues earlier. Instead of saying: this is merged, it should work, we need claude code and iaso to actually show the user it is working. The way it is shown should be relevant to what has been modified. This proof should be identified and planned through the execution of the modification. Then I'd like to understand in the previous session what went wrong with iaso that led to the fact that we still have this issue. And of course I need you to apply the proposed fixes. You can add the relevant steps to the ongoing workflow."
+   },
+   "touched": [],
+   "answered": [],
+   "context": {
+    "last_reply": "…, then check whether iaso's mod is actually loaded in your session.\n\nThe iaso plugin is enabled at project scope, and it loads from `plugin/`. Now I'll check whether its mod module (`register.tsx`) is valid and what it draws.\n\nThe plugin's data folder is empty, so iaso's private environment was never built. Next I'll check the other place the mod looks for Python, the session's `host.json`.\n\nNo session has ever written a `host.json`. I'll check why: the session-start hook printed \"check skipped (budget)\", which suggests its time budget runs out first.\n\n## Is there a plugin that explains how to build mods?\n\nYes, but it isn't plugin-dev. What explains mods is the bundled **`plugin-authoring`** skill, which I loaded just now. It comes with complete examples next to it: `band.tsx` (a band above the prompt), `pane.tsx` (a pane plus a slash command), `tool-call.ts`, a `reference.md` covering every event and `$` call, and the engine's type file. plugin-dev only covers classic plugins (commands, skills, command hooks, MCP, settings). I searched its files and they never mention `ui.render`, `register.tsx` or `modules`.\n\n## Is the UI mod implemented?\n\nYes. `plugin/hooks/register.tsx` is a real mod, and `claude plugin validate plugin` passes it. It draws:\n- a band above the prompt with iaso's status and the cards awaiting you, each card in full with its buttons, plus Show all, Hide and Undo;\n- a `iaso-cards` pane;\n- toasts and a status-line entry;\n- button presses that run `iaso mod press`.\n\nThe iaso plugin is enabled for this project and loads from `C:\\coding\\iaso\\plugin`.\n\n## Why you only see grey hook text\n\nThe mod loads, but it can't connect to iaso, so it draws nothing and gives no warning. To connect, it needs to know which Python runs iaso (`findPython` in `plugin/hooks/iaso.ts:68`). It looks in two places, and both are empty here:\n\n1. **`.iaso/session/<id>/host.json`** should be written by the session-start hook. In `src/iaso/mod/handshake.py:105`, `write_host` runs only *after* the whole session-start check. That check hits its time limit on every start: you saw \"iaso: check skipped (budget)\", and the hard stop exits through `os._exit(0)`. So `host.json` is never written. No session folder has one, not even this session's.\n2. **`current.json` in the plugin's data folder** would be written by the plugin's own setup. But this repo also has iaso's old per-repo install in `.claude/settings.json`, so the plugin's hooks stand down and setup never runs. `~/.claude/plugins/data/iaso-iaso/` is empty.\n\n`hello()` then returns null, and every `ui.render` hook falls through to `next(e)`. Claude Code draws its normal UI, and iaso's command hooks keep printing their grey lines. When the panel is active, the stop hook writes `present.json` for the band instead of printing those lines.\n\n## Proposed fix (not applied)\n\n1. **Write `host.json` before the slow work in the session-start hook.** It's a single small file write, so the time limit can no longer skip it.\n2. **Have the mod say why it isn't showing.** One `$.ui.log` line when `hello()` fails (\"iaso's panel: no Python found for iaso\"), instead of nothing.\n3. **Check it live** by restarting Claude Code in this repo. The band should then show above the prompt.\n\nI haven't changed anything yet, because the workflow fixing the review findings is still editing these same areas, including the session-start hook script. I'd make these changes after it finishes, and record an SR for them as this repo's rules require. Should I go ahead then?\n\nSeparately, iaso reports cards from earlier turns still waiting for your answer.\n\nThat slower search has now finished. Apart from iaso itself, no installed plugin or marketplace mentions `ui.render`, `register.tsx` or `modules`. So the bundled `plugin-authoring` skill and its examples are the only guide to building mods on this machine.\n\nThe workflow fixing the review findings is still running. The mod connection fix waits for your go-ahead.",
+    "earlier_messages": [
+     "Resolve all of the findings using a workflow.",
+     "I meant the findings above plugin review that was just conducted",
+     "Can you find plugins that explain how to build mods? Is the UI mods based update implemented? I still only see this gray hook based text as a card but I was expecting a real update of claude code uI?"
+    ]
+   },
+   "repository": {
+    "root": "C:\\coding\\iaso",
+    "git": true,
+    "branch": "main"
+   }
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  },
+  "never_says": [
+   "not a git repository",
+   "not a git repo"
+  ],
+  "says_any": [
+   [
+    "panel",
+    "mod",
+    "plugin",
+    "band",
+    "host.json"
+   ]
+  ]
+ },
+ {
+  "name": "sr128-issue-from-another-chat",
+  "inputs": {
+   "message": {
+    "digest": "sha256:59d56f663e6871c0da5146c919e93900eee3d1984cd04708fd42573898d103a8",
+    "text": "How come don't you know what I'm refering to. That's the issue we detected in that chat, the one that prevents mods UI to be active. The fact that you're not able to understand that is another issue in iaso that makes it disfunctional. It should be able to understand that. THere's probably a design issue that prevents that."
+   },
+   "touched": [],
+   "answered": [],
+   "context": {
+    "last_reply": "Which issue do you mean? I can't tell what \"this issue\" points to in this conversation.",
+    "earlier_messages": [
+     "apply the proposed fixes for this issue"
+    ]
+   },
+   "other_sessions": [
+    {
+     "last_active": "2026-10-11T22:40:00Z",
+     "last_reply": "…, then check whether iaso's mod is actually loaded in your session.\n\nThe iaso plugin is enabled at project scope, and it loads from `plugin/`. Now I'll check whether its mod module (`register.tsx`) is valid and what it draws.\n\nThe plugin's data folder is empty, so iaso's private environment was never built. Next I'll check the other place the mod looks for Python, the session's `host.json`.\n\nNo session has ever written a `host.json`. I'll check why: the session-start hook printed \"check skipped (budget)\", which suggests its time budget runs out first.\n\n## Is there a plugin that explains how to build mods?\n\nYes, but it isn't plugin-dev. What explains mods is the bundled **`plugin-authoring`** skill, which I loaded just now. It comes with complete examples next to it: `band.tsx` (a band above the prompt), `pane.tsx` (a pane plus a slash command), `tool-call.ts`, a `reference.md` covering every event and `$` call, and the engine's type file. plugin-dev only covers classic plugins (commands, skills, command hooks, MCP, settings). I searched its files and they never mention `ui.render`, `register.tsx` or `modules`.\n\n## Is the UI mod implemented?\n\nYes. `plugin/hooks/register.tsx` is a real mod, and `claude plugin validate plugin` passes it. It draws:\n- a band above the prompt with iaso's status and the cards awaiting you, each card in full with its buttons, plus Show all, Hide and Undo;\n- a `iaso-cards` pane;\n- toasts and a status-line entry;\n- button presses that run `iaso mod press`.\n\nThe iaso plugin is enabled for this project and loads from `C:\\coding\\iaso\\plugin`.\n\n## Why you only see grey hook text\n\nThe mod loads, but it can't connect to iaso, so it draws nothing and gives no warning. To connect, it needs to know which Python runs iaso (`findPython` in `plugin/hooks/iaso.ts:68`). It looks in two places, and both are empty here:\n\n1. **`.iaso/session/<id>/host.json`** should be written by the session-start hook. In `src/iaso/mod/handshake.py:105`, `write_host` runs only *after* the whole session-start check. That check hits its time limit on every start: you saw \"iaso: check skipped (budget)\", and the hard stop exits through `os._exit(0)`. So `host.json` is never written. No session folder has one, not even this session's.\n2. **`current.json` in the plugin's data folder** would be written by the plugin's own setup. But this repo also has iaso's old per-repo install in `.claude/settings.json`, so the plugin's hooks stand down and setup never runs. `~/.claude/plugins/data/iaso-iaso/` is empty.\n\n`hello()` then returns null, and every `ui.render` hook falls through to `next(e)`. Claude Code draws its normal UI, and iaso's command hooks keep printing their grey lines. When the panel is active, the stop hook writes `present.json` for the band instead of printing those lines.\n\n## Proposed fix (not applied)\n\n1. **Write `host.json` before the slow work in the session-start hook.** It's a single small file write, so the time limit can no longer skip it.\n2. **Have the mod say why it isn't showing.** One `$.ui.log` line when `hello()` fails (\"iaso's panel: no Python found for iaso\"), instead of nothing.\n3. **Check it live** by restarting Claude Code in this repo. The band should then show above the prompt.\n\nI haven't changed anything yet, because the workflow fixing the review findings is still editing these same areas, including the session-start hook script. I'd make these changes after it finishes, and record an SR for them as this repo's rules require. Should I go ahead then?\n\nSeparately, iaso reports cards from earlier turns still waiting for your answer.\n\nThat slower search has now finished. Apart from iaso itself, no installed plugin or marketplace mentions `ui.render`, `register.tsx` or `modules`. So the bundled `plugin-authoring` skill and its examples are the only guide to building mods on this machine.\n\nThe workflow fixing the review findings is still running. The mod connection fix waits for your go-ahead.",
+     "earlier_messages": [
+      "Why arent the cards presented to me with proper cards UI?"
+     ]
+    }
+   ],
+   "repository": {
+    "root": "C:\\coding\\iaso",
+    "git": true,
+    "branch": "main"
+   }
+  },
+  "expect": {
+   "intent": "yes",
+   "gap": false
+  },
+  "never_says": [
+   "not a git repository",
+   "not a git repo"
+  ],
+  "says_any": [
+   [
+    "panel",
+    "mod",
+    "plugin",
+    "host.json",
+    "band"
+   ]
+  ]
+ }
+]
