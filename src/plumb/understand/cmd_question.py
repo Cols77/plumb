@@ -4,7 +4,9 @@ questions before the owner sees them.
 ``reword --covers KEY[,KEY...] --question Q --header H --options JSON`` records the agent's
 wording of the judge questions it covers, in the owner's terms and merged on one principle
 (``judge.reword``): the owner's answer to it answers each of them. A KEY is a judge question's
-text as ``clarify --wait`` gives it, or a start of it naming one open question. Nothing here
+text as ``clarify --wait`` gives it, or a start of it naming one open question, or the
+whole text of a hidden-regression flag's question as the merge check gives it
+(``testchange.flag_questions``, one ``--covers`` each). Nothing here
 drops, answers or defaults a question: one the owner already answered is the judge's to not
 raise (``judge._questions``)."""
 
@@ -34,9 +36,13 @@ def _resolve(keys: Sequence[str], words: str) -> str | None:
 def _covered(keys: Sequence[str], given: Sequence[str]) -> list[str] | str:
     """The keys each ``--covers`` value names, whole or split on commas; else the value that
     names none."""
+    from plumb.understand.testchange import flag_key
+
     out: list[str] = []
     for value in given:
-        whole = _resolve(keys, value)
+        # report-5f6565d7: a hidden-regression flag's question (the merge check builds it, no
+        # session files it) is covered by its whole text, one ``--covers`` each
+        whole = _resolve(keys, value) or flag_key(value)
         parts = [whole] if whole else [_resolve(keys, p) for p in value.split(",")]
         if None in parts:
             return value

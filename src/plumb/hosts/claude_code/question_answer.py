@@ -9,7 +9,8 @@ answer is one of its option labels) names the records asked about at their versi
 and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
 judges again (SR-212). An answer to the agent's own wording (``plumb question reword``,
 ``judge.reworded``) answers every judge question it covers, ``asked.keys`` naming each
-(SR-362). An answer to a pending proof question (``proof_questions.json``, filed by ``plumb proof SR-### --ask``
+(SR-362), and every hidden-regression flag question it covers (``testchange.flag_key``,
+report-5f6565d7). An answer to a pending proof question (``proof_questions.json``, filed by ``plumb proof SR-### --ask``
 in any checkout of this machine, matched by its key) carries ``proof: {record, hash,
 evidence_at}`` and the pending question is removed: the owner's yes is the only confirmation
 of a proof (DEC-257, ``proof.owner_confirmed``). The proof is tagged only when the question
@@ -82,7 +83,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
         return None
     from plumb.api import open_core
     from plumb.present import owner_text
-    from plumb.understand import judge
+    from plumb.understand import judge, testchange
 
     core = open_core(ctx.root)
     own = list(judge.unanswered(core, ctx.session_id))
@@ -97,8 +98,11 @@ def handle(ctx: HookContext) -> HookOutput | None:
         covers = (worded.get(key) or {}).get("covers") or ()
         found = next((q for q in left if q.get("key") == key), None) or next(
             (q for q in left if q.get("key") in covers), None)  # SR-362: the agent's wording
+        # report-5f6565d7: the hidden-regression flag questions the wording covers (the merge
+        # check builds them, no session files them) take the answer too
+        flags = [str(k) for k in covers if testchange.flag_key(str(k))]
         mine = [q for q in left if q in own]
-        if found is None and len(mine) == 1 and key_of(entry["answer"]) in {
+        if found is None and not flags and len(mine) == 1 and key_of(entry["answer"]) in {
                 key_of(o.get("label")) for o in mine[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
             found = mine[0]
@@ -125,9 +129,16 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                   for r in q.get("records") or () if isinstance(r, dict)
                               }.values()))}
             if covers:
-                entry["asked"]["keys"] = [q.get("key") for q in merged]
+                entry["asked"]["keys"] = [*(q.get("key") for q in merged), *flags]
             if _free_text(entry):
                 entry["free_text"] = True   # SR-212: logged and reread, the question stays open
+        elif flags and entry["answer"] != owner_text.STUDY_FIRST:
+            # only flags covered: no record goes back to the judge; the next check reads the
+            # answer by each flag's key (``testchange.owner_needed``)
+            entry["asked"] = {"job": None, "key": flags[0], "principle": "", "records": [],
+                              "keys": flags}
+            if _free_text(entry):
+                entry["free_text"] = True
     elsewhere = _tag_proofs(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     _share_proofs(core, entries, elsewhere)

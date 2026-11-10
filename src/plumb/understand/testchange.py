@@ -7,6 +7,7 @@ job or a doubtful one keeps the hidden-regression flag. It approves nothing."""
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -127,6 +128,20 @@ def flag_question(node: str, requirements: Sequence[str]) -> str:
     requirements alone, so it has the same key when asked and when the answer is read."""
     return (f"After {node} failed, its test was changed and it passes again (it covers "
             f"{', '.join(sorted(requirements))}). Was the change needed, or made just to pass?")
+
+
+def flag_key(words: str) -> str | None:
+    """The key of ``words`` when they are a flag's question as ``flag_question`` words it,
+    else None. The merge check builds these questions (``flag_questions``) and no session's
+    question file holds them, so ``plumb question reword`` and the question-answer hook take
+    such a key as coverable: one merged question settles every flag it covers
+    (report-5f6565d7)."""
+    from plumb.understand.judge import question_key
+
+    shape = re.escape(question_key(flag_question("@node@", ["@covers@"])))
+    shape = shape.replace("@node@", r"\S.*").replace("@covers@", r"[^()]+")
+    key = question_key(words)
+    return key if re.fullmatch(shape, key) else None
 
 
 def flag_questions(core: Any, verification: Mapping[str, Any]) -> list[dict[str, Any]]:
