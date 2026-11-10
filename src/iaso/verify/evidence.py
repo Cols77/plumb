@@ -1,0 +1,364 @@
+"""Test evidence pinned to identity (spec 7.4) and its reuse index.
+
+A ``test-run`` entry of the evidence log pins every node to its import closure hash, its
+own normalized source hash and the cheap environment key, and the run to the tree identity.
+A node's evidence is fresh only when all three match now. The reuse index
+(``.iaso/cache/evidence_index.json``) is derived from the log, so deleting it loses nothing.
+Its cursor is the list of entries applied: an entry that arrives out of order (a merge,
+a rebase, a branch switch) or an applied entry that vanished rebuilds it from scratch. The
+regression rule (R3) reads the same index (``policy.py``).
+"""
+
+from __future__ import annotations
+
+import json
+import secrets
+import subprocess
+import time
+from collections.abc import Iterable, Mapping
+from pathlib import Path
+from typing import Any
+
+from iaso.contracts import NodeEvidence
+from iaso.normalize import canonical_json, file_digest, sha256_bytes
+
+INDEX_VERSION = 7  # 3: a full run must collect cleanly to count; 4: its failures are kept;
+# 5: a regression is kept until a pass on the test body that passed before it ("regressed");
+# 6: the cursor is the entry names applied (one file per entry, SP6 6.3), not a byte offset;
+# 7: a run's commit ("head") is kept, so a hidden regression names the body that passed
+PASS_OUTCOMES = frozenset({"passed", "flaky"})
+GOOD_OUTCOMES = frozenset({"passed", "flaky", "skipped", "xfailed"})
+_CACHE_PARTS = frozenset({"__pycache__", ".pytest_cache"})
+
+
+def new_run_id() -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(4)
+
+
+def closure_digest(pairs: Iterable[tuple[str, str]]) -> str:
+    return sha256_bytes(canonical_json(sorted(pairs)))
+
+
+def _git(root: Path, *args: str) -> str | None:
+    try:
+        out = subprocess.run(["git", *args], cwd=root, capture_output=True, timeout=10,
+                             stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        return None
+    return out.stdout.decode("utf-8", errors="replace")
+
+
+def changed_paths_from_git(root: Path) -> list[str]:
+    """Paths ``git status --porcelain -z --untracked-files=all`` reports (renames: both)."""
+    out = _git(root, "status", "--porcelain", "-z", "--untracked-files=all")
+    if not out:
+        return []
+    items = out.split("\0")
+    paths: list[str] = []
+    i = 0
+    while i < len(items):
+        item = items[i]
+        i += 1
+        if len(item) < 4:
+            continue
+        status, path = item[:2], item[3:]
+        paths.append(path)
+        if "R" in status or "C" in status:
+            if i < len(items) and items[i]:
+                paths.append(items[i])
+            i += 1
+    return paths
+
+
+def tree_identity(root: Path) -> dict[str, Any]:
+    """``{head, head_tree, dirty}``; ``dirty`` hashes the changed paths outside ``.iaso/``."""
+    root = Path(root)
+    heads = _git(root, "rev-parse", "HEAD", "HEAD^{tree}")
+    head = tree = None
+    if heads:
+        lines = heads.split()
+        if len(lines) >= 2:
+            head, tree = lines[0], lines[1]
+    pairs = []
+    for rel in sorted(set(changed_paths_from_git(root))):
+        if rel.startswith(".iaso/") or _CACHE_PARTS & set(rel.split("/")):
+            continue
+        try:
+            digest = file_digest(root / rel)
+        except OSError:
+            digest = "deleted"
+        pairs.append((rel, digest))
+    return {"head": head, "head_tree": tree, "dirty": sha256_bytes(canonical_json(pairs))}
+
+
+def payload_checksum(payload: Mapping[str, Any]) -> str:
+    return sha256_bytes(canonical_json({k: v for k, v in payload.items() if k != "self"}))
+
+
+# -- the reuse index -------------------------------------------------------------------
+
+
+def _empty_index() -> dict[str, Any]:
+    return {"v": INDEX_VERSION, "applied": [], "stamp": None, "nodes": {}, "full": None,
+            "removed": {}}
+
+
+MAX_SCALE = 3.0
+MIN_LEARN_S = 2.0  # a shorter run is mostly start-up time: its pace teaches nothing
+
+
+def learn_scale(index: dict[str, Any], payload: Mapping[str, Any]) -> None:
+    """Fold a run's pace (wall clock over the estimate of what it was asked to run) into
+    ``index["scale"]``: halfway toward a finished run's pace, and at once up to a timed-out
+    run's pace (a lower bound), within [1, ``MAX_SCALE``]."""
+    timing = payload.get("timing")
+    run_id = str(payload.get("run_id", ""))
+    if not isinstance(timing, Mapping) or payload.get("aborted"):
+        return
+    if run_id and index.get("scale_run") == run_id:
+        return  # the same entry folded twice
+    try:
+        expected = float(timing.get("expected_s") or 0)
+        elapsed = float(timing.get("elapsed_s") or 0)
+    except (TypeError, ValueError):
+        return
+    timed_out = bool(payload.get("timeout"))
+    if expected <= 0 or elapsed <= 0 or (expected < MIN_LEARN_S and not timed_out):
+        return
+    current = float(index.get("scale") or 1.0)
+    pace = min(max(elapsed / expected, 1.0), MAX_SCALE)
+    scale = max(current, pace) if timed_out else (current + pace) / 2
+    index["scale"] = round(min(max(scale, 1.0), MAX_SCALE), 4)
+    index["scale_run"] = run_id
+
+
+def _track_regression(entry: dict[str, Any], rec: Mapping[str, Any]) -> None:
+    """Keep ``entry["regressed"]`` from a regression (a failure after a recorded pass) until a
+    pass on the same test body as the pass before it. A pass or skip after the test body
+    changed does not resolve it: it is marked ``masked_by`` that run, so a test rewritten to
+    pass never erases a regression of a confirmed example (``Verify.masked_regressions``)."""
+    outcome = rec.get("outcome")
+    regressed = entry.get("regressed")
+    if outcome == "failed":
+        last_pass = entry.get("last_pass")
+        if last_pass is not None and not regressed:
+            entry["regressed"] = {"failed_in": rec.get("run_id"),
+                                  "passed_in": last_pass.get("run_id"),
+                                  "test_hash": last_pass.get("test_hash")}
+            if last_pass.get("head"):  # the commit the passing run started from: the judge
+                entry["regressed"]["head"] = last_pass["head"]  # reads the change against it
+        elif regressed:
+            regressed.pop("masked_by", None)
+        return
+    if not regressed:
+        return
+    if outcome in PASS_OUTCOMES and rec.get("test_hash") == regressed.get("test_hash"):
+        del entry["regressed"]
+    else:
+        regressed["masked_by"] = rec.get("run_id")
+
+
+def apply_entry(index: dict[str, Any], payload: Mapping[str, Any], at: str = "") -> None:
+    """Fold one ``test-run`` payload into the index (idempotent for a repeated entry)."""
+    if payload.get("discarded"):
+        return
+    if not payload.get("full"):
+        learn_scale(index, payload)
+    run_id = str(payload.get("run_id", ""))
+    env = payload.get("env") or {}
+    nodes = index["nodes"]
+    for node in payload.get("nodes") or []:
+        node_id = str(node.get("id", ""))
+        if not node_id:
+            continue
+        rec = {"run_id": run_id, "outcome": node.get("outcome"),
+               "closure": node.get("closure"), "test_hash": node.get("test_hash"),
+               "env_key": env.get("env_key"), "duration_s": node.get("duration_s"), "at": at}
+        if "identity" in env:
+            rec["identity"] = env.get("identity")
+        head = (payload.get("tree") or {}).get("head")
+        if head:
+            rec["head"] = head
+        entry = nodes.setdefault(node_id, {"last": None, "last_pass": None})
+        _track_regression(entry, rec)
+        entry["last"] = rec
+        if rec["outcome"] in PASS_OUTCOMES:
+            entry["last_pass"] = rec
+    # only a full run that collected cleanly and ran tests counts as a full run (R5): no
+    # tests collected (exit 5), a collection error or an empty run is no full verification.
+    # Its failing nodes are kept: full verification stays pending until a run passes them.
+    if (payload.get("full") and not payload.get("timeout") and not payload.get("aborted")
+            and payload.get("exit_status") in (0, 1) and not payload.get("collection_errors")
+            and payload.get("nodes")):
+        failed = sorted(str(n.get("id")) for n in payload.get("nodes") or []
+                        if n.get("id") and n.get("outcome") not in GOOD_OUTCOMES)
+        index["full"] = {"run_id": run_id, "infra": dict(payload.get("infra") or {}),
+                         "files": dict(payload.get("files") or {}), "failed": failed}
+
+
+def load_index(core: Any) -> dict[str, Any]:
+    """The reuse index, brought up to date with the evidence stream (SP6 6.3).
+
+    The cursor is the list of entries applied, in read order (by digest: a legacy line's
+    name is its line number, which a rewrite reuses). When the stream's stamp
+    (its directories' and legacy file's size and mtime) is unchanged, nothing is read. New
+    entries that sort after the last one applied are applied incrementally; when an applied
+    entry vanished or a newly listed one sorts before the last one applied (an entry that
+    arrived by a merge, a rebase or a branch switch), the index is rebuilt from scratch."""
+    from iaso import log
+
+    paths = core.paths
+    index: dict[str, Any]
+    try:
+        index = json.loads(paths.evidence_index.read_text(encoding="utf-8"))
+        if not isinstance(index, dict) or index.get("v") != INDEX_VERSION:
+            raise ValueError
+    except (OSError, ValueError):
+        index = _empty_index()
+    stamp = log.stream_stamp(paths, "evidence")
+    if index.get("stamp") == stamp:
+        return index
+    entries = list(core.log_read("evidence", kinds=["test-run"]))
+    names = [e.digest for e in entries]
+    applied = list(index.get("applied") or [])
+    if names[:len(applied)] != applied:
+        index = _empty_index()
+        applied = []
+    for entry in entries[len(applied):]:
+        apply_entry(index, entry.payload, entry.at)
+    index["applied"] = names
+    index["stamp"] = stamp
+    try:
+        paths.cache.mkdir(parents=True, exist_ok=True)
+        paths.evidence_index.write_text(json.dumps(index), encoding="utf-8")
+    except OSError:
+        pass
+    return index
+
+
+def durations(index: Mapping[str, Any]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for node_id, entry in index.get("nodes", {}).items():
+        last = entry.get("last") or {}
+        if isinstance(last.get("duration_s"), (int, float)):
+            out[node_id] = float(last["duration_s"])
+    return out
+
+
+# -- freshness ---------------------------------------------------------------------------
+
+
+def _state_of(rec: Mapping[str, Any]) -> str:
+    outcome = rec.get("outcome")
+    if outcome == "flaky":
+        return "flaky-pass"
+    if outcome in GOOD_OUTCOMES:
+        return "fresh-pass"
+    return "fresh-fail"
+
+
+_NO_CHECK: Any = object()
+
+
+def single_evidence(index: Mapping[str, Any], node_id: str, *, closure: str | None,
+                    test_hash: str | None, env_key: str,
+                    identity: Any = _NO_CHECK) -> NodeEvidence:
+    """Evidence of one recorded node id against the current closure, source and env key."""
+    entry = index.get("nodes", {}).get(node_id)
+    if not entry or not entry.get("last"):
+        return NodeEvidence(node_id=node_id, state="none")
+    last = entry["last"]
+    last_pass = entry.get("last_pass")
+    regression = last.get("outcome") == "failed" and last_pass is not None
+    changed = False
+    if regression:
+        then = last_pass.get("test_hash")
+        changed = test_hash is None or then is None or then != test_hash
+    miss = None
+    if test_hash is None or last.get("test_hash") != test_hash:
+        miss = "test"
+    elif closure is None or last.get("closure") != closure:
+        miss = "closure"
+    elif last.get("env_key") != env_key:
+        miss = "env"
+    elif identity is not _NO_CHECK and (identity is None or last.get("identity") != identity):
+        miss = "identity"  # an unknown identity is never reused (VS3)
+    state = "stale" if miss else _state_of(last)
+    return NodeEvidence(node_id=node_id, state=state, regression=regression,  # type: ignore[arg-type]
+                        test_changed_since_pass=changed, last_run=last.get("run_id"),
+                        reuse_miss=miss,  # type: ignore[arg-type]
+                        last_failed=last.get("outcome") not in GOOD_OUTCOMES)
+
+
+_RANK = {"none": 0, "stale": 1, "fresh-fail": 2, "flaky-pass": 3, "fresh-pass": 4}
+
+
+def aggregate(node_id: str, parts: list[NodeEvidence],
+              live: set[str] | None = None) -> NodeEvidence:
+    """One file's (or parametrized node's) evidence: the weakest part decides the state.
+
+    With ``live`` (the nodes still in the file, when the map knows it), recorded nodes
+    deleted from the source are left out, so a removed node does not keep its file stale
+    or failing for good (it stays reported as removed after passing)."""
+    if live is not None:
+        from iaso.verify.markers import strip_param
+
+        parts = [e for e in parts if strip_param(e.node_id) in live] or parts
+    # a parameter id an older run recorded but the newest run of its test no longer has was
+    # renamed or removed: the latest run wins. shortcut: assumes a run takes all of a test's
+    # parameters, not a -k subset; upgrade by storing the collected ids in the run.
+    from iaso.verify.markers import strip_param
+
+    newest: dict[str, str] = {}
+    for e in parts:
+        base = strip_param(e.node_id)
+        newest[base] = max(newest.get(base, ""), e.last_run or "")
+    # the bare id too: a test parametrized since keeps its old unparametrized entry, which
+    # would otherwise hold the file failing or stale for good
+    parts = [e for e in parts if (e.last_run or "") >= newest[strip_param(e.node_id)]]
+    if not parts:
+        return NodeEvidence(node_id=node_id, state="none")
+    failed = any(e.last_failed for e in parts)
+    worst = min(parts, key=lambda e: _RANK[e.state])
+    state = worst.state
+    runs = sorted((e.last_run for e in parts if e.last_run), reverse=True)
+    return NodeEvidence(node_id=node_id, state=state,
+                        regression=any(e.regression for e in parts),
+                        test_changed_since_pass=any(e.test_changed_since_pass for e in parts
+                                                    if e.regression),
+                        last_run=runs[0] if runs else None, reuse_miss=worst.reuse_miss,
+                        last_failed=failed)
+
+
+def node_evidence(index: Mapping[str, Any], tmap: Any, node_id: str,
+                  env_key: str, identity: Any = _NO_CHECK) -> NodeEvidence:
+    """Evidence for a node id, a parametrized family, or a whole test file."""
+    from iaso.verify.markers import strip_param
+
+    test_file = node_id.split("::", 1)[0]
+    closure = tmap.closure_hash(test_file)
+    recorded = index.get("nodes", {})
+    if "::" in node_id:
+        family = [n for n in recorded if strip_param(n) == node_id]
+        if family == [node_id] or (node_id in recorded and node_id != strip_param(node_id)):
+            return single_evidence(index, node_id, closure=closure,
+                                   test_hash=tmap.node_hash(node_id), env_key=env_key,
+                                   identity=identity)
+        if not family:
+            return NodeEvidence(node_id=node_id, state="none")
+        return aggregate(node_id, [single_evidence(index, n, closure=closure,
+                                                   test_hash=tmap.node_hash(n),
+                                                   env_key=env_key, identity=identity)
+                                   for n in family])
+    prefix = test_file + "::"
+    members = {n for n in recorded if n.startswith(prefix)}
+    known = {strip_param(n) for n in members}
+    parts = [single_evidence(index, n, closure=closure, test_hash=tmap.node_hash(n),
+                             env_key=env_key, identity=identity) for n in sorted(members)]
+    live = tmap.nodes_of(test_file)
+    for node in live:
+        if node not in known:
+            parts.append(NodeEvidence(node_id=node, state="none"))
+    return aggregate(node_id, parts, set(live) if test_file in tmap.files else None)

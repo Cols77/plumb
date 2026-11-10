@@ -1,4 +1,4 @@
-"""V6: ``plumb tests map|select|run`` and the aliases ``map`` and ``verify`` (spec 7, 9)."""
+"""V6: ``iaso tests map|select|run`` and the aliases ``map`` and ``verify`` (spec 7, 9)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb import cli
+from iaso import cli
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ def test_tests_map_select_run_commands(project: Path, capsys: pytest.CaptureFixt
     root = ["--root", str(project)]
     assert cli.main(["tests", "map", *root]) == 0
     out = capsys.readouterr().out
-    assert ".plumb/test_map.txt" in out
-    assert (project / ".plumb" / "test_map.txt").exists()
+    assert ".iaso/test_map.txt" in out
+    assert (project / ".iaso" / "test_map.txt").exists()
     assert cli.main(["tests", "map", "--json", *root]) == 0
     data = _json(capsys)
     assert data["sources"]["src/pkg/helper.py"] == ["tests/test_helper.py"]
@@ -45,7 +45,7 @@ def test_tests_map_select_run_commands(project: Path, capsys: pytest.CaptureFixt
           "    return add(a, a)  # edited\n")
     assert cli.main(["tests", "run", "--changed", *root]) == 0
     out = capsys.readouterr().out
-    assert "plumb: ran 1 test" in out and "1 passed" in out
+    assert "iaso: ran 1 test" in out and "1 passed" in out
     assert cli.main(["tests", "run", "--paths", "src/pkg/mod.py", "--json", *root]) == 0
     run = _json(capsys)
     assert set(run["outcomes"]) == {"tests/test_mod.py::test_add",
@@ -62,7 +62,7 @@ def test_run_prints_regression_instruction(project: Path,
     write(project, "src/pkg/mod.py", "def add(a, b):\n    return a - b\n")
     assert cli.main(["tests", "run", "--nodes", "tests/test_mod.py::test_add", *root]) == 1
     out = capsys.readouterr().out
-    assert "plumb: regression: tests/test_mod.py::test_add passed in run " in out
+    assert "iaso: regression: tests/test_mod.py::test_add passed in run " in out
     assert "and now fails. Tell the owner, with a read-back, and ask how to proceed." in out
     write(project, "tests/test_new.py", "def test_red():\n    assert False\n")
     assert cli.main(["tests", "run", "--nodes", "tests/test_new.py", *root]) == 1

@@ -11,11 +11,11 @@ from loadbound import assert_within
 from logutil import legacy_entry
 
 from logs.gitrepo import make_repo, run_git
-from plumb import log
-from plumb.api import open_core
-from plumb.boundary import landing
-from plumb.normalize import canonical_json
-from plumb.validate import validate
+from iaso import log
+from iaso.api import open_core
+from iaso.boundary import landing
+from iaso.normalize import canonical_json
+from iaso.validate import validate
 
 pytestmark = pytest.mark.sr("SR-376")
 
@@ -23,7 +23,7 @@ OLD, LANDING = "2026-10-01T10:00:00Z", "2026-10-20T00:00:00Z"
 
 
 def _put_judgments(root: Path, n: int, prev: str | None = None, at: str = OLD) -> str | None:
-    folder = root / ".plumb" / "log" / "judgment"
+    folder = root / ".iaso" / "log" / "judgment"
     folder.mkdir(parents=True, exist_ok=True)
     for i in range(n):
         raw = legacy_entry("judgment", {"subject": "SR-001", "n": i}, prev, at=at)
@@ -44,7 +44,7 @@ def test_judgment_compacts_whole_at_landing(tmp_path: Path) -> None:
     _put_judgments(root, 30)
     _put_judgments(root, 2, at="2026-10-25T10:00:00Z")
     _compact(root)
-    folder = root / ".plumb" / "log" / "judgment"
+    folder = root / ".iaso" / "log" / "judgment"
     assert len(list(folder.glob("*.json"))) == 2
     assert len((folder / log.SEGMENT).read_bytes().splitlines()) == 30
 
@@ -53,11 +53,11 @@ def test_live_judgment_files_are_ignored_by_git(tmp_path: Path) -> None:
     """EX-2: the new file is ignored; the segment is not."""
     root = make_repo(tmp_path / "r")
     _put_judgments(root, 1)
-    segment = root / ".plumb" / "log" / "judgment" / log.SEGMENT
+    segment = root / ".iaso" / "log" / "judgment" / log.SEGMENT
     segment.write_bytes(b"{}\n")
     status = run_git(root, "status", "--porcelain", "-uall").stdout
-    assert ".plumb/log/judgment/archive.jsonl" in status
-    assert ".plumb/log/judgment/2026" not in status
+    assert ".iaso/log/judgment/archive.jsonl" in status
+    assert ".iaso/log/judgment/2026" not in status
 
 
 def test_no_offer_kind() -> None:
@@ -79,7 +79,7 @@ def test_validate_chains_through_segments(tmp_path: Path) -> None:
 def test_brief_under_three_seconds(tmp_path: Path) -> None:
     """EX-4: 20,000 archived judgments do not slow the brief."""
     root = make_repo(tmp_path / "r")
-    segment = root / ".plumb" / "log" / "judgment" / log.SEGMENT
+    segment = root / ".iaso" / "log" / "judgment" / log.SEGMENT
     segment.parent.mkdir(parents=True, exist_ok=True)
     prev, lines = None, []
     for i in range(20_000):
@@ -89,4 +89,4 @@ def test_brief_under_three_seconds(tmp_path: Path) -> None:
     segment.write_bytes(b"\n".join(lines) + b"\n")
     start = time.perf_counter()
     open_core(root).brief_lines()
-    assert_within(time.perf_counter() - start, 3.0, "plumb brief with 20,000 archived judgments")
+    assert_within(time.perf_counter() - start, 3.0, "iaso brief with 20,000 archived judgments")

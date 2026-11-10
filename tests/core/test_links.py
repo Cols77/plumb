@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, links
-from plumb.api import open_core
-from plumb.contracts import Pin, Target
+from iaso import approvals, links
+from iaso.api import open_core
+from iaso.contracts import Pin, Target
 
 pytestmark = pytest.mark.sr("SR-231")
 
@@ -58,7 +58,7 @@ def test_pin_drift(setup: Path) -> None:
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
     core.add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
     (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
-    path = setup / ".plumb" / "intents" / "INT-001.md"
+    path = setup / ".iaso" / "intents" / "INT-001.md"
     path.write_text(INT.replace("grounded\"", "grounded on records\""), encoding="utf-8")
     core = open_core(setup)
     for link_id in ("SR-001#0", "SR-001#1"):
@@ -77,10 +77,10 @@ def test_crlf_is_not_drift(setup: Path) -> None:
 def test_source_edit_marks_source_moved(setup: Path) -> None:
     core = open_core(setup)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
-    path = setup / ".plumb" / "requirements" / "SR-001.md"
+    path = setup / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("Both ends", "Each end"),
                     encoding="utf-8")
-    (setup / ".plumb" / "intents" / "INT-001.md").write_text(
+    (setup / ".iaso" / "intents" / "INT-001.md").write_text(
         INT.replace("Grounded", "Grounded work"), encoding="utf-8")
     state = _state(open_core(setup), "SR-001#0")
     assert state.state == "stale" and state.moved == "both"
@@ -173,7 +173,7 @@ def test_repin_pins_unpinned_and_link_id_selector(setup: Path, write_record) -> 
 def test_repin_does_not_confirm(setup: Path) -> None:
     core = open_core(setup)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
-    (setup / ".plumb" / "intents" / "INT-001.md").write_text(INT.replace("Grounded", "G2"),
+    (setup / ".iaso" / "intents" / "INT-001.md").write_text(INT.replace("Grounded", "G2"),
                                                              encoding="utf-8")
     links.repin(open_core(setup), all_stale=True)
     core = open_core(setup)
@@ -185,9 +185,9 @@ def test_records_for_paths(setup: Path) -> None:
     core = open_core(setup)
     core.add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
     mapping = open_core(setup).records_for_paths(
-        ["src/mod.py", ".plumb/requirements/SR-001.md", "other.py"])
+        ["src/mod.py", ".iaso/requirements/SR-001.md", "other.py"])
     assert mapping["src/mod.py"] == ("SR-001",)
-    assert mapping[".plumb/requirements/SR-001.md"] == ("SR-001",)
+    assert mapping[".iaso/requirements/SR-001.md"] == ("SR-001",)
     assert mapping["other.py"] == ()
 
 
@@ -236,7 +236,7 @@ def edit(repo: Path, write_record) -> Path:
     for name in ("test_a.py", "test_b.py", "test_old.py"):
         (repo / "tests" / name).write_text("def test_x():\n    pass\n", encoding="utf-8")
     root = ["--root", str(repo)]
-    from plumb import cli
+    from iaso import cli
 
     assert cli.main(["link", "SR-001", "derives_from", "INT-001", *root]) == 0
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_old.py", "--example", "EX-1",
@@ -249,13 +249,13 @@ def edit(repo: Path, write_record) -> Path:
 
 
 def _cli(repo: Path, *argv: str) -> int:
-    from plumb import cli
+    from iaso import cli
 
     return cli.main([*argv, "--root", str(repo)])
 
 
 def _record_text(repo: Path) -> str:
-    return (repo / ".plumb" / "requirements" / "SR-001.md").read_text(encoding="utf-8")
+    return (repo / ".iaso" / "requirements" / "SR-001.md").read_text(encoding="utf-8")
 
 
 def _ends(repo: Path) -> list[str | None]:
@@ -308,7 +308,7 @@ def test_unlink_refuses_the_only_live_test_of_a_confirmed_example(
     capsys.readouterr()
     assert _cli(edit, "unlink", "SR-001#3", "--note", "x") == 1
     err = capsys.readouterr().err
-    assert "EX-2" in err and "only test" in err and "plumb relink" in err
+    assert "EX-2" in err and "only test" in err and "iaso relink" in err
     assert _record_text(edit) == before
     # EX-1 keeps another live test, so one of its two may go
     assert _cli(edit, "unlink", "SR-001#1", "--note", "a duplicate test") == 0
@@ -364,7 +364,7 @@ def test_relink_refuses_to_copy_another_link(
     capsys.readouterr()
     assert _cli(edit, "relink", "SR-001#1", "tests/test_a.py", "--note", "x") == 1
     err = capsys.readouterr().err
-    assert "SR-001#2" in err and "plumb unlink" in err
+    assert "SR-001#2" in err and "iaso unlink" in err
     assert _record_text(edit) == before
 
 
@@ -382,7 +382,7 @@ def test_relink_refuses_a_kind_that_cannot_reach_the_target(
 def test_unlink_lets_a_retired_examples_test_go(
         edit: Path, capsys: pytest.CaptureFixture[str]) -> None:
     approvals.approve(open_core(edit), ["SR-001"])
-    path = edit / ".plumb" / "requirements" / "SR-001.md"
+    path = edit / ".iaso" / "requirements" / "SR-001.md"
     # EX-2 is retired (renumbered away); SR-001#3 still names it
     path.write_text(_record_text(edit).replace("id: EX-2", "id: EX-7"), encoding="utf-8")
     assert {e.id for e in open_core(edit).index()["SR-001"].examples} == {"EX-1", "EX-7"}
@@ -418,7 +418,7 @@ def _superseded(setup: Path, write_record):
 def test_a_superseded_requirements_moved_links_are_retired_not_stale(
         setup: Path, write_record) -> None:
     """SR-164 EX-1: stale rows, validate and stale selection show nothing for the retired one."""
-    from plumb import stale
+    from iaso import stale
 
     core, _ = _superseded(setup, write_record)
     assert _state(core, "SR-001#0").state == "retired"
@@ -440,7 +440,7 @@ def test_superseding_names_the_examples_a_test_still_verifies(
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     (setup / "tests").mkdir()
     (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
-    from plumb import cli
+    from iaso import cli
 
     root = ["--root", str(setup)]
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",
@@ -494,15 +494,15 @@ def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
     git(setup, "add", "-A")
     git(setup, "commit", "-q", "-m", "mod")
     open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
-    assert not list((setup / ".git" / "plumb").glob("pin_blobs.json"))
+    assert not list((setup / ".git" / "iaso").glob("pin_blobs.json"))
 
 
 @pytest.mark.sr("SR-233")
 def test_status_and_validate_work_on_a_confirmed_superseded_record_with_a_test(
         setup: Path, write_record) -> None:
     """A retired link has no current pin: status, changed_tests and validate must not read one."""
-    from plumb import approvals
-    from plumb.validate import validate
+    from iaso import approvals
+    from iaso.validate import validate
 
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     (setup / "tests").mkdir()
@@ -522,7 +522,7 @@ def test_status_and_validate_work_on_a_confirmed_superseded_record_with_a_test(
 def test_an_older_record_superseding_a_newer_one_does_not_retire_it(
         setup: Path, write_record) -> None:
     """SR-076 over SR-150: the owner has not settled it (INT-058 A-1), so SR-150 stays tracked."""
-    from plumb.query import retired_ids
+    from iaso.query import retired_ids
 
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     open_core(setup).add_link("SR-001", "supersedes", Target(record="SR-002"))
@@ -536,7 +536,7 @@ def test_a_test_the_superseder_already_verifies_is_not_named(
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     (setup / "tests").mkdir()
     (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
-    from plumb import cli
+    from iaso import cli
 
     root = ["--root", str(setup)]
     for sr in ("SR-001", "SR-002"):
@@ -544,7 +544,7 @@ def test_a_test_the_superseder_already_verifies_is_not_named(
                          *root]) == 0
     assert cli.main(["link", "SR-002", "supersedes", "SR-001", *root]) == 0
     assert "still verified" not in capsys.readouterr().out
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     assert not [f for f in validate(open_core(setup)) if f.code == "retired-example"]
 
@@ -555,7 +555,7 @@ def test_a_retired_example_is_a_warning_naming_both_records_and_the_test(
     write_record(setup, SR.replace("SR-001", "SR-002").replace("Links pin both ends", "New"))
     (setup / "tests").mkdir()
     (setup / "tests" / "test_a.py").write_text("def test_x():\n    pass\n", encoding="utf-8")
-    from plumb import cli
+    from iaso import cli
 
     root = ["--root", str(setup)]
     assert cli.main(["link", "SR-001", "verified_by", "tests/test_a.py", "--example", "EX-1",

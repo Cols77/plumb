@@ -12,13 +12,13 @@ from mergedriver.mdhelpers import (
     conflicted,
     events,
     ex,
-    plumb,
+    iaso,
     record,
 )
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import Judgment
-from plumb.mergedriver import conflict_card, open_conflicts
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import Judgment
+from iaso.mergedriver import conflict_card, open_conflicts
 
 pytestmark = pytest.mark.sr("SR-256")
 
@@ -58,7 +58,7 @@ def test_no_backend_says_no_judgment_available(repo: Path) -> None:
     core = open_core(repo)
     card = conflict_card(core, open_conflicts(core)[0])
     assert ("  Compatible? judging unavailable: no judge: judgment.backend is not set in "
-            ".plumb/config.yaml; set it to jev") in card
+            "the records folder's config.yaml; set it to jev") in card
     assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
                      "--root", str(repo)]) == 0
     assert open_conflicts(open_core(repo)) == ()
@@ -97,16 +97,16 @@ def test_fake_jev_judgment_logged_once_per_pair(repo: Path) -> None:
 def test_show_ic_and_show_record(repo: Path) -> None:
     conflicted(repo)
     for ref in ("IC-001", "SR-005"):
-        out = plumb(repo, "show", ref)
+        out = iaso(repo, "show", ref)
         assert out.returncode == 0, out.stderr
         assert "Conflict IC-001 on \"relay checks\"" in out.stdout
-    listed = plumb(repo, "conflicts")
+    listed = iaso(repo, "conflicts")
     assert listed.returncode == 0 and "Conflict IC-001" in listed.stdout
 
 
 def test_review_shows_the_card(repo: Path) -> None:
-    """SR-076 EX-2: /plumb review shows the conflict card in its merge section."""
+    """SR-076 EX-2: /iaso review shows the conflict card in its merge section."""
     conflicted(repo)
-    out = plumb(repo, "review")
-    assert "intent conflicts wait for your choice (/plumb conflicts):" in out.stdout
+    out = iaso(repo, "review")
+    assert "intent conflicts wait for your choice (/iaso conflicts):" in out.stdout
     assert "Conflict IC-001 on \"relay checks\"" in out.stdout

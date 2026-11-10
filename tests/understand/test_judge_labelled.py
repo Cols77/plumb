@@ -1,5 +1,5 @@
 """The judge calibration set built from the owner's real verdicts has the shape its readers expect
-(src/plumb/understand/evalset/judge_labelled.json; SR-105)."""
+(src/iaso/understand/evalset/judge_labelled.json; SR-105)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 
-PATH = Path(__file__).resolve().parents[2] / "src" / "plumb" / "understand" / "evalset" / "judge_labelled.json"
+PATH = Path(__file__).resolve().parents[2] / "src" / "iaso" / "understand" / "evalset" / "judge_labelled.json"
 FIELDS = {"id": str, "record_id": str, "record_hash": str, "kind": str, "record_text": str,
           "owner_words": str, "owner_words_digest": str, "context_ids": list, "expected": str,
           "calibration": str, "source": str}

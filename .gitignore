@@ -10,36 +10,36 @@ dist/
 htmlcov/
 # the API declarations Claude Code lays beside a mod it loads from a folder (SP7 5)
 plugin/.claude-plugin/types/
-# SR-321, SR-376: judgment live files are telemetry, ignored by .plumb/.gitignore
-# (log/judgment/*.json, written by plumb init); each landing archives them
+# SR-321, SR-376: judgment live files are telemetry, ignored by .iaso/.gitignore
+# (log/judgment/*.json, written by iaso init); each landing archives them
 # SR-321: log kinds only the machine that wrote them needs
-.plumb/log/answer-bound/
-.plumb/log/answer-unbound/
-.plumb/log/answer-read/
-.plumb/log/question-withdrawn/
-.plumb/log/card-press/
-.plumb/log/card-settled/
-.plumb/log/card-unsettled/
-.plumb/log/card-withdrawn/
-.plumb/log/eval-run/
-.plumb/log/gate/
-.plumb/log/intent-done/
-.plumb/log/intent-gate/
-.plumb/log/jev-setup/
-.plumb/log/job-note/
-.plumb/log/merge-evidence/
-.plumb/log/owner-words/
-.plumb/log/pre-intent/
-.plumb/log/premise/
-.plumb/log/prompt/
-.plumb/log/question-answer/
-.plumb/log/read-entry/
-.plumb/log/relink/
-.plumb/log/repin/
-.plumb/log/triage/
-.plumb/log/trial/
-.plumb/log/unlink/
-.plumb/log/verdict/
+.iaso/log/answer-bound/
+.iaso/log/answer-unbound/
+.iaso/log/answer-read/
+.iaso/log/question-withdrawn/
+.iaso/log/card-press/
+.iaso/log/card-settled/
+.iaso/log/card-unsettled/
+.iaso/log/card-withdrawn/
+.iaso/log/eval-run/
+.iaso/log/gate/
+.iaso/log/intent-done/
+.iaso/log/intent-gate/
+.iaso/log/jev-setup/
+.iaso/log/job-note/
+.iaso/log/merge-evidence/
+.iaso/log/owner-words/
+.iaso/log/pre-intent/
+.iaso/log/premise/
+.iaso/log/prompt/
+.iaso/log/question-answer/
+.iaso/log/read-entry/
+.iaso/log/relink/
+.iaso/log/repin/
+.iaso/log/triage/
+.iaso/log/trial/
+.iaso/log/unlink/
+.iaso/log/verdict/
 
-# plumb's picture of what the owner understands: local to each machine
-/.plumb/understanding.md
+# iaso's picture of what the owner understands: local to each machine
+/.iaso/understanding.md

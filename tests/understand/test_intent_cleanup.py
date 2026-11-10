@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.capture import proof
-from plumb.understand import cmd_intent, files
+from iaso.api import open_core
+from iaso.capture import proof
+from iaso.understand import cmd_intent, files
 from understand.test_intent_loop import DIGEST, SESSION, _findings, _run, intent  # noqa: F401, F811
 
 pytestmark = pytest.mark.sr("SR-308")
@@ -39,7 +39,7 @@ def test_ex1_done_removes_the_loops_own_files_and_keeps_the_records(
     assert _run(intent, "done", "--intent", "INT-001") == 0
     assert not any(p.exists() for p in (clarify, plan, result,
                                         cmd_intent.loop_path(intent, SESSION, DIGEST)))
-    assert (intent / ".plumb" / "requirements" / "SR-040.md").exists()
+    assert (intent / ".iaso" / "requirements" / "SR-040.md").exists()
 
 
 def test_ex2_another_loops_files_are_untouched(intent: Path, tmp_path: Path) -> None:

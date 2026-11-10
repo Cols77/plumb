@@ -1,7 +1,7 @@
-// How plumb's panel reaches plumb (SR-125, SR-126): it finds the interpreter the session-start
+// How iaso's panel reaches iaso (SR-125, SR-126): it finds the interpreter the session-start
 // hook named, even when that hook names it a moment after the panel starts or ran the old way
-// (the repository's own Python); when it cannot reach plumb it says why in one dim line, once
-// per session, and stays silent in a repository plumb has not adopted.
+// (the repository's own Python); when it cannot reach iaso it says why in one dim line, once
+// per session, and stays silent in a repository iaso has not adopted.
 import type { On } from 'claude-code'
 import { describe, expect, mock } from 'claude-code/testing'
 
@@ -9,7 +9,7 @@ import { PYTHON, ROOT, SESSION } from './fixtures'
 import { BAND, install, NOW, START, SURFACES, TURN_DONE, test, world } from './harness'
 import type { World } from './harness'
 
-const SESSION_DIR = `${ROOT}/.plumb/session/${SESSION}`
+const SESSION_DIR = `${ROOT}/.iaso/session/${SESSION}`
 const HOST = `${SESSION_DIR}/host.json`
 const VENV_PYTHON = `${ROOT}/.venv/Scripts/python.exe`
 const TURN = { text: 'add late fees', turnId: 't-2' }
@@ -30,7 +30,7 @@ function except(on: On, nouns: string[]): On {
       : (on as any)(name, ...rest)) as unknown as On
 }
 
-/** Every `plumb mod` run answering `exitCode` with `stderr`; the rest of the harness as is. */
+/** Every `iaso mod` run answering `exitCode` with `stderr`; the rest of the harness as is. */
 function helloAnswers(on: On, w: World, exitCode: number, stderr: string): void {
   on('process.run', (_$, e) => {
     w.runs.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
@@ -56,12 +56,12 @@ for (const surface of SURFACES) {
       expect(hellos(w)).toHaveLength(1)
       expect(hellos(w)[0]?.[0]).toBe(PYTHON)
       expect(w.logs).toEqual([])
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
-    test("SR-125 EX-2: host.json naming the repository's own Python (the old hooks): the panel runs plumb with it", async ($, on) => {
+    test("SR-125 EX-2: host.json naming the repository's own Python (the old hooks): the panel runs iaso with it", async ($, on) => {
       const w = world()
       w.files[HOST] = JSON.stringify({ python: VENV_PYTHON })
       w.files[VENV_PYTHON] = ''
@@ -69,8 +69,8 @@ for (const surface of SURFACES) {
       const clock = install(on, w)
       await $.session.start(START)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
@@ -82,7 +82,7 @@ for (const surface of SURFACES) {
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON])
     })
 
-    test('SR-126 EX-1: no Python for plumb found: one dim line says so and where it looked, once', async ($, on) => {
+    test('SR-126 EX-1: no Python for iaso found: one dim line says so and where it looked, once', async ($, on) => {
       const clock = mock.clock(on, { now: NOW })
       const w = unnamed()
       install(except(on, ['clock']), w)
@@ -92,11 +92,11 @@ for (const surface of SURFACES) {
       await $.turn.start({ ...TURN, turnId: 't-3' })
       expect(w.runs).toHaveLength(0)
       expect(w.logs).toHaveLength(1)
-      expect(w.logs[0]).toContain("plumb's panel is off: no Python for plumb was found")
+      expect(w.logs[0]).toContain("iaso's panel is off: no Python for iaso was found")
       expect(w.logs[0]).toContain('host.json')
       expect(w.logs[0]).toContain('.venv')
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeUndefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeUndefined()
       await ui.unmount()
     })
 
@@ -106,7 +106,7 @@ for (const surface of SURFACES) {
       await $.session.start(START)
       await $.turn.start(TURN)
       expect(w.logs).toHaveLength(1)
-      expect(w.logs[0]).toContain('no Python for plumb was found')
+      expect(w.logs[0]).toContain('no Python for iaso was found')
     })
 
     test('SR-126: the interpreter named after the line: the next turn links and the band shows', async ($, on) => {
@@ -118,18 +118,18 @@ for (const surface of SURFACES) {
       await $.turn.start({ ...TURN, turnId: 't-3' })
       expect(hellos(w)).toHaveLength(1)
       expect(w.logs).toHaveLength(1)
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
-    test("SR-126 EX-2: plumb refuses the hello: one line gives plumb's reason, and no turn asks again", async ($, on) => {
+    test("SR-126 EX-2: iaso refuses the hello: one line gives iaso's reason, and no turn asks again", async ($, on) => {
       const w = unnamed()
       w.files[HOST] = JSON.stringify({ python: PYTHON })
-      helloAnswers(on, w, 3, 'plumb mod hello refused: no key digest (64 hex characters) on stdin\n')
+      helloAnswers(on, w, 3, 'iaso mod hello refused: no key digest (64 hex characters) on stdin\n')
       await $.session.start(START)
       await $.turn.start(TURN)
-      expect(w.logs).toEqual(["plumb's panel is off: plumb refused it (no key digest (64 hex characters) on stdin); plumb keeps working in the background."])
+      expect(w.logs).toEqual(["iaso's panel is off: iaso refused it (no key digest (64 hex characters) on stdin); iaso keeps working in the background."])
       expect(hellos(w)).toHaveLength(1)
     })
 
@@ -142,7 +142,7 @@ for (const surface of SURFACES) {
       expect(w.logs[0]).toContain('the process could not start')
     })
 
-    test("SR-126: a resumed session: plumb still holds the old panel a moment, then the hook retires it and the panel links with no line", async ($, on) => {
+    test("SR-126: a resumed session: iaso still holds the old panel a moment, then the hook retires it and the panel links with no line", async ($, on) => {
       const clock = mock.clock(on, { now: NOW })
       const w = unnamed()
       w.files[HOST] = JSON.stringify({ python: PYTHON })
@@ -151,7 +151,7 @@ for (const surface of SURFACES) {
         w.runs.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
         const ok = retired || e.argv[4] !== 'hello'
         const data = { active: true, since: '2026-10-11T12:00:00Z', session: SESSION }
-        return { value: { exitCode: ok ? 0 : 3, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : 'plumb mod hello refused: this session already has its panel\n', isStdoutTruncated: false, isStderrTruncated: false } }
+        return { value: { exitCode: ok ? 0 : 3, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : 'iaso mod hello refused: this session already has its panel\n', isStdoutTruncated: false, isStderrTruncated: false } }
       })
       install(except(on, ['process.run', 'clock']), w)
       await $.session.start(START)
@@ -161,8 +161,8 @@ for (const surface of SURFACES) {
       expect(hellos(w)).toHaveLength(2)
       await $.turn.start(TURN)
       expect(w.logs).toEqual([])
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
@@ -170,7 +170,7 @@ for (const surface of SURFACES) {
       const clock = mock.clock(on, { now: NOW })
       const w = unnamed()
       w.files[HOST] = JSON.stringify({ python: PYTHON })
-      helloAnswers(except(on, ['clock']), w, 3, 'plumb mod hello refused: this session already has its panel\n')
+      helloAnswers(except(on, ['clock']), w, 3, 'iaso mod hello refused: this session already has its panel\n')
       await $.session.start(START)
       await clock.advance(90_000)
       const afterStart = hellos(w).length
@@ -178,17 +178,17 @@ for (const surface of SURFACES) {
       await $.turn.start(TURN)
       await $.turn.start({ ...TURN, turnId: 't-3' })
       expect(hellos(w).length).toBe(afterStart + 2)
-      expect(w.logs).toEqual(["plumb's panel is off: plumb refused it (this session already has its panel); plumb keeps working in the background."])
+      expect(w.logs).toEqual(["iaso's panel is off: iaso refused it (this session already has its panel); iaso keeps working in the background."])
     })
 
-    test("SR-125: the repository's .venv tried before host.json, and it has no plumb: once host.json names the interpreter, the panel links", async ($, on) => {
+    test("SR-125: the repository's .venv tried before host.json, and it has no iaso: once host.json names the interpreter, the panel links", async ($, on) => {
       const w = unnamed()
       w.files[VENV_PYTHON] = ''
       on('process.run', (_$, e) => {
         w.runs.push({ argv: [...e.argv], stdin: e.init?.stdin ?? '', env: { ...(e.init?.env ?? {}) } })
         const ok = e.argv[0] === PYTHON
         const data = { active: true, since: '2026-10-11T12:00:00Z', session: SESSION }
-        return { value: { exitCode: ok ? 0 : 1, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : "ModuleNotFoundError: No module named 'plumb'\n", isStdoutTruncated: false, isStderrTruncated: false } }
+        return { value: { exitCode: ok ? 0 : 1, stdout: ok ? JSON.stringify(data) : '', stderr: ok ? '' : "ModuleNotFoundError: No module named 'iaso'\n", isStdoutTruncated: false, isStderrTruncated: false } }
       })
       install(except(on, ['process.run']), w)
       await $.session.start(START)
@@ -196,12 +196,12 @@ for (const surface of SURFACES) {
       w.files[HOST] = JSON.stringify({ python: PYTHON })
       await $.turn.start(TURN)
       expect(hellos(w).map(a => a[0])).toEqual([VENV_PYTHON, PYTHON])
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
-    test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel runs plumb with the new one', async ($, on) => {
+    test('SR-160: linked with an older interpreter, then host.json names the plugin environment: the panel runs iaso with the new one', async ($, on) => {
       const w = unnamed()
       w.files[VENV_PYTHON] = ''
       const clock = install(on, w)
@@ -211,19 +211,19 @@ for (const surface of SURFACES) {
       w.files[`${SESSION_DIR}/intent/a.json`] = JSON.stringify({ step: 'build', opened_at: '2026-10-11T11:00:00Z' })
       await $.turn.start(TURN)
       await $.turn.complete(TURN_DONE)
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      w.files[`${ROOT}/.git/plumb-loops.stamp`] = 'moved' // the loops poll runs plumb when the stamp moves
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      w.files[`${ROOT}/.git/iaso-loops.stamp`] = 'moved' // the loops poll runs iaso when the stamp moves
       await clock.advance(10_000)
-      expect(w.runs.at(-1)?.argv.slice(0, 5)).toEqual([PYTHON, '-m', 'plumb', 'mod', 'loops'])
+      expect(w.runs.at(-1)?.argv.slice(0, 5)).toEqual([PYTHON, '-m', 'iaso', 'mod', 'loops'])
       await ui.unmount()
     })
 
-    test('SR-126: plumb mod hello fails: one line gives its error', async ($, on) => {
+    test('SR-126: iaso mod hello fails: one line gives its error', async ($, on) => {
       const w = unnamed()
       w.files[HOST] = JSON.stringify({ python: PYTHON })
-      helloAnswers(on, w, 1, "Traceback (most recent call last):\n  ...\nModuleNotFoundError: No module named 'plumb'\n")
+      helloAnswers(on, w, 1, "Traceback (most recent call last):\n  ...\nModuleNotFoundError: No module named 'iaso'\n")
       await $.session.start(START)
-      expect(w.logs).toEqual(["plumb's panel is off: plumb could not start it (ModuleNotFoundError: No module named 'plumb'); plumb keeps working in the background."])
+      expect(w.logs).toEqual(["iaso's panel is off: iaso could not start it (ModuleNotFoundError: No module named 'iaso'); iaso keeps working in the background."])
     })
 
     test('SR-126 EX-3: the panel connects: no such line', async ($, on) => {
@@ -234,10 +234,10 @@ for (const surface of SURFACES) {
       expect(w.logs).toEqual([])
     })
 
-    test('a repository plumb has not adopted: silent', async ($, on) => {
+    test('a repository iaso has not adopted: silent', async ($, on) => {
       const clock = mock.clock(on, { now: NOW })
       const w = unnamed()
-      for (const path of Object.keys(w.files)) if (path.includes('/.plumb/')) delete w.files[path]
+      for (const path of Object.keys(w.files)) if (path.includes('/.iaso/')) delete w.files[path]
       install(except(on, ['clock']), w)
       await $.session.start(START)
       await clock.advance(60_000)
@@ -246,12 +246,12 @@ for (const surface of SURFACES) {
       expect(w.logs).toEqual([])
     })
 
-    for (const [name, above] of [["plumb's own home above the repository", { '/work/.plumb/env/py/python': '' }],
-      ['records above the git root', { '/work/.plumb/requirements/SR-001.md': '', '/work/shop/.git/HEAD': '' }]] as const) {
-      test(`a repository plumb has not adopted: ${name} is not its records`, async ($, on) => {
+    for (const [name, above] of [["iaso's own home above the repository", { '/work/.iaso/env/py/python': '' }],
+      ['records above the git root', { '/work/.iaso/requirements/SR-001.md': '', '/work/shop/.git/HEAD': '' }]] as const) {
+      test(`a repository iaso has not adopted: ${name} is not its records`, async ($, on) => {
         const clock = mock.clock(on, { now: NOW })
         const w = unnamed()
-        for (const path of Object.keys(w.files)) if (path.includes('/.plumb/')) delete w.files[path]
+        for (const path of Object.keys(w.files)) if (path.includes('/.iaso/')) delete w.files[path]
         Object.assign(w.files, above)
         install(except(on, ['clock']), w)
         await $.session.start(START)

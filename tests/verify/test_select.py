@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.verify.select import select_tests
-from plumb.verify.testmap import build_map
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.verify.select import select_tests
+from iaso.verify.testmap import build_map
 
 
 @pytest.fixture
@@ -125,7 +125,7 @@ def test_selection_never_contains_whole_suite_marker(project: Path) -> None:
 
 @pytest.mark.sr("SR-255")
 def test_parametrized_durations_count_for_their_node() -> None:
-    from plumb.verify.select import expected_duration
+    from iaso.verify.select import expected_duration
 
     def nodes_of(_: str) -> list[str]:
         return ["tests/t.py::test_p", "tests/t.py::test_q"]
@@ -140,8 +140,8 @@ def test_parametrized_durations_count_for_their_node() -> None:
 
 @pytest.mark.sr("SR-255")
 def test_verify_is_a_verify_api(project: Path) -> None:
-    from plumb.contracts import VerifyAPI
-    from plumb.verify import open_verify
+    from iaso.contracts import VerifyAPI
+    from iaso.verify import open_verify
 
     assert isinstance(open_verify(open_core(project)), VerifyAPI)
 

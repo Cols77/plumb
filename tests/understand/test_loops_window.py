@@ -1,5 +1,5 @@
 """SR-414: the owner asks to see a loop in its own window. A live loop's window is brought to the
-front (nothing new opens); when the platform cannot, plumb says so and names the session and its
+front (nothing new opens); when the platform cannot, iaso says so and names the session and its
 folder; an idle loop still opens a new session (SR-394). No test raises a real window: the
 seam ``loops.raise_window(title, *, which, run, platform, env) -> bool`` is faked or given fake
 programs.
@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from mod.helpers import DIGEST, KEY, run_mod
 
-from plumb.understand import loops
+from iaso.understand import loops
 
 from understand.test_loops import _loop, _passed
 from understand.test_loops_reopen import ID, Windows, window  # noqa: F401  (the window fixture)
@@ -46,7 +46,7 @@ def test_ex1_a_live_loop_s_window_is_raised_and_nothing_new_opens(
                         raising=False)
     code, answer = _mod_reopen(repo, monkeypatch, capsys)
     assert code == 0 and answer["shown"] is True and answer["opened"] is False
-    assert titles and titles[0].startswith("plumb: ")      # the name SR-394 gave the window
+    assert titles and titles[0].startswith("iaso: ")      # the name SR-394 gave the window
     assert window.calls == []
 
 
@@ -75,9 +75,9 @@ def test_ex3_an_idle_loop_still_opens_a_new_session(
 
 
 @pytest.mark.sr("SR-414")
-@pytest.mark.parametrize("platform,program,seen", [("linux", "xdotool", "plumb: x loop"),
-                                                    ("darwin", "osascript", "plumb: x loop"),
-                                                    ("win32", None, "plumb: x loop")])
+@pytest.mark.parametrize("platform,program,seen", [("linux", "xdotool", "iaso: x loop"),
+                                                    ("darwin", "osascript", "iaso: x loop"),
+                                                    ("win32", None, "iaso: x loop")])
 def test_raise_window_asks_the_platform_s_program_by_the_window_title(
         platform: str, program: str | None, seen: str) -> None:
     calls: list[list[str]] = []
@@ -86,7 +86,7 @@ def test_raise_window_asks_the_platform_s_program_by_the_window_title(
         calls.append(list(argv))
         return subprocess.CompletedProcess(argv, 0, stdout="12345\n", stderr="")
 
-    ok = loops.raise_window("plumb: x loop", which=lambda p: f"/usr/bin/{p}", run=run,
+    ok = loops.raise_window("iaso: x loop", which=lambda p: f"/usr/bin/{p}", run=run,
                             platform=platform, env={"DISPLAY": ":0"})
     assert ok is True and calls
     assert any(seen in " ".join(c) for c in calls)
@@ -96,11 +96,11 @@ def test_raise_window_asks_the_platform_s_program_by_the_window_title(
 
 @pytest.mark.sr("SR-414")
 def test_raise_window_is_false_without_a_program_or_a_display() -> None:
-    nothing = functools.partial(loops.raise_window, "plumb: x", which=lambda p: None,
+    nothing = functools.partial(loops.raise_window, "iaso: x", which=lambda p: None,
                                 run=lambda *a, **k: pytest.fail("ran"), platform="linux",
                                 env={"DISPLAY": ":0"})
     assert nothing() is False
-    assert loops.raise_window("plumb: x", which=lambda p: "/usr/bin/xdotool", platform="linux",
+    assert loops.raise_window("iaso: x", which=lambda p: "/usr/bin/xdotool", platform="linux",
                               run=lambda *a, **k: pytest.fail("ran"), env={}) is False
 
 

@@ -1,4 +1,4 @@
-# Plumb workspace third-party notices
+# Iaso workspace third-party notices
 
 The browser distribution includes the complete licenses in
 `assets/THIRD_PARTY_NOTICES.txt`, generated before every build.
@@ -7,7 +7,7 @@ The browser distribution includes the complete licenses in
   Copyright (c) 2026 Guillaume Gagnaire, MIT. Extracted warm charcoal theme tokens,
   local font pairing, `Splitter.svelte`, `DiffView.svelte`, `lib/diff.ts` and
   `lib/resize.ts`. Adaptations remove Tauri, tooltip and translation dependencies;
-  the splitter supports a pane on its right. Plumb supplies actual stored field
+  the splitter supports a pane on its right. Iaso supplies actual stored field
   differences. No Escouade agent runtime or application state is included.
 - **diagram-mod**, revision `050643c9e1ce2ae942a0ffa2c2d8cf9404e15bdc`,
   Copyright (c) 2026 Colin AUBE, MIT. `hooks/svg.ts` and `hooks/model.ts` are

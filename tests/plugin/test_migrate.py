@@ -1,5 +1,5 @@
 """From the per-repository install to the plugin (SP7 4.7; SR-084): the old install keeps working
-and the plugin stays silent there; ``plumb plugin migrate`` removes only what plumb wrote, keeps
+and the plugin stays silent there; ``iaso plugin migrate`` removes only what iaso wrote, keeps
 and names what the owner changed, and points git's checks at the user-level launcher."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.present import owner_text
+from iaso.present import owner_text
 
 from .helpers import (
     EVENTS,
@@ -32,15 +32,15 @@ OWN_HOOK = {"type": "command", "command": "echo my own check"}
 
 def _legacy(root: Path) -> Path:
     """``root`` set up the old way, plus settings of the owner's own."""
-    from plumb.hosts.claude_code.install import install
+    from iaso.hosts.claude_code.install import install
 
     adopted_repo(root)
-    plugin_root = os.environ.pop("PLUMB_PLUGIN_ROOT", None)  # the old install ran without it
+    plugin_root = os.environ.pop("IASO_PLUGIN_ROOT", None)  # the old install ran without it
     try:
         install(root, launcher="path")
     finally:
         if plugin_root is not None:
-            os.environ["PLUMB_PLUGIN_ROOT"] = plugin_root
+            os.environ["IASO_PLUGIN_ROOT"] = plugin_root
     path = root / ".claude" / "settings.json"
     settings = json.loads(path.read_text(encoding="utf-8"))
     settings.setdefault("permissions", {}).setdefault("allow", []).append("Bash(git status)")
@@ -54,31 +54,31 @@ def _legacy(root: Path) -> Path:
 @pytest.fixture
 def plugin_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "home"
-    monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(PLUGIN))
-    monkeypatch.setenv("PLUMB_HOME", str(home))
+    monkeypatch.setenv("IASO_PLUGIN_ROOT", str(PLUGIN))
+    monkeypatch.setenv("IASO_HOME", str(home))
     user_launcher(home)
     return home
 
 
 def _migrate(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
-    from plumb.cli import main
+    from iaso.cli import main
 
     assert main(["plugin", "migrate", "--root", str(root)]) == 0
     return capsys.readouterr().out
 
 
-def test_removes_only_plumb_entries(tmp_path: Path, plugin_env: Path,
+def test_removes_only_iaso_entries(tmp_path: Path, plugin_env: Path,
                                     capsys: pytest.CaptureFixture[str]) -> None:
     root = _legacy(tmp_path / "repo")
     out = _migrate(root, capsys)
     settings = json.loads((root / ".claude" / "settings.json").read_text(encoding="utf-8"))
     assert settings == {"permissions": {"allow": ["Bash(git status)"]},
                         "hooks": {"Stop": [{"hooks": [OWN_HOOK]}]}}
-    assert not (root / ".claude" / "commands" / "plumb.md").exists()
+    assert not (root / ".claude" / "commands" / "iaso.md").exists()
     assert not (root / ".claude" / "skills").exists()
-    assert not (root / ".claude" / "plumb" / "gate.sh").exists()
+    assert not (root / ".claude" / "iaso" / "gate.sh").exists()
     claude_md = (root / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "plumb:begin" not in claude_md and claude_md.startswith("# My project")
+    assert "iaso:begin" not in claude_md and claude_md.startswith("# My project")
     lines = out.splitlines()
     assert lines[0] == owner_text.MIGRATE_DONE
     assert owner_text.MIGRATE_KEPT_SETTINGS in lines
@@ -89,28 +89,28 @@ def test_removes_only_plumb_entries(tmp_path: Path, plugin_env: Path,
 def test_edited_copy_kept(tmp_path: Path, plugin_env: Path,
                           capsys: pytest.CaptureFixture[str]) -> None:
     root = _legacy(tmp_path / "repo")
-    command = root / ".claude" / "commands" / "plumb.md"
+    command = root / ".claude" / "commands" / "iaso.md"
     edited = command.read_text(encoding="utf-8") + "\nAlso say hello.\n"
     command.write_text(edited, encoding="utf-8")
     out = _migrate(root, capsys)
     assert command.read_text(encoding="utf-8") == edited
-    assert owner_text.MIGRATE_KEPT.format(what="the /plumb command") in out.splitlines()
-    assert not (root / ".claude" / "skills" / "plumb" / "SKILL.md").exists()
+    assert owner_text.MIGRATE_KEPT.format(what="the /iaso command") in out.splitlines()
+    assert not (root / ".claude" / "skills" / "iaso" / "SKILL.md").exists()
 
 
 def test_hooks_repointed(tmp_path: Path, plugin_env: Path,
                          capsys: pytest.CaptureFixture[str]) -> None:
-    from plumb import launcher
+    from iaso import launcher
 
     root = _legacy(tmp_path / "repo")
     hooks = Path(git(root, "rev-parse", "--absolute-git-dir").stdout.strip()) / "hooks"
-    assert "-m plumb" in (hooks / "pre-push").read_text(encoding="utf-8")
+    assert "-m iaso" in (hooks / "pre-push").read_text(encoding="utf-8")
     _migrate(root, capsys)
     for name in ("commit-msg", "pre-merge-commit", "prepare-commit-msg", "post-merge",
                  "pre-push"):
         text = (hooks / name).read_text(encoding="utf-8")
-        assert launcher.user_launcher() in text and "-m plumb" not in text, name
-    driver = git(root, "config", "--get", "merge.plumb-record.driver").stdout
+        assert launcher.user_launcher() in text and "-m iaso" not in text, name
+    driver = git(root, "config", "--get", "merge.iaso-record.driver").stdout
     assert driver.startswith(f'"{launcher.user_launcher()}"')
 
 
@@ -122,7 +122,7 @@ def test_legacy_repo_hooks_run_once(tmp_path: Path) -> None:
     root = _legacy(tmp_path / "repo")
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     for event in EVENTS:
         result = run_hook(event, root, hook_data(event), env)
         assert (result.returncode, result.stdout) == (0, ""), event
@@ -132,18 +132,18 @@ def test_legacy_repo_hooks_run_once(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-202")
 def test_the_skill_under_its_retired_name_goes_and_an_owners_own_stays(
         tmp_path: Path, plugin_env: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """DEC-036: an install from before the rename wrote .claude/skills/plumb; migrating removes
-    it with the rest, but a skill of the owner's own named plumb is theirs."""
+    """DEC-036: an install from before the rename wrote .claude/skills/iaso; migrating removes
+    it with the rest, but a skill of the owner's own named iaso is theirs."""
     root = _legacy(tmp_path / "repo")
-    old = root / ".claude" / "skills" / "plumb" / "SKILL.md"
+    old = root / ".claude" / "skills" / "iaso" / "SKILL.md"
     old.parent.mkdir(parents=True)
-    old.write_text("---\nname: plumb\ndescription: Ground work in this repository's plumb "
+    old.write_text("---\nname: iaso\ndescription: Ground work in this repository's iaso "
                    "records (owner intent).\n---\nold\n", encoding="utf-8")
     _migrate(root, capsys)
     assert not (root / ".claude" / "skills").exists()
     other = _legacy(tmp_path / "other")
-    own = other / ".claude" / "skills" / "plumb" / "SKILL.md"
+    own = other / ".claude" / "skills" / "iaso" / "SKILL.md"
     own.parent.mkdir(parents=True)
-    own.write_text("---\nname: plumb\ndescription: my plumbing notes\n---\n", encoding="utf-8")
+    own.write_text("---\nname: iaso\ndescription: my iasoing notes\n---\n", encoding="utf-8")
     _migrate(other, capsys)
     assert own.exists()

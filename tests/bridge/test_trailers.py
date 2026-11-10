@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.claims import ForeignHookError, check_msg, install_commit_msg_hook
+from iaso import cli
+from iaso.claims import ForeignHookError, check_msg, install_commit_msg_hook
 
 pytestmark = pytest.mark.sr("SR-261")
 
@@ -28,7 +28,7 @@ def _git(root: Path, *args: str) -> str:
 
 
 def _require(repo: Path, value: bool = True) -> None:
-    (repo / ".plumb" / "claims.yaml").write_text(
+    (repo / ".iaso" / "claims.yaml").write_text(
         f"require_trailer: {'true' if value else 'false'}\nexempt: []\nbaseline: []\n",
         encoding="utf-8")
 
@@ -61,19 +61,19 @@ def test_check_msg_requires_trailer_when_configured(repo: Path, write_record) ->
     assert check_msg(repo, "ok\n\nSR: SR-001\n")[0] == 0
 
 
-def test_check_msg_passes_without_plumb_dir(tmp_path: Path) -> None:
+def test_check_msg_passes_without_iaso_dir(tmp_path: Path) -> None:
     code, lines = check_msg(tmp_path, "anything\n\nSR: SR-999\n")
     assert code == 0
-    assert lines == ["plumb: not initialized here, trailer not checked"]
+    assert lines == ["iaso: not initialized here, trailer not checked"]
 
 
 def test_install_hook_writes_and_leaves_foreign_hook(repo: Path) -> None:
     path = install_commit_msg_hook(repo, sys.executable)
     assert path.name == "commit-msg"
     text = path.read_text(encoding="utf-8")
-    assert "plumb trailers check-msg" in text
+    assert "iaso trailers check-msg" in text
     assert text.startswith("#!/bin/sh\n")
-    # idempotent: a plumb hook is rewritten in place
+    # idempotent: a iaso hook is rewritten in place
     assert install_commit_msg_hook(repo, sys.executable) == path
     path.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
     with pytest.raises(ForeignHookError) as info:
@@ -85,7 +85,7 @@ def test_install_hook_writes_and_leaves_foreign_hook(repo: Path) -> None:
 def test_install_hook_uses_installing_interpreter(repo: Path) -> None:
     path = install_commit_msg_hook(repo, "C:\\Py\\python.exe")
     text = path.read_text(encoding="utf-8")
-    assert '"C:/Py/python.exe" -m plumb trailers check-msg "$1"' in text
+    assert '"C:/Py/python.exe" -m iaso trailers check-msg "$1"' in text
 
 
 def test_install_hook_serves_worktrees(repo: Path, tmp_path: Path) -> None:
@@ -165,7 +165,7 @@ class _FakeCaptureApi:
     @staticmethod
     def diff_serves(core, sr_ids, paths):
         _FakeCaptureApi.calls.append((list(sr_ids), list(paths)))
-        return [f"plumb: warning: {sr_ids[0]} may not be served by {paths[0]}"]
+        return [f"iaso: warning: {sr_ids[0]} may not be served by {paths[0]}"]
 
 
 @pytest.mark.sr("SR-200")
@@ -175,13 +175,13 @@ def test_diff_serves_warning_never_blocks(repo: Path, write_record, monkeypatch)
     write_record(repo, SR_001)
     (repo / "app.py").write_text("x = 1\n", encoding="utf-8")
     _git(repo, "add", "app.py")
-    package = types.ModuleType("plumb.capture")
-    monkeypatch.setitem(sys.modules, "plumb.capture", package)
-    monkeypatch.setitem(sys.modules, "plumb.capture.api", _FakeCaptureApi)
+    package = types.ModuleType("iaso.capture")
+    monkeypatch.setitem(sys.modules, "iaso.capture", package)
+    monkeypatch.setitem(sys.modules, "iaso.capture.api", _FakeCaptureApi)
     _FakeCaptureApi.calls = []
     code, lines = check_msg(repo, "x\n\nSR: SR-001\n")
     assert code == 0
-    assert lines == ["plumb: warning: SR-001 may not be served by app.py"]
+    assert lines == ["iaso: warning: SR-001 may not be served by app.py"]
     assert _FakeCaptureApi.calls == [(["SR-001"], ["app.py"])]
 
     def boom(core, sr_ids, paths):
@@ -189,5 +189,5 @@ def test_diff_serves_warning_never_blocks(repo: Path, write_record, monkeypatch)
 
     monkeypatch.setattr(_FakeCaptureApi, "diff_serves", staticmethod(boom))
     assert check_msg(repo, "x\n\nSR: SR-001\n") == (0, [])
-    monkeypatch.setitem(sys.modules, "plumb.capture.api", None)  # not built: no warning
+    monkeypatch.setitem(sys.modules, "iaso.capture.api", None)  # not built: no warning
     assert check_msg(repo, "x\n\nSR: SR-001\n") == (0, [])

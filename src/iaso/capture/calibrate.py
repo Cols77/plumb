@@ -1,0 +1,439 @@
+"""``iaso jev calibrate``: the backend measured on the owner's own decisions (R12.1, R13 Q1;
+sp2 8.3, SR-042, DEC-018). A passing calibration raises the fast track's floor to its
+threshold; none is needed for the fast track (DEC-143).
+
+The labelled set is built from the log, per record kind (claim kind ``intent-readback`` for
+INT read-backs, ``example-restatement`` for requirements: their wording and every example):
+
+- yes: records the owner confirmed (``by: owner`` or ``agent-relayed``) at their current
+  content and never revoked, and records the judge approved citing the owner's question-tool
+  ``answers`` with no correction (source ``answer``, SR-252);
+- no (real): records the owner revoked, records edited after an auto-approval, and read-backs
+  the owner rejected as a misreading of their words (a ``capture-error`` rejection, pinned at
+  its hash; an ``intent-change`` rejection gets no label, SR-096, DEC-026 A). A rejection the
+  judge logged when the owner's answer corrected its reading (``by: owner-answer``, source
+  ``answer``) carries JEV's score logged at judgment time, used with no new call (SR-252 EX-4);
+- no (generated): deterministic variations of the yes records (a will flipped to won't, a
+  flipped result, a changed number), labelled ``generated``.
+
+Passing, per kind (R13 Q1, "mixed evidence"): at least ``calibration.min_items`` (20) of the
+owner's own decisions, at least ``calibration.min_negatives`` (5) 'no' examples of which at
+most half are generated, JEV wrongly accepting none of the 'no' examples (every generated one
+included) at the chosen threshold, and at least half of the 'yes' records accepted. The
+threshold is the lowest at which no 'no' example would have been accepted. The result is one
+``calibration`` event with the real/generated split; the agent may run it, only the owner can
+turn auto-approval on.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from iaso.api import Core
+
+KINDS = {"intent": "intent-readback", "requirement": "example-restatement"}
+NOT_APPLICABLE = "only the jev judge is calibrated; calibration not applicable"
+NO_JUDGMENTS = "no judgments available"
+STEP = 0.001
+
+
+class CalibrationUnavailable(RuntimeError):
+    """No calibration is possible with this backend; nothing was written."""
+
+
+@dataclass(frozen=True)
+class Item:
+    record: str
+    kind: str                     # claim kind
+    label: str                    # yes | no
+    source: str                   # owner | revoked | edited-after-auto | generated
+    premise: str
+    hypotheses: tuple[str, ...]   # every part must be supported (R13 Q3)
+    hash: str = ""                # the version of the record judged (the logged score's key)
+    quote_only: str = ""          # why its premise is the quote alone (SR-190), else ""
+    score: float | None = None    # JEV's score pinned at judgment time (SR-252 EX-4)
+
+
+@dataclass
+class KindResult:
+    items: int = 0                # real items: the owner's own decisions
+    answers: int = 0              # real items labelled by the owner's question-tool answers
+    positives: int = 0
+    real_negatives: int = 0
+    generated_negatives: int = 0
+    generated_counted: int = 0
+    quote_only: int = 0           # real items whose premise is the quote alone (SR-190)
+    negatives: int = 0            # counted: real + generated up to half
+    threshold: float | None = None
+    false_accept: float = 0.0
+    recall: float = 0.0
+    passing: bool = False
+    reasons: list[str] = field(default_factory=list)
+
+
+def _hypotheses(index: Mapping[str, Any], record: Any,
+                prompts: Any = None) -> tuple[str, tuple[str, ...]]:
+    """``(premise, parts)``: the claim triage judges (SR-040), with the same premise (the
+    owner's whole logged prompt when ``prompts`` has it). An INT's read-back is one claim; a
+    requirement's wording and each of its examples are separate parts, all of which must be
+    supported."""
+    from iaso.understand.claim import claim
+
+    _, premise, hypothesis = claim(index, record, prompts)
+    if record.kind != "requirement":
+        return premise, (hypothesis,)
+    parts = [" ".join(str(record.fields.get("statement") or record.title).split())]
+    parts += [f"given {e.given}, when {e.when}, then {e.then}" for e in record.examples]
+    return premise, tuple(parts)
+
+
+def _prompts(core: Core | None) -> Any:
+    if core is None:
+        return None
+    from iaso.understand.claim import _Prompts
+
+    return _Prompts(core)
+
+
+def snapshot(index: Mapping[str, Any], record: Any, core: Core | None = None
+             ) -> dict[str, Any]:
+    """The read-back of ``record`` as it stands now (kind, premise, parts), kept in a
+    rejection event so the rejected version can be labelled after a recapture."""
+    premise, parts = _hypotheses(index, record, _prompts(core))
+    return {"kind": KINDS.get(record.kind), "premise": premise, "hypotheses": list(parts)}
+
+
+_NUMBER = re.compile(r"\d+")
+
+
+def variations(item: Item) -> list[Item]:
+    """The generated 'no' examples of a 'yes' item: a will flipped to won't, a flipped
+    result, a changed number (each only when it changes the text)."""
+    out: list[Item] = []
+
+    def add(parts: Sequence[str], how: str) -> None:
+        if tuple(parts) != item.hypotheses:
+            out.append(Item(item.record, item.kind, "no", f"generated:{how}", item.premise,
+                            tuple(parts), item.hash))
+
+    text = list(item.hypotheses)
+    flipped = [re.sub(r"(?m)^will: ", "won't: ", text[0], count=1)] + text[1:]
+    add(flipped, "will-to-wont")
+    result = [re.sub(r"\bthen (.+)$", r"then it is not true that \1", p, count=1)
+              for p in text]
+    if result == text:
+        result = [f"not: {text[0]}"] + text[1:]
+    add(result, "flipped-result")
+    changed = [_NUMBER.sub(lambda m: str(int(m.group()) + 1), p, count=1) for p in text]
+    add(changed, "changed-number")
+    return out
+
+
+def labelled_set(core: Core) -> list[Item]:
+    from iaso.understand.claim import premise_problem
+    from iaso.confirm import checked, remaining
+
+    index = core.index()
+    statuses = core.status()
+    prompts = _prompts(core)
+    revoked: set[str] = set()
+    auto: set[str] = set()
+    for entry, problem in checked(core):
+        if problem is not None:
+            continue
+        ids = {str(r.get("id")) for r in entry.payload.get("records") or []
+               if isinstance(r, Mapping)}
+        if entry.kind == "revocation" and entry.payload.get("by") in (
+                "owner", "agent-relayed", "undone", "owner-words"):   # a reversal: a real "no"
+            revoked |= ids
+        if entry.kind == "approval" and entry.payload.get("by") == "auto-jev":
+            auto |= ids
+    standing = remaining(core)
+    items: list[Item] = []
+    seen_rejected: set[tuple[str, str]] = set()
+    corrected: set[tuple[str, str]] = set()
+    for entry in core.events():
+        if entry.kind != "rejection" or entry.payload.get("reason") != "capture-error":
+            continue  # an intent change gets no label (SR-096, DEC-026 A)
+        answered = entry.payload.get("by") == "owner-answer"
+        for pinned in entry.payload.get("records") or []:
+            if not isinstance(pinned, Mapping):
+                continue
+            record_id, pin = str(pinned.get("id")), str(pinned.get("hash"))
+            corrected.add((record_id, pin))
+            kind, premise = pinned.get("kind"), str(pinned.get("premise") or "")
+            parts = tuple(str(p) for p in pinned.get("hypotheses") or [])
+            if kind not in KINDS.values() or not premise.strip() or not parts \
+                    or (record_id, pin) in seen_rejected:
+                continue
+            current = index.get(record_id)
+            if not answered and current is not None and current.hash == pin and \
+                    statuses[record_id].confirmation == "confirmed":
+                continue  # the owner went on to confirm this very version
+            seen_rejected.add((record_id, pin))
+            items.append(Item(record_id, str(kind), "no", "answer" if answered else "rejected",
+                              premise, parts, pin, score=_number(pinned.get("jev_score"))))
+    for record_id in sorted(index):
+        record = index[record_id]
+        kind = KINDS.get(record.kind)
+        if kind is None:
+            continue
+        premise, parts = _hypotheses(index, record, prompts)
+        if not premise.strip():
+            continue
+        thin = (premise_problem(prompts, index, record) or "") if prompts is not None else ""
+        status = statuses[record_id]
+        latest = standing.get(record_id) or []
+        if record_id in revoked:
+            items.append(Item(record_id, kind, "no", "revoked", premise, parts, record.hash, thin))
+        elif record_id in auto and status.confirmation == "unconfirmed-edit":
+            items.append(Item(record_id, kind, "no", "edited-after-auto", premise, parts,
+                              record.hash, thin))
+        elif status.confirmation == "confirmed" and latest and \
+                latest[-1][1] in ("owner", "agent-relayed", "owner-words"):
+            items.append(Item(record_id, kind, "yes", "owner", premise, parts, record.hash, thin))
+        elif status.confirmation == "confirmed" and latest and \
+                latest[-1][1] in ("auto-jev", "auto-model") and \
+                latest[-1][2].payload.get("answers") and \
+                (record_id, record.hash) not in corrected:   # approved on the owner's answers
+            items.append(Item(record_id, kind, "yes", "answer", premise, parts, record.hash,
+                              thin))
+    generated = [v for item in items if item.label == "yes" for v in variations(item)]
+    return items + generated
+
+
+def _number(raw: Any) -> float | None:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw)
+
+
+def score(backend: Any, item: Item) -> tuple[float, str]:
+    """The probability that the whole item is ``benign`` against the owner's words (SR-372:
+    the lowest over its parts of JEV's probability of ``benign``), and the backend that
+    answered."""
+    lowest = 1.0
+    used = ""
+    for part in item.hypotheses:
+        judgment = backend.approval(item.premise, part, subject=item.record,
+                                    claim_kind=item.kind)
+        used = judgment.backend
+        lowest = min(lowest, judgment.probability if judgment.probability is not None else 0.0)
+    return round(lowest, 6), used
+
+
+def measure(core: Core, items: Sequence[Item], scores: Sequence[float]) -> dict[str, KindResult]:
+    config = core.config.calibration
+    out: dict[str, KindResult] = {}
+    for kind in KINDS.values():
+        result = KindResult()
+        pairs = [(i, s) for i, s in zip(items, scores, strict=True) if i.kind == kind]
+        yes = [s for i, s in pairs if i.label == "yes"]
+        real_no = [s for i, s in pairs if i.label == "no" and not i.source.startswith("gen")]
+        gen_no = [s for i, s in pairs if i.label == "no" and i.source.startswith("gen")]
+        result.positives = len(yes)
+        result.real_negatives = len(real_no)
+        result.generated_negatives = len(gen_no)
+        result.items = len(yes) + len(real_no)
+        result.answers = sum(i.source == "answer" for i, _ in pairs)
+        result.quote_only = sum(bool(i.quote_only) for i, _ in pairs
+                                if not i.source.startswith("gen"))
+        result.generated_counted = min(len(gen_no), len(real_no))  # at most half
+        result.negatives = len(real_no) + result.generated_counted
+        negatives = real_no + gen_no
+        if negatives:
+            result.threshold = round(min(1.0 + STEP, max(negatives) + STEP), 6)
+            accepted = [s for s in negatives if s >= result.threshold]
+            result.false_accept = len(accepted) / len(negatives)
+            result.recall = (sum(s >= result.threshold for s in yes) / len(yes)) if yes else 0.0
+        if result.items < config.min_items:
+            result.reasons.append(f"{result.items} of your decisions, {config.min_items} "
+                                  "needed")
+        if result.negatives < config.min_negatives:
+            result.reasons.append(f"{result.negatives} 'no' examples counted (generated ones "
+                                  f"up to half), {config.min_negatives} needed")
+        if result.false_accept > config.max_false_accept:
+            result.reasons.append(f"false accepts {result.false_accept:.2f}")
+        if result.recall < 0.5:
+            result.reasons.append(f"accepts {result.recall:.0%} of your confirmed records, "
+                                  "half needed")
+        result.passing = not result.reasons
+        out[kind] = result
+    return out
+
+
+def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
+    """``{(record, hash): score}`` of JEV's logged verdicts (the latest of each) and the JEV
+    version that gave the most recent one. The score is JEV's probability of ``benign`` on the
+    approval question (SR-372; an older verdict logged its probability of entailment), logged
+    at judgment time (SR-106), so calibration needs no call.
+    Only JEV's own score counts (SR-182): a verdict marked as JEV's, or the ``jev_score`` a
+    judge model's verdict logged beside its own (SR-252); a judge model's confidence never
+    sets JEV's threshold, and an old verdict with no marker is not taken as JEV's."""
+    from iaso.judgment.verdict import JEV
+
+    scores: dict[tuple[str, str], float] = {}
+    model = ""
+    for entry in core.events():
+        payload = entry.payload
+        if entry.kind != "verdict":
+            continue
+        logged = _number(payload.get("jev_score"))
+        if logged is None and payload.get("by") == JEV:
+            logged = _number(payload.get("score") or 0)
+        if logged is None:
+            continue
+        scores[(str(payload.get("id")), str(payload.get("hash")))] = logged
+        model = str(payload.get("jev_version") or (
+            payload.get("model") if payload.get("by") == JEV else "") or model)
+    return scores, model
+
+
+def calibrate(core: Core, *, backend: Any = None) -> tuple[Any, dict[str, KindResult]]:
+    """Measure the labelled set and append one ``calibration`` event. When the judge's logged
+    verdicts score any labelled record, they are the scores (no model call; generated 'no'
+    examples, which no verdict covers, are left out and the event says ``source: logged``).
+    Otherwise the labelled set is scored through JEV; raises ``CalibrationUnavailable``
+    (nothing written) without it."""
+    from iaso.normalize import canonical_json, sha256_bytes
+
+    logged, model = logged_scores(core)
+    items = labelled_set(core)
+
+    def known(i: Item) -> bool:   # a pinned score or a logged verdict scores it, no call
+        return i.score is not None or (i.record, i.hash) in logged
+
+    source_logged = any(known(i) for i in items if not i.source.startswith("gen"))
+    if source_logged:
+        # generated 'no' examples share their source record's id and hash, so a logged verdict
+        # would score them as the record they were made from; no verdict covers them
+        items = [i for i in items if not i.source.startswith("gen") and known(i)]
+        scores = [i.score if i.score is not None else logged[(i.record, i.hash)]
+                  for i in items]
+        name, version = "jev", model
+    else:
+        if backend is None:
+            from iaso.judgment import JudgmentUnavailable, get_backend
+
+            try:
+                backend = get_backend(core, hook=False)
+            except JudgmentUnavailable as exc:  # INT-029: said, nothing stands in
+                raise CalibrationUnavailable(f"judging unavailable: {exc}") from exc
+        name = str(getattr(backend, "name", "none"))
+        if name in ("disabled", "none"):
+            raise CalibrationUnavailable(NO_JUDGMENTS)
+        if name != "jev":
+            raise CalibrationUnavailable(NOT_APPLICABLE)
+        scores = []
+        for item in items:
+            try:
+                value, used = score(backend, item)
+            except Exception as exc:  # noqa: BLE001
+                from iaso.judgment import JudgmentUnavailable
+
+                if not isinstance(exc, JudgmentUnavailable):
+                    raise
+                raise CalibrationUnavailable(f"judging unavailable: {exc}; no calibration "
+                                             "written") from exc
+            if not used.startswith("jev:"):
+                raise CalibrationUnavailable(f"jev unavailable during calibration ({used} "
+                                             "answered); no calibration written")
+            scores.append(value)
+        version = getattr(backend, "version", None)
+    results = measure(core, items, scores)
+    digest = sha256_bytes(canonical_json([[i.record, i.kind, i.label, i.source,
+                                           list(i.hypotheses)] for i in items]))
+    from iaso.judgment.jev import APPROVAL_FORM
+
+    payload = {"backend": name, "model_version": version, "form": APPROVAL_FORM,
+               "per_kind": {k: {key: getattr(r, key) for key in (
+                   "items", "answers", "positives", "real_negatives", "generated_negatives",
+                   "generated_counted", "quote_only", "negatives", "threshold", "false_accept",
+                   "recall", "passing", "reasons")} for k, r in results.items()},
+               "labelled_set_digest": digest}
+    if source_logged:
+        payload["source"] = "logged"
+        payload.update(fingerprint(core))
+    entry = core.log_append("events", "calibration", payload)
+    return entry, results
+
+
+def fingerprint(core: Core) -> dict[str, Any]:
+    """The judge model (SR-186) and prompt a logged calibration was made under: a change of
+    either suspends settling until the evaluation set passes again (SR-106)."""
+    try:
+        from iaso.understand.evalrun import prompt_digest
+
+        digest = prompt_digest()
+    except Exception:  # noqa: BLE001 - the fingerprint is advisory for the suspension check
+        digest = ""
+    from iaso.config import model_of
+
+    # SR-389: the model the judge level runs, so a changed level is a changed judge
+    return {"model": model_of(core.config, core.config.understand.judge_model),
+            "prompt_digest": digest}
+
+
+def calibration_form(calibration: Any) -> str:
+    """The question form a calibration measured (``yes_no`` when it records none, SR-183)."""
+    return str((calibration.payload.get("form") if calibration is not None else None)
+               or "yes_no")
+
+
+def form_gap(core: Core, calibration: Any) -> str | None:
+    """SR-183: why ``calibration`` may not serve JEV's approval question (SR-372: it measured
+    another question form, such as the entailment forms), else None."""
+    from iaso.judgment.jev import APPROVAL_FORM
+
+    want = APPROVAL_FORM
+    if calibration is None or calibration_form(calibration) == want:
+        return None
+    return (f"a calibration for the {want} form is needed (the last one measured "
+            f"{calibration_form(calibration)})")
+
+
+def latest_calibration(core: Core) -> Any:
+    entries = [e for e in core.events() if e.kind == "calibration"]
+    return entries[-1] if entries else None
+
+
+def judge_calibrations(core: Core) -> list[Any]:
+    """The calibrations made from the judge's logged scores (``source: logged``), oldest first."""
+    return [e for e in core.events()
+            if e.kind == "calibration" and e.payload.get("source") == "logged"]
+
+
+def fingerprint_stale(core: Core) -> bool:
+    """Whether the judge model or the prompt differs from the latest calibration's
+    fingerprint (SR-106, SR-186); a calibration that recorded none is not stale."""
+    latest = latest_calibration(core)
+    if latest is None or "prompt_digest" not in latest.payload:
+        return False
+    return any(latest.payload.get(k) != v for k, v in fingerprint(core).items())
+
+
+def latest_judge_calibration(core: Core) -> Any:
+    entries = judge_calibrations(core)
+    return entries[-1] if entries else None
+
+
+def result_lines(results: Mapping[str, Any], version: str | None) -> list[str]:
+    lines = [f"calibration (jev {version or '?'}; per record kind)"]
+    for kind, r in results.items():
+        get = r.get if isinstance(r, Mapping) else (lambda k, r=r: getattr(r, k))
+        threshold = get("threshold")
+        lines.append(
+            f"  {kind}: {'passing' if get('passing') else 'not passing'}; "
+            f"{get('items')} of your decisions ({get('positives')} yes, "
+            f"{get('real_negatives')} no), 'no' examples {get('negatives')} counted "
+            f"({get('real_negatives')} real, {get('generated_counted')} of "
+            f"{get('generated_negatives')} generated); threshold "
+            f"{'-' if threshold is None else f'{threshold:.3f}'}, false accepts "
+            f"{get('false_accept'):.2f}, recall {get('recall'):.2f}")
+        for reason in get("reasons") or []:
+            lines.append(f"    {reason}")
+    return lines

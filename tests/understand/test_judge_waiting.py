@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
+from iaso.api import open_core
 from understand import test_judge_cascade
 from understand.fakes import FakeDispatcher
 from understand.test_judge_cascade import (
@@ -37,7 +37,7 @@ class ClearsIntent(StubJev):
 
 
 def cascade(core: Any, model: FakeDispatcher, jev: Any = None) -> Any:
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     job = build_job(core, ["INT-001", "SR-001"])
     return verdict.cascade(core, job, system="judge", schema={}, jev=jev, dispatcher=model)
@@ -64,7 +64,7 @@ def test_ex1_the_worker_logs_the_verdict_keeps_the_rest_and_says_it_to_the_agent
         world: Path, engine_standins: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     core = configure(world)
     fast_track_on(core, monkeypatch)
-    from plumb.understand import jobs, queue, verdict, worker
+    from iaso.understand import jobs, queue, verdict, worker
 
     monkeypatch.setattr(verdict, "open_jev", lambda core: ClearsIntent())
     engine_standins.dispatcher.reason = "no model answered"
@@ -76,7 +76,7 @@ def test_ex1_the_worker_logs_the_verdict_keeps_the_rest_and_says_it_to_the_agent
     waiting = [j for j in jobs.queued(root, SESSION)
                if [r["id"] for r in j.inputs["records"]] == ["SR-001"]]
     assert len(waiting) == 1
-    notes = (root / ".plumb" / "session" / SESSION / "agent_notes.json").read_text("utf-8")
+    notes = (root / ".iaso" / "session" / SESSION / "agent_notes.json").read_text("utf-8")
     assert "SR-001" in notes
 
 
@@ -88,7 +88,7 @@ def test_ex2_an_answer_out_of_schema_is_a_wait_with_the_same_line(partly: Any) -
 
 
 def test_ex2_with_no_verdict_at_all_the_job_waits_instead_of_failing(world: Path) -> None:
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     core = configure(world)
     model = FakeDispatcher().failing("schema", "verdicts: required")

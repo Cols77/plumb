@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from fakes import FakeBackend, FakeVerify
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.hosts.claude_code import prompt
+from iaso import approvals
+from iaso.api import open_core
+from iaso.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.sr("SR-225")
 def _without_the_understanding_layer(monkeypatch: pytest.MonkeyPatch) -> None:
     """These tests are about the records the hook injects. The understanding layer closes its
     gate on every owner message and says so (tests/understand covers that line)."""
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
 
@@ -85,19 +85,19 @@ def _confirm(repo: Path, *ids: str) -> None:
 def test_logs_prompt_digest_and_text_to_session(records: Path, hook_input) -> None:
     text = "please fix the stale links, ok"
     _run(records, hook_input, text)
-    lines = (records / ".plumb" / "session" / "prompts.jsonl").read_text("utf-8").splitlines()
+    lines = (records / ".iaso" / "session" / "prompts.jsonl").read_text("utf-8").splitlines()
     entry = json.loads(lines[-1])
     assert entry["text"] == text and entry["session"] == "s1"
     assert entry["digest"] == "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
     assert entry["digest"] == approvals.prompt_digest(text)
     assert entry["at"].endswith("Z")
-    turn = json.loads((records / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))
+    turn = json.loads((records / ".iaso" / "session" / "s1" / "turn.json").read_text("utf-8"))
     assert turn["prompt_digest"] == entry["digest"] and turn["turn_start"] > 0
     assert turn["asked"] == {}
 
 
 def test_turn_keeps_asked_decisions_of_the_session(records: Path, hook_input) -> None:
-    turn = records / ".plumb" / "session" / "s1" / "turn.json"
+    turn = records / ".iaso" / "session" / "s1" / "turn.json"
     _run(records, hook_input, "first")
     data = json.loads(turn.read_text("utf-8"))
     data["asked"] = {"DEC-001": "sha256:abc"}
@@ -107,7 +107,7 @@ def test_turn_keeps_asked_decisions_of_the_session(records: Path, hook_input) ->
 
 
 def test_new_turn_clears_touched_list(records: Path, hook_input) -> None:
-    touched = records / ".plumb" / "session" / "s1" / "touched.txt"
+    touched = records / ".iaso" / "session" / "s1" / "touched.txt"
     touched.parent.mkdir(parents=True, exist_ok=True)
     touched.write_text("src/old.py\n", encoding="utf-8")
     _run(records, hook_input, "next request")
@@ -125,14 +125,14 @@ def test_injects_named_records_first(records: Path, hook_input) -> None:
 def test_injects_one_line_per_record_within_the_budget(records: Path, hook_input,
                                                        write_record) -> None:
     """R9: one line per relevant record (ID, state, title); examples and tests stay behind
-    plumb show; the token budget bounds the delta."""
+    iaso show; the token budget bounds the delta."""
     for i in range(10, 40):
         write_record(records, f"---\nid: SR-0{i}\ntitle: Stale link rule {i}\n"
                      "statement: stale links pins hashes\nexamples:\n"
                      "- id: EX-1\n  given: stale link\n  when: pins\n  then: stale\n---\n")
     out = _run(records, hook_input, "SR-003 stale links pins hashes")
     lines = out.splitlines()
-    assert lines[0].startswith("plumb: relevant records, new or changed this session")
+    assert lines[0].startswith("iaso: relevant records, new or changed this session")
     assert lines[1] == "SR-003 [proposed] Links pin both ends"
     assert not any("EX-1" in line or "tests:" in line for line in lines)
     records_shown = [line for line in lines if line.startswith("SR-")]
@@ -147,10 +147,10 @@ def test_intent_change_flag_on_confirmed_record_with_change_words(records: Path,
     backend = FakeBackend()
     out = _run(records, hook_input, "approvals should now stay after an edit, SR-004",
                backend=backend)
-    assert ("plumb: this may change SR-004 (confirmed). If it does, read back the change and "
+    assert ("iaso: this may change SR-004 (confirmed). If it does, read back the change and "
             "ask before editing; if not, proceed.") in out
     assert backend.calls and backend.calls[0][1] == ("SR-004",)
-    flags = (records / ".plumb" / "session" / "intent_flags.jsonl").read_text("utf-8")
+    flags = (records / ".iaso" / "session" / "intent_flags.jsonl").read_text("utf-8")
     assert json.loads(flags.splitlines()[0])["subject"] == "SR-004"
 
 
@@ -165,7 +165,7 @@ def test_no_flag_on_proposed_record(records: Path, hook_input) -> None:
 def test_compare_line_when_confirmed_records_injected(records: Path, hook_input) -> None:
     _confirm(records, "SR-003")
     out = _run(records, hook_input, "SR-003 links are fine as they are")
-    assert ("plumb: compare this request with the confirmed examples of SR-003; if it "
+    assert ("iaso: compare this request with the confirmed examples of SR-003; if it "
             "contradicts or extends them, read back the change and ask before editing.") in out
     assert "this may change" not in out
 
@@ -173,8 +173,8 @@ def test_compare_line_when_confirmed_records_injected(records: Path, hook_input)
 def test_backend_unavailable_degrades(records: Path, hook_input) -> None:
     _confirm(records, "SR-004")
     out = _run(records, hook_input, "SR-004 should now change", backend=None)
-    assert "plumb: intent check unavailable" in out
-    assert "plumb: compare this request" in out
+    assert "iaso: intent check unavailable" in out
+    assert "iaso: compare this request" in out
 
 
 @pytest.mark.sr("SR-245")
@@ -183,7 +183,7 @@ def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
     """SR-021 EX-1: a jev judge with no key. The hook says so in one line, once per session,
     judges nothing by rules, and still lets the prompt through (exit 0)."""
     _confirm(records, "SR-004")
-    (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+    (records / ".iaso" / "config.yaml").write_text("judgment:\n  backend: jev\n",
                                                    encoding="utf-8")
     text = "approvals should now stay after an edit, SR-004"
     first = _run(records, hook_input, text, backend=prompt.LAZY)
@@ -191,7 +191,7 @@ def test_unreachable_judge_is_one_line_once_per_session_and_never_blocks(
     assert len(unavailable) == 1
     assert "JEV" in unavailable[0] and "TYPESAFE_API_KEY" in unavailable[0]
     assert "this may change" not in first  # no rule-based flag in its place
-    assert "plumb: compare this request" in first  # the prompt still gets its records
+    assert "iaso: compare this request" in first  # the prompt still gets its records
     second = _run(records, hook_input, text, backend=prompt.LAZY)
     assert "judging unavailable" not in second  # once per session
 
@@ -203,7 +203,7 @@ def test_jev_without_its_key_says_so_once_and_judges_nothing_by_rules(
     Two prompts in one session: the first names JEV and the variable in exactly one line,
     the second says nothing, and no rule-based judgment is made in either."""
     _confirm(records, "SR-004")
-    (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: jev\n",
+    (records / ".iaso" / "config.yaml").write_text("judgment:\n  backend: jev\n",
                                                    encoding="utf-8")
     text = "approvals should now stay after an edit, SR-004"
     first = _run(records, hook_input, text, backend=prompt.LAZY)
@@ -212,7 +212,7 @@ def test_jev_without_its_key_says_so_once_and_judges_nothing_by_rules(
     assert "JEV" in line and "TYPESAFE_API_KEY" in line
     assert "judging unavailable" not in second
     assert "this may change" not in first + second
-    assert not (records / ".plumb" / "session" / "intent_flags.jsonl").exists()
+    assert not (records / ".iaso" / "session" / "intent_flags.jsonl").exists()
 
 
 @pytest.mark.sr("SR-245")
@@ -224,7 +224,7 @@ def test_no_judge_configured_names_the_setting(records: Path, hook_input) -> Non
 
 
 def test_needs_no_verification(records: Path, hook_input) -> None:
-    """Covering tests are pulled on demand (plumb show), so the hook never asks VERIFY."""
+    """Covering tests are pulled on demand (iaso show), so the hook never asks VERIFY."""
     out = _run(records, hook_input, "SR-003 stale links", verify=None)
     assert out.splitlines()[1].startswith("SR-003")
     assert "verification unavailable" not in out
@@ -239,19 +239,19 @@ def test_nothing_relevant_prints_nothing(records: Path, hook_input) -> None:
 
 @pytest.mark.sr("SR-242")
 def test_prints_queued_escalations(records: Path, hook_input) -> None:
-    queue = records / ".plumb" / "session" / "escalations.jsonl"
+    queue = records / ".iaso" / "session" / "escalations.jsonl"
     queue.parent.mkdir(parents=True, exist_ok=True)
     queue.write_text(json.dumps({"at": "2026-10-06T03:00:00Z", "subject": "SR-003",
-                                 "instruction": "judge SR-003 with plumb fidelity SR-003"})
+                                 "instruction": "judge SR-003 with iaso fidelity SR-003"})
                      + "\n", encoding="utf-8")
     out = _run(records, hook_input, "zzz")
-    assert "plumb: escalation SR-003: judge SR-003 with plumb fidelity SR-003" in out
+    assert "iaso: escalation SR-003: judge SR-003 with iaso fidelity SR-003" in out
     assert "escalation" not in _run(records, hook_input, "zzz")  # printed once
 
 
 def test_escalation_hint_on_many_features(records: Path, hook_input) -> None:
     out = _run(records, hook_input, "rework SR-003, SR-004 and SR-009 together")
-    assert ("plumb: consider escalating to an up-front spec (2 features: FEAT-001, FEAT-002);"
+    assert ("iaso: consider escalating to an up-front spec (2 features: FEAT-001, FEAT-002);"
             " the owner decides.") in out
     assert "consider escalating" not in _run(records, hook_input, "SR-003 stale links")
 
@@ -286,14 +286,14 @@ class _SlowBackend(FakeBackend):
 def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatch) -> None:
     """Records, the intent-change flag, the compare line and the relay line are printed even
     when the intent check is slow; nothing asks for the covering tests."""
-    from plumb.hosts.claude_code import hookio
+    from iaso.hosts.claude_code import hookio
 
     clock = _Clock()
     monkeypatch.setattr(hookio, "time", clock)
     _confirm(records, "SR-003")
     index = open_core(records).index()
-    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (records / ".plumb" / "session" / "stated.json").write_text(json.dumps(
+    (records / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".iaso" / "session" / "stated.json").write_text(json.dumps(
         {"records": [{"id": "SR-009", "hash": index["SR-009"].hash, "shown": True}]}), "utf-8")
     backend = _SlowBackend()
     backend.clock = clock
@@ -305,11 +305,11 @@ def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatc
     out = _run(records, hook_input, "SR-003 should now stop pinning both ends",
                backend=backend, verify=verify)
     lines = out.splitlines()
-    assert lines[0].startswith("plumb: relevant records, new or changed this session")
+    assert lines[0].startswith("iaso: relevant records, new or changed this session")
     assert lines[1].startswith("SR-003 [confirmed]")
-    assert "plumb: this may change SR-003 (confirmed)." in out
-    assert "plumb: compare this request with the confirmed examples of SR-003" in out
-    assert "plumb relay" not in out and "awaiting confirmation" not in out
+    assert "iaso: this may change SR-003 (confirmed)." in out
+    assert "iaso: compare this request with the confirmed examples of SR-003" in out
+    assert "iaso relay" not in out and "awaiting confirmation" not in out
     assert not any("covering tests" in line for line in lines)
     assert calls == []
 
@@ -318,7 +318,7 @@ def test_intent_lines_survive_a_budget_cut(records: Path, hook_input, monkeypatc
 
 
 def _queue_untraced(repo: Path, paths: list[str], session: str = "s1") -> Path:
-    note = repo / ".plumb" / "session" / session / "untraced.json"
+    note = repo / ".iaso" / "session" / session / "untraced.json"
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(json.dumps({"paths": paths}), "utf-8")
     return note
@@ -331,7 +331,7 @@ def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
     (records / "src" / "mul.py").write_text("x = 1\n", "utf-8")
     note = _queue_untraced(records, ["src/mul.py"])
     out = _run(records, hook_input, "thanks, now add division")
-    assert ("plumb: untraced change: src/mul.py changed with no requirement owning it. "
+    assert ("iaso: untraced change: src/mul.py changed with no requirement owning it. "
             "Record it as a proposed SR") in out
     assert "back to the owner" not in out                      # SR-200: no read-back
     assert not note.exists()  # delivered once; the merge boundary still lists it
@@ -340,7 +340,7 @@ def test_next_prompt_tells_the_agent_to_trace_the_untraced_change(records: Path,
 
 @pytest.mark.sr("SR-200")
 def test_queued_path_linked_since_is_not_repeated(records: Path, hook_input) -> None:
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     (records / "src").mkdir()
     (records / "src" / "mul.py").write_text("x = 1\n", "utf-8")
@@ -365,7 +365,7 @@ def test_second_prompt_naming_an_unchanged_record_injects_nothing(records: Path,
 @pytest.mark.sr("SR-277")
 def test_changed_record_is_injected_again_as_one_line(records: Path, hook_input) -> None:
     _run(records, hook_input, "SR-003 and SR-004")
-    path = records / ".plumb" / "requirements" / "SR-003.md"
+    path = records / ".iaso" / "requirements" / "SR-003.md"
     path.write_text(path.read_text("utf-8").replace("a moved end", "any moved end"), "utf-8")
     lines = _run(records, hook_input, "SR-003 and SR-004").splitlines()
     assert [line for line in lines if line.startswith("SR-")] == [
@@ -378,7 +378,7 @@ def test_confirmation_change_is_injected_again(records: Path, hook_input) -> Non
     _confirm(records, "SR-004")
     out = _run(records, hook_input, "SR-004 approvals")
     assert "SR-004 [confirmed] Approvals pin exact content" in out
-    assert "plumb: compare this request with the confirmed examples of SR-004" in out
+    assert "iaso: compare this request with the confirmed examples of SR-004" in out
     # the compare line comes with the record, not on every prompt
     assert "compare this request" not in _run(records, hook_input, "SR-004 approvals")
 
@@ -386,17 +386,17 @@ def test_confirmation_change_is_injected_again(records: Path, hook_input) -> Non
 @pytest.mark.sr("SR-277")
 def test_records_cut_by_the_budget_come_on_a_later_prompt(records: Path, hook_input,
                                                           write_record) -> None:
-    (records / ".plumb" / "config.yaml").write_text("hooks:\n  prompt_tokens: 10\n", "utf-8")
+    (records / ".iaso" / "config.yaml").write_text("hooks:\n  prompt_tokens: 10\n", "utf-8")
     first = _run(records, hook_input, "SR-003 SR-004")
     assert "SR-003 [proposed]" in first and "SR-004" not in first.splitlines()[1]
-    assert "more relevant: plumb show SR-004" in first
+    assert "more relevant: iaso show SR-004" in first
     second = _run(records, hook_input, "SR-003 SR-004")
     assert "SR-004 [proposed]" in second and "SR-003 [proposed]" not in second
 
 
 @pytest.mark.sr("SR-277")
 def test_session_clear_resets_what_the_agent_has_seen(records: Path, hook_input) -> None:
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     _run(records, hook_input, "SR-003 stale links")
     payload = hook_input("SessionStart", session_id="s1", source="clear")
@@ -412,7 +412,7 @@ CHANGE_2 = "approvals should now also expire after a week"
 
 
 def _flag(record_id: str) -> str:
-    return f"plumb: this may change {record_id} (confirmed)."
+    return f"iaso: this may change {record_id} (confirmed)."
 
 
 def test_each_request_that_may_change_a_confirmed_record_is_flagged(records: Path,
@@ -429,8 +429,8 @@ def test_each_request_that_may_change_a_confirmed_record_is_flagged(records: Pat
 
 
 def test_neutral_turn_api_flags_each_changing_request(records: Path) -> None:
-    from plumb.contracts import TurnEvent
-    from plumb.hosts.neutral import handle_event
+    from iaso.contracts import TurnEvent
+    from iaso.hosts.neutral import handle_event
 
     _confirm(records, "SR-004")
     outputs = []
@@ -444,8 +444,8 @@ def test_neutral_turn_api_flags_each_changing_request(records: Path) -> None:
 
 def test_turn_start_flags_each_changing_request(records: Path, monkeypatch,
                                                 capsys) -> None:
-    """The CLI-only fallback (``plumb turn start``) is the same prompt event."""
-    from plumb.cli import main
+    """The CLI-only fallback (``iaso turn start``) is the same prompt event."""
+    from iaso.cli import main
 
     monkeypatch.setattr(prompt, "judgment_backend", lambda core, given=None: FakeBackend())
     _confirm(records, "SR-004")
@@ -459,7 +459,7 @@ def test_turn_start_flags_each_changing_request(records: Path, monkeypatch,
 
 
 def _logged(repo: Path) -> list[dict]:
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
@@ -479,7 +479,7 @@ def test_harness_notification_is_logged_as_such_and_queues_no_job(
     out = _run(records, hook_input, note)
     assert [e["origin"] for e in _logged(records)] == ["notification"]
     assert seen == [] and out.strip() == ""
-    assert not (records / ".plumb" / "session" / "s1" / "turn.json").exists()
+    assert not (records / ".iaso" / "session" / "s1" / "turn.json").exists()
 
 
 @pytest.mark.sr("SR-209")
@@ -503,9 +503,9 @@ def test_owner_text_with_appended_notification_logs_only_the_owner_text(
 @pytest.mark.sr("SR-266")
 def test_the_next_prompt_hands_the_agent_the_stop_hooks_queued_notes(
         records: Path, hook_input) -> None:
-    notes = records / ".plumb" / "session" / "s1" / "agent_notes.json"
+    notes = records / ".iaso" / "session" / "s1" / "agent_notes.json"
     notes.parent.mkdir(parents=True, exist_ok=True)
-    notes.write_text(json.dumps(["plumb: SR-003 is also being changed on branch feat-x"]), "utf-8")
+    notes.write_text(json.dumps(["iaso: SR-003 is also being changed on branch feat-x"]), "utf-8")
     assert "also being changed on branch feat-x" in _run(records, hook_input, "hello")
     assert not notes.exists()
     assert "feat-x" not in _run(records, hook_input, "hello again")

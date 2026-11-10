@@ -3,7 +3,7 @@ words (SR-267 EX-8: questions go only through a question tool); the headless ben
 given a stand-in tool instead (tests/evaluate/test_ask_server.py)."""
 import pytest
 
-from plumb.hosts.claude_code import stop
+from iaso.hosts.claude_code import stop
 
 
 @pytest.mark.sr("SR-267")

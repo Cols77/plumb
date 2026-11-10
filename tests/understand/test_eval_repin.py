@@ -11,13 +11,13 @@ from typing import Any
 
 import pytest
 
-from plumb import links
-from plumb.api import open_core
-from plumb.contracts import NoModel, Target
-from plumb.understand import evalrepin, evalrun
-from plumb.understand.evalcompare import CompareError, Verdict
-from plumb.understand.evalrepin import Case
-from plumb.understand.repin import Meaning
+from iaso import links
+from iaso.api import open_core
+from iaso.contracts import NoModel, Target
+from iaso.understand import evalrepin, evalrun
+from iaso.understand.evalcompare import CompareError, Verdict
+from iaso.understand.evalrepin import Case
+from iaso.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -157,7 +157,7 @@ def test_a_model_without_a_verdict_is_an_error_naming_it() -> None:
 
 
 def test_jev_is_asked_about_the_requirement_with_the_diff() -> None:
-    from plumb.judgment import JudgmentUnavailable
+    from iaso.judgment import JudgmentUnavailable
 
     asked = []
 
@@ -185,7 +185,7 @@ def test_jev_is_asked_about_the_requirement_with_the_diff() -> None:
 
 def test_unreachable_or_unknown_judge_is_an_error(repo: Path,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import dispatch
+    from iaso.understand import dispatch
 
     def none(core, *, model=None):
         raise NoModel("nothing configured")

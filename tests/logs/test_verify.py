@@ -7,16 +7,16 @@ from pathlib import Path
 import pytest
 from logutil import delete, legacy_entry, tamper, write_legacy
 
-from plumb import log
-from plumb.api import open_core
-from plumb.normalize import canonical_json
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.api import open_core
+from iaso.normalize import canonical_json
+from iaso.paths import IasoPaths
 
 
 @pytest.fixture
-def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
-    p = PlumbPaths(tmp_path)
+def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> IasoPaths:
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
+    p = IasoPaths(tmp_path)
     p.log_dir.mkdir(parents=True)
     return p
 
@@ -24,7 +24,7 @@ def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
 @pytest.mark.sr("SR-232")
 def test_edited_entry_reported_by_file(repo: Path) -> None:
     """SR-073 EX-3: a committed entry file edited by hand is reported as modified."""
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     core = open_core(repo)
     core.log_append("events", "approval", {"records": [{"id": "SR-001", "hash": "h"}]})
@@ -37,7 +37,7 @@ def test_edited_entry_reported_by_file(repo: Path) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_deleted_entry_named_by_prev_not_reported(paths: PlumbPaths) -> None:
+def test_deleted_entry_named_by_prev_not_reported(paths: IasoPaths) -> None:
     """SR-232 EX-5: verify reports no log error; the merge check refuses the deletion (SR-322)."""
     for i in range(3):
         log.append(paths, "events", "repin", {"i": i})
@@ -46,7 +46,7 @@ def test_deleted_entry_named_by_prev_not_reported(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_unparsable_file_reported(paths: PlumbPaths) -> None:
+def test_unparsable_file_reported(paths: IasoPaths) -> None:
     log.append(paths, "events", "repin", {})
     bad = paths.log_kind_dir("repin") / "20261005T120000.000001Z-0badf11e.json"
     bad.write_text("{oops", encoding="utf-8")
@@ -62,7 +62,7 @@ def test_unparsable_file_reported(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_forked_chain_accepted(paths: PlumbPaths) -> None:
+def test_forked_chain_accepted(paths: IasoPaths) -> None:
     base = log.append(paths, "events", "repin", {"base": True})
     # two branches each appended after base: two entries with the same prev
     for side in ("a", "b"):
@@ -75,7 +75,7 @@ def test_forked_chain_accepted(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
+def test_migrated_suffix_must_match_digest(paths: IasoPaths) -> None:
     raw = legacy_entry("repin", {}, None)
     good = log.migrated_name(raw)
     wrong = good[:-13] + "00000000.json"
@@ -86,7 +86,7 @@ def test_migrated_suffix_must_match_digest(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_legacy_lines_still_checked(paths: PlumbPaths) -> None:
+def test_legacy_lines_still_checked(paths: IasoPaths) -> None:
     """During the transition an edited legacy line is still reported; a reorder is no error (SR-322)."""
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"], at="2026-10-05T12:00:01Z")

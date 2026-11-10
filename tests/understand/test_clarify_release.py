@@ -1,4 +1,4 @@
-"""A failed check holds nothing (SR-225 EX-9, SR-378 EX-4): plumb says once that the check
+"""A failed check holds nothing (SR-225 EX-9, SR-378 EX-4): iaso says once that the check
 could not be made and the agent works on; no "build anyway" card is filed."""
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb.api import open_core
-from plumb.understand import cmd_clarify, gate, hooks, worker
+from iaso.api import open_core
+from iaso.understand import cmd_clarify, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -26,7 +26,7 @@ def test_ex9_a_failed_check_opens_the_gate_and_files_no_card(
         repo: Path, engine_standins: Any) -> None:
     engine_standins.dispatcher.failing("run", "the model could not be reached")
     core = open_core(repo)
-    text = "/plumb clarify let users export their data"
+    text = "/iaso clarify let users export their data"
     digest = log_prompt(repo, text, session=SESSION)
     hooks.on_prompt(_ctx(), core, {"digest": digest, "text": text})
     assert gate.is_closed(repo, SESSION)                     # closed while the check runs

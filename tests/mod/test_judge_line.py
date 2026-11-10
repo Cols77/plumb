@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.mod import handshake
-from plumb.present.owner_text import JUDGE_APPROVED
+from iaso.mod import handshake
+from iaso.present.owner_text import JUDGE_APPROVED
 
 pytestmark = pytest.mark.sr("SR-251")
 

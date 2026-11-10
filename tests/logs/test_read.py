@@ -8,20 +8,20 @@ from pathlib import Path
 import pytest
 from logutil import legacy_entry, write_legacy
 
-from plumb import log
-from plumb.normalize import canonical_json
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.normalize import canonical_json
+from iaso.paths import IasoPaths
 
 
 @pytest.fixture
-def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
-    p = PlumbPaths(tmp_path)
+def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> IasoPaths:
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
+    p = IasoPaths(tmp_path)
     p.log_dir.mkdir(parents=True)
     return p
 
 
-def _put(paths: PlumbPaths, raw: dict, name: str | None = None) -> str:
+def _put(paths: IasoPaths, raw: dict, name: str | None = None) -> str:
     """Place an entry file as a merge would bring it."""
     file_name = name or log.migrated_name(raw)
     directory = paths.log_kind_dir(raw["kind"])
@@ -31,7 +31,7 @@ def _put(paths: PlumbPaths, raw: dict, name: str | None = None) -> str:
 
 
 @pytest.mark.sr("SR-232")
-def test_order_at_then_chain_then_name(paths: PlumbPaths) -> None:
+def test_order_at_then_chain_then_name(paths: IasoPaths) -> None:
     a = legacy_entry("approval", {"n": "a"}, None, at="2026-10-05T12:00:05Z")
     # same second, chained after a, but its name sorts first
     b = legacy_entry("revocation", {"n": "b"}, a["digest"], at="2026-10-05T12:00:05Z")
@@ -53,7 +53,7 @@ def test_order_at_then_chain_then_name(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_both_formats_deduplicated_by_digest(paths: PlumbPaths) -> None:
+def test_both_formats_deduplicated_by_digest(paths: IasoPaths) -> None:
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"], at="2026-10-05T12:00:01Z")
     write_legacy(paths.root, "events", [first, second])
@@ -68,7 +68,7 @@ def test_both_formats_deduplicated_by_digest(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_pack_cache_reads_only_new_files(paths: PlumbPaths,
+def test_pack_cache_reads_only_new_files(paths: IasoPaths,
                                          monkeypatch: pytest.MonkeyPatch) -> None:
     for i in range(3):
         log.append(paths, "events", "repin", {"i": i})
@@ -91,7 +91,7 @@ def test_pack_cache_reads_only_new_files(paths: PlumbPaths,
 
 
 @pytest.mark.sr("SR-232")
-def test_pack_cache_drops_vanished_names(paths: PlumbPaths) -> None:
+def test_pack_cache_drops_vanished_names(paths: IasoPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     list(log.read(paths, "events"))
     (paths.log_dir / entries[1].name).unlink()
@@ -102,7 +102,7 @@ def test_pack_cache_drops_vanished_names(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_corrupt_pack_cache_rebuilt(paths: PlumbPaths) -> None:
+def test_corrupt_pack_cache_rebuilt(paths: IasoPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(2)]
     list(log.read(paths, "events"))
     paths.log_pack("events").write_text("{not json", encoding="utf-8")
@@ -117,7 +117,7 @@ def test_corrupt_pack_cache_rebuilt(paths: PlumbPaths) -> None:
 
 
 @pytest.mark.sr("SR-232")
-def test_since_skips_applied_names(paths: PlumbPaths) -> None:
+def test_since_skips_applied_names(paths: IasoPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     applied = {entries[0].name, entries[1].name}
     assert [e.name for e in log.read(paths, "events", since=applied)] == [entries[2].name]

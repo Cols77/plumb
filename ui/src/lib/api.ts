@@ -4,9 +4,9 @@ export class ApiError extends Error {
 export function takeCapability(): string {
   const token = new URLSearchParams(location.hash.slice(1)).get('token');
   if (location.hash) history.replaceState(history.state, '', location.pathname + location.search);
-  if (token) { try { sessionStorage.setItem('plumb.capability', token); } catch { /* In-memory launch still works. */ } }
+  if (token) { try { sessionStorage.setItem('iaso.capability', token); } catch { /* In-memory launch still works. */ } }
   if (token) return token;
-  try { return sessionStorage.getItem('plumb.capability') ?? ''; } catch { return ''; }
+  try { return sessionStorage.getItem('iaso.capability') ?? ''; } catch { return ''; }
 }
 export async function apiBlob(path: string, capability: string): Promise<Blob> {
   const response = await fetch(path, {headers: {Authorization: `Bearer ${capability}`}});

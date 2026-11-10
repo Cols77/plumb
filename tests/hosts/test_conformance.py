@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from hosts_helpers import QuietVerify, make_project, scripted_judge
 
-from plumb.contracts import TurnEvent
-from plumb.hosts.neutral import HOSTS, handle_event
+from iaso.contracts import TurnEvent
+from iaso.hosts.neutral import HOSTS, handle_event
 
 pytestmark = pytest.mark.sr("SR-282")
 
@@ -52,10 +52,10 @@ def test_same_output_for_every_host(repo: Path, write_record, tmp_path: Path,
 
 
 def test_no_adapter_imports_another_adapter() -> None:
-    """sp4 8.5: adapters share only plumb.hosts.common and plumb.hosts.neutral."""
+    """sp4 8.5: adapters share only iaso.hosts.common and iaso.hosts.neutral."""
     import re
 
-    import plumb.hosts as hosts
+    import iaso.hosts as hosts
 
     base = Path(hosts.__file__).parent
     for adapter in ("codex", "hermes"):
@@ -63,15 +63,15 @@ def test_no_adapter_imports_another_adapter() -> None:
             text = path.read_text("utf-8")
             others = {"codex", "hermes", "claude_code"} - {adapter}
             for other in others:
-                assert not re.search(rf"plumb\.hosts\.{other}\b", text), (path, other)
+                assert not re.search(rf"iaso\.hosts\.{other}\b", text), (path, other)
 
 
 def test_every_host_shows_the_landing_line_once(repo: Path, write_record, tmp_path: Path) -> None:
     """DEC-194: the landing line reaches the agent from the shared core, on each host."""
     make_project(repo, write_record)
-    landed = repo / ".plumb" / "cache" / "landed"
+    landed = repo / ".iaso" / "cache" / "landed"
     landed.mkdir(parents=True)
-    (landed / "abc.json").write_text('{"line": "plumb: landing abc: nothing to tidy"}', "utf-8")
+    (landed / "abc.json").write_text('{"line": "iaso: landing abc: nothing to tidy"}', "utf-8")
     for host in HOSTS:
         copy = tmp_path / f"copy-{host}"
         shutil.copytree(repo, copy)

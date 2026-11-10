@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from plumb.verify.markers import collect_markers, test_nodes
+from iaso.verify.markers import collect_markers, test_nodes
 
 SOURCE = '''
 import pytest

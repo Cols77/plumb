@@ -1,6 +1,6 @@
 import pytest
 
-from plumb import cli
+from iaso import cli
 
 pytestmark = pytest.mark.sr("SR-269")
 
@@ -12,13 +12,13 @@ def test_cli_help_routes_to_browser(capsys):
 
 
 def test_agent_guard_blocks_ui_launch():
-    from plumb.guard import denied_command
+    from iaso.guard import denied_command
 
-    assert denied_command("plumb ui")
+    assert denied_command("iaso ui")
 
 
 def test_cli_uses_packaged_static_assets(monkeypatch, repo):
-    from plumb.browser import server
+    from iaso.browser import server
 
     held = {}
 
@@ -43,8 +43,8 @@ def test_cli_uses_packaged_static_assets(monkeypatch, repo):
 
 
 def test_cli_marker_refusal_does_not_clear_marker(monkeypatch, capsys):
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "agent")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "agent")
     assert cli.main(["ui"]) == 3
     import os
 
-    assert os.environ["PLUMB_AGENT_SESSION"] == "agent"
+    assert os.environ["IASO_AGENT_SESSION"] == "agent"

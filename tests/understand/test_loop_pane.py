@@ -1,4 +1,4 @@
-"""What the band's loop pane reads (SR-305): ``plumb intent status --json`` gives each step's
+"""What the band's loop pane reads (SR-305): ``iaso intent status --json`` gives each step's
 gate with the low findings left, the tasks left, the records of the loop's intent by title and
 each requirement's proof shown or not; nothing about agents or tokens."""
 

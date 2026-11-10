@@ -1,4 +1,4 @@
-"""SR-382 EX-1: plumb keeps no card store; nothing under src/plumb imports one."""
+"""SR-382 EX-1: iaso keeps no card store; nothing under src/iaso imports one."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 
 pytestmark = pytest.mark.sr("SR-382")
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "plumb"
+SRC = Path(__file__).resolve().parents[2] / "src" / "iaso"
 
 
 def test_ex1_no_card_store_module_exists_or_is_imported() -> None:

@@ -18,7 +18,7 @@ SR2 = "---\nid: SR-002\ntitle: Other\nstatement: Something else.\n---\n"
 PYPROJECT = """[tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-markers = ["sr(id): links a test to a plumb requirement"]
+markers = ["sr(id): links a test to a iaso requirement"]
 """
 MOD = "def add(a, b):\n    return a + b\n"
 TEST = ("import pytest\n\nfrom pkg.mod import add\n\n\n@pytest.mark.sr(\"SR-001\")\n"
@@ -46,12 +46,12 @@ def commit(root: Path, message: str) -> str:
 def records(root: Path) -> None:
     """INT-001, SR-001 (implemented by src/pkg/mod.py, verified by tests/test_mod.py EX-1)
     and SR-002, with every link pinned."""
-    from plumb.api import open_core
-    from plumb.contracts import Target
+    from iaso.api import open_core
+    from iaso.contracts import Target
 
-    write(root, ".plumb/intents/INT-001.md", INT)
-    write(root, ".plumb/requirements/SR-001.md", SR1)
-    write(root, ".plumb/requirements/SR-002.md", SR2)
+    write(root, ".iaso/intents/INT-001.md", INT)
+    write(root, ".iaso/requirements/SR-001.md", SR1)
+    write(root, ".iaso/requirements/SR-002.md", SR2)
     core = open_core(root)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
     core.add_link("SR-001", "implemented_by", Target(path="src/pkg/mod.py"))
@@ -66,13 +66,13 @@ def project(root: Path, *, test: str = TEST) -> Path:
     write(root, "src/pkg/__init__.py", "")
     write(root, "src/pkg/mod.py", MOD)
     write(root, "tests/test_mod.py", test)
-    write(root, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n")
+    write(root, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n")
     records(root)
     return root
 
 
 def repin_all(root: Path) -> None:
-    from plumb.api import open_core
-    from plumb.links import repin
+    from iaso.api import open_core
+    from iaso.links import repin
 
     repin(open_core(root), all_stale=True)

@@ -14,12 +14,12 @@ import pytest
 from mod.helpers import DIGEST, KEY, run_mod
 from present.present_helpers import run_prompt
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.approvals import prompt_origin
-from plumb.awareness import inflight
-from plumb.hosts.common import MARKER_NAME
-from plumb.understand import cmd_intent, files, gate, loops, recover
+from iaso import cli
+from iaso.api import open_core
+from iaso.approvals import prompt_origin
+from iaso.awareness import inflight
+from iaso.hosts.common import MARKER_NAME
+from iaso.understand import cmd_intent, files, gate, loops, recover
 
 from awareness.gitrepo import commit_all
 from capture.capture_helpers import log_prompt
@@ -81,7 +81,7 @@ def _reopen(root: Path, *argv: str, session: str = ASKER) -> int:
 
 
 def _snapshot(root: Path) -> dict[str, bytes]:
-    return {p.as_posix(): p.read_bytes() for p in (root / ".plumb" / "session").rglob("*.json")}
+    return {p.as_posix(): p.read_bytes() for p in (root / ".iaso" / "session").rglob("*.json")}
 
 
 def test_ex1_reopen_starts_a_named_session_on_the_branch_with_the_brief(
@@ -96,10 +96,10 @@ def test_ex1_reopen_starts_a_named_session_on_the_branch_with_the_brief(
     command = window.command()
     assert kwargs["cwd"] == str(wt) and kwargs["start_new_session"] is True
     assert Path(command[0]).name == "claude" and command[1] == "--session-id" and command[3] == "-n"
-    assert command[4] == "plumb: Builds the card-store."
+    assert command[4] == "iaso: Builds the card-store."
     brief = command[-1]
-    assert brief.startswith("<plumb-loop-brief>")
-    assert f"plumb intent adopt --from-session gone --digest {ID} --session {command[2]}" in brief
+    assert brief.startswith("<iaso-loop-brief>")
+    assert f"iaso intent adopt --from-session gone --digest {ID} --session {command[2]}" in brief
     for part in ("Builds the card-store.", "build · 3/4", "the colours slice", "INT-001",
                  "Colours show", str(plan), "Branch: intent/wt"):
         assert part in brief
@@ -148,7 +148,7 @@ def test_ex5_a_main_checkout_loop_gets_a_new_worktree(
     _commit_records(repo, write_record)
     _idle_build(repo)
     loops.reopen(repo, loop=ID)
-    path = repo / ".plumb" / "wt" / "intent-int-001"
+    path = repo / ".iaso" / "wt" / "intent-int-001"
     assert path.is_dir() and window.calls[0][1]["cwd"] == str(path)
     assert git(path, "branch", "--show-current").strip() == "intent/int-001"
     assert git(repo, "branch", "--show-current").strip() == "main"
@@ -162,7 +162,7 @@ def test_ex6_the_agents_command_opens_the_same_session_as_the_pane(
     _idle_build(wt)
     _ask(repo, "reopen the card-store loop")           # logged in main; the agent runs in wt
     assert _reopen(wt, "card-store") == 0
-    (wt / ".plumb" / "session" / "gone" / loops.PENDING).unlink()      # the first window's adopt
+    (wt / ".iaso" / "session" / "gone" / loops.PENDING).unlink()      # the first window's adopt
     assert run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})[0] == 0
     code, answer, _ = run_mod(monkeypatch, capsys, repo, "reopen", "--loop", ID,
                               stdin={"key": KEY})
@@ -190,9 +190,9 @@ def test_ex7_no_window_gives_the_command_and_changes_nothing(
     assert _reopen(repo, "--loop", ID) == 1
     out = capsys.readouterr().out
     assert "no terminal window could be opened here" in out
-    assert "claude --session-id" in out and "-n 'plumb: Builds the card-store.'" in out
+    assert "claude --session-id" in out and "-n 'iaso: Builds the card-store.'" in out
     assert "git worktree add" in out
-    assert not (repo / ".plumb" / "wt").exists()
+    assert not (repo / ".iaso" / "wt").exists()
     assert (path.read_bytes(), _snapshot(repo)) == before
 
 
@@ -206,7 +206,7 @@ def test_an_agent_reopen_the_owner_did_not_ask_is_refused_and_opens_nothing(
     _ask(repo, "thanks, that is all", at="2026-10-06T11:00:00Z")
     assert _reopen(repo, "--loop", ID) == 2                              # only an older message
     assert cli.main(["loops", "reopen", "--loop", ID, "--root", str(repo)]) == 2   # no session
-    assert window.calls == [] and not (repo / ".plumb" / "wt").exists()
+    assert window.calls == [] and not (repo / ".iaso" / "wt").exists()
     assert path.read_bytes() == before
 
 
@@ -214,7 +214,7 @@ def test_an_ambiguous_reopen_is_settled_by_the_owners_pick(
         repo: Path, tmp_path: Path, window: Windows, capsys: pytest.CaptureFixture) -> None:
     ids = {}
     for name, digest in (("a", DIGEST_A), ("b", DIGEST_B)):
-        said = log_prompt(repo, f"/plumb intent the card-store {name}", session=f"g{name}",
+        said = log_prompt(repo, f"/iaso intent the card-store {name}", session=f"g{name}",
                           at="2026-10-01T10:00:00Z")
         _loop(_worktree(repo, tmp_path, f"card-{name}"), f"g{name}", said)
         ids[name] = said.removeprefix("sha256:")[:12]
@@ -243,18 +243,18 @@ def test_a_new_worktree_for_a_main_loop_stays_out_of_mains_status(
     _commit_records(repo, write_record)
     _idle_build(repo)
     assert not (repo / ".git" / "info" / "exclude").read_text("utf-8").count("wt")
-    assert "wt/" in (repo / ".plumb" / ".gitignore").read_text("utf-8").split()
+    assert "wt/" in (repo / ".iaso" / ".gitignore").read_text("utf-8").split()
     loops.reopen(repo, loop=ID)
-    assert (repo / ".plumb" / "wt" / "intent-int-001").is_dir()
-    assert ".plumb/wt" not in git(repo, "status", "--porcelain")
+    assert (repo / ".iaso" / "wt" / "intent-int-001").is_dir()
+    assert ".iaso/wt" not in git(repo, "status", "--porcelain")
 
 
 @pytest.mark.parametrize("text", [
-    "<plumb-loop-brief>\nplumb reopened an intent loop", "<plumb-loop-message> hello",
-    "The plumb plugin sent a message:\n<plumb-loop-message> plumb: the owner sent a message"])
+    "<iaso-loop-brief>\niaso reopened an intent loop", "<iaso-loop-message> hello",
+    "The iaso plugin sent a message:\n<iaso-loop-message> iaso: the owner sent a message"])
 def test_brief_prompt_is_not_logged_as_owner_words(text: str) -> None:
-    assert prompt_origin(text) == ("plumb", "")
-    assert prompt_origin("x" * 200 + "<plumb-loop-brief>")[0] == "owner"
+    assert prompt_origin(text) == ("iaso", "")
+    assert prompt_origin("x" * 200 + "<iaso-loop-brief>")[0] == "owner"
     peer = '<cross-session-message from-name="b">' + text + "</cross-session-message>"
     assert prompt_origin(peer) == ("peer", "b")
 
@@ -262,12 +262,12 @@ def test_brief_prompt_is_not_logged_as_owner_words(text: str) -> None:
 def test_the_brief_starts_a_turn_but_is_not_the_owners_request(
         repo: Path, hook_input: Any) -> None:
     session = "new"
-    out = run_prompt(repo, hook_input, "<plumb-loop-brief>\ntake the loop over", session)
+    out = run_prompt(repo, hook_input, "<iaso-loop-brief>\ntake the loop over", session)
     assert out.strip() == ""
-    folder = repo / ".plumb" / "session" / session
+    folder = repo / ".iaso" / "session" / session
     log = [json.loads(line) for line in
-           (repo / ".plumb" / "session" / "prompts.jsonl").read_text("utf-8").splitlines()]
-    assert [e["origin"] for e in log] == ["plumb"]
+           (repo / ".iaso" / "session" / "prompts.jsonl").read_text("utf-8").splitlines()]
+    assert [e["origin"] for e in log] == ["iaso"]
     assert json.loads((folder / "turn.json").read_text("utf-8"))["prompt_digest"] == log[0]["digest"]
     assert (folder / "build.json").is_file() and not (folder / "touched.txt").exists()
     assert not gate.is_closed(repo, session)
@@ -283,7 +283,7 @@ def test_the_judges_transcript_reader_skips_the_brief_and_the_message(
                            "sessionId": "s", "message": {"role": "user", "content": text}})
 
     (folder / "s.jsonl").write_text("\n".join(
-        [line("<plumb-loop-brief>\ntake it over"), line("<plumb-loop-message> hi"),
+        [line("<iaso-loop-brief>\ntake it over"), line("<iaso-loop-message> hi"),
          line("make the card store")]) + "\n", "utf-8")
     assert [m.text for m in recover.owner_messages(repo, tmp_path / "projects")] == [
         "make the card store"]
@@ -300,9 +300,9 @@ def test_a_main_loop_whose_intent_another_branch_carries_reopens_on_that_branch(
     loops.reopen(repo, loop=ID)
     assert window.calls[-1][1]["cwd"] == str(other)
     git(repo, "worktree", "remove", "--force", str(other))          # the branch stays, no checkout
-    (repo / ".plumb" / "session" / "gone" / loops.PENDING).unlink()
+    (repo / ".iaso" / "session" / "gone" / loops.PENDING).unlink()
     loops.reopen(repo, loop=ID)
-    path = repo / ".plumb" / "wt" / "intent-int-001"
+    path = repo / ".iaso" / "wt" / "intent-int-001"
     assert window.calls[-1][1]["cwd"] == str(path)
     assert git(path, "branch", "--show-current").strip() == "intent/other"
     assert "intent/int-001" not in git(repo, "branch", "--list", "intent/int-001")
@@ -357,7 +357,7 @@ def test_spawn_error_falls_back(repo: Path, write_record: Any, monkeypatch: pyte
     _ask(repo, f"reopen loop {ID}")
     assert _reopen(repo, "--loop", ID) == 1
     assert "open the session by hand" in capsys.readouterr().out
-    assert not (repo / ".plumb" / "wt" / "intent-int-001").exists()       # undone
+    assert not (repo / ".iaso" / "wt" / "intent-int-001").exists()       # undone
     assert "intent/int-001" not in git(repo, "branch", "--list", "intent/int-001")
 
 
@@ -389,7 +389,7 @@ def test_the_owners_pick_between_loops_of_main_is_honoured_from_any_checkout(
         repo: Path, tmp_path: Path, window: Windows) -> None:
     ids = {}
     for name, digest in (("a", DIGEST_A), ("b", DIGEST_B)):
-        said = log_prompt(repo, f"/plumb intent retire the card store {name}", session=f"g{name}",
+        said = log_prompt(repo, f"/iaso intent retire the card store {name}", session=f"g{name}",
                           at="2026-10-01T10:00:00Z")
         _loop(repo, f"g{name}", said)
         ids[name] = said.removeprefix("sha256:")[:12]
@@ -405,14 +405,14 @@ def test_the_owners_pick_between_loops_of_main_is_honoured_from_any_checkout(
 
 def test_the_listing_loads_the_records_once_per_checkout_and_only_for_kept_rows(
         repo: Path, write_record: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    import plumb.api
+    import iaso.api
 
     _commit_records(repo, write_record)
     for session in ("s1", "s2", "s3"):          # one loop seen from three sessions
         _loop(repo, session, DIGEST_A, intent="INT-001", stages=_passed("clarify", "plan"))
     calls: list[Path] = []
-    real = plumb.api.open_core
-    monkeypatch.setattr(plumb.api, "open_core", lambda r, *a, **k: calls.append(r) or real(r, *a, **k))
+    real = iaso.api.open_core
+    monkeypatch.setattr(iaso.api, "open_core", lambda r, *a, **k: calls.append(r) or real(r, *a, **k))
     assert len(loops.listing(repo, agents={})["rows"]) == 1
     assert len(calls) <= 1
 
@@ -433,14 +433,14 @@ def test_a_main_loop_worktree_is_ignored_in_a_repository_adopted_before_the_igno
         repo: Path, write_record: Any, window: Windows) -> None:
     _commit_records(repo, write_record)
     _idle_build(repo)
-    ignore = repo / ".plumb" / ".gitignore"
+    ignore = repo / ".iaso" / ".gitignore"
     ignore.write_text("\n".join(x for x in ignore.read_text("utf-8").split() if x != "wt/") + "\n",
                       encoding="utf-8")
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", "an older plumb's ignore file")
+    git(repo, "commit", "-q", "-m", "an older iaso's ignore file")
     loops.reopen(repo, loop=ID)
-    assert (repo / ".plumb" / "wt" / "intent-int-001").is_dir()
-    assert ".plumb/wt" not in git(repo, "status", "--porcelain")
+    assert (repo / ".iaso" / "wt" / "intent-int-001").is_dir()
+    assert ".iaso/wt" not in git(repo, "status", "--porcelain")
 
 
 def test_windows_terminal_keeps_a_semicolon_of_the_brief_and_the_hand_command_is_quoted_for_it() -> None:

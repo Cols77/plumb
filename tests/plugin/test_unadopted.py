@@ -1,5 +1,5 @@
 """Silence when not adopted (SP7 4.3 check 1; SR-083 EX-3, EX-4): in a repository without
-plumb's record folder the plugin's only output is one line at a session's start, and no hook
+iaso's record folder the plugin's only output is one line at a session's start, and no hook
 starts Python."""
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.present import owner_text
+from iaso.present import owner_text
 
 from .helpers import (
     SH,
@@ -30,13 +30,13 @@ HINT = {"systemMessage": owner_text.NOT_ADOPTED}
 
 @pytest.fixture
 def setup(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
-    """A git repository plumb has not adopted, plumb's environment ready (so only the walk
+    """A git repository iaso has not adopted, iaso's environment ready (so only the walk
     keeps Python from starting), and every interpreter a sentinel."""
     sentinel = tmp_path / "sentinel.txt"
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
     root = git_repo(tmp_path / "repo")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     return root, env, sentinel
 
 
@@ -50,25 +50,25 @@ def test_only_hint_at_startup(setup: tuple[Path, dict[str, str], Path]) -> None:
         result = run_hook("session-start", root, hook_data("session-start", source=source), env)
         assert (result.returncode, result.stdout) == (0, "")
     assert not sentinel.exists()
-    assert not (root / ".plumb").exists()
+    assert not (root / ".iaso").exists() and not (root / ".iaso").exists()
 
 
 @pytest.mark.parametrize("event", ["prompt", "pre-tool", "post-edit", "stop"])
 def test_silent(setup: tuple[Path, dict[str, str], Path], event: str) -> None:
     root, env, sentinel = setup
     data = hook_data(event)
-    if event == "pre-tool":  # even a call naming plumb: nothing to guard here
-        data["tool_input"] = {"command": "plumb approve SR-001"}
+    if event == "pre-tool":  # even a call naming iaso: nothing to guard here
+        data["tool_input"] = {"command": "iaso approve SR-001"}
     result = run_hook(event, root, data, env)
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
     assert not sentinel.exists()
-    assert not (root / ".plumb").exists()
+    assert not (root / ".iaso").exists() and not (root / ".iaso").exists()
 
 
 def test_not_a_git_work_tree_is_silent(tmp_path: Path) -> None:
     folder = tmp_path / "loose"
     folder.mkdir()
-    env = env_with([], PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(folder))
+    env = env_with([], IASO_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(folder))
     result = run_hook("session-start", folder, hook_data("session-start"), env)
     assert (result.returncode, result.stdout) == (0, "")
 
@@ -85,7 +85,7 @@ def _best(argv: list[str], cwd: Path, env: dict[str, str], data: str, runs: int 
 
 def test_no_python_started(setup: tuple[Path, dict[str, str], Path]) -> None:
     """Each hook's own work stays within a tenth of a second (SR-083 EX-4): measured against
-    starting the shell alone, which is the host's cost, not plumb's."""
+    starting the shell alone, which is the host's cost, not iaso's."""
     from .helpers import HOOK, slashes
 
     root, env, sentinel = setup
@@ -104,10 +104,10 @@ def test_no_python_started(setup: tuple[Path, dict[str, str], Path]) -> None:
 
 def test_ignored_repo_silent(setup: tuple[Path, dict[str, str], Path],
                              monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.plugin import cli
+    from iaso.plugin import cli
 
     root, env, sentinel = setup
-    monkeypatch.setenv("PLUMB_HOME", env["PLUMB_HOME"])
+    monkeypatch.setenv("IASO_HOME", env["IASO_HOME"])
     cli.ignore(root)
     for start in (str(root), None):  # the project folder as Claude Code names it, or the cwd
         run_env = dict(env)
@@ -121,25 +121,25 @@ def test_ignored_repo_silent(setup: tuple[Path, dict[str, str], Path],
     assert not sentinel.exists()
 
 
-def test_a_folder_under_plumbs_own_home_is_not_adopted(tmp_path: Path) -> None:
-    """~/.plumb is plumb's home (env/), not a repository's records, even when a folder named
+def test_a_folder_under_iasos_own_home_is_not_adopted(tmp_path: Path) -> None:
+    """~/.iaso is iaso's home (env/), not a repository's records, even when a folder named
     records were once written there: a folder under the user's home stays silent."""
     home = tmp_path / "user"
-    (home / ".plumb" / "env").mkdir(parents=True)
-    (home / ".plumb" / "requirements").mkdir()
-    (home / ".plumb" / "config.yaml").write_text("{}\n", encoding="utf-8")
+    (home / ".iaso" / "env").mkdir(parents=True)
+    (home / ".iaso" / "requirements").mkdir()
+    (home / ".iaso" / "config.yaml").write_text("{}\n", encoding="utf-8")
     folder = home / "loose"
     folder.mkdir()
-    env = env_with([], PLUMB_HOME=str(home / ".plumb"), CLAUDE_PROJECT_DIR=str(folder))
+    env = env_with([], IASO_HOME=str(home / ".iaso"), CLAUDE_PROJECT_DIR=str(folder))
     result = run_hook("session-start", folder, hook_data("session-start"), env)
     assert (result.returncode, result.stdout) == (0, "")
 
 
 @pytest.mark.sr("SR-202")
-def test_init_hint_puts_plumb_on_the_agents_path(setup: tuple[Path, dict[str, str], Path],
+def test_init_hint_puts_iaso_on_the_agents_path(setup: tuple[Path, dict[str, str], Path],
                                                  tmp_path: Path) -> None:
-    """SR-122 EX-2: where the session start suggests /plumb init, the agent's shell gets the
-    plugin's bin/ on its PATH, so the `plumb init` the command runs resolves; once only."""
+    """SR-122 EX-2: where the session start suggests /iaso init, the agent's shell gets the
+    plugin's bin/ on its PATH, so the `iaso init` the command runs resolves; once only."""
     root, env, sentinel = setup
     env_file = tmp_path / "claude-env.sh"
     env_file.write_text("", encoding="utf-8")
@@ -148,7 +148,7 @@ def test_init_hint_puts_plumb_on_the_agents_path(setup: tuple[Path, dict[str, st
         result = run_hook("session-start", root, hook_data("session-start"), run_env)
         assert json.loads(result.stdout) == HINT
     lines = env_file.read_text(encoding="utf-8").splitlines()
-    assert lines.count("export PLUMB_AGENT_SESSION=claude-code") == 1
+    assert lines.count("export IASO_AGENT_SESSION=claude-code") == 1
     path_lines = [line for line in lines if line.startswith("export PATH=")]
     assert len(path_lines) == 1 and "/bin:$PATH" in path_lines[0]
     assert not sentinel.exists()

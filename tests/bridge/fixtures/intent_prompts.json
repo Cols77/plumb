@@ -1,6 +1,6 @@
 {
   "records": {
-    "SR-003": "---\nid: SR-003\ntitle: Links pin both ends\nstatement: Every link records the content hash of both of its ends, and plumb reports the link as stale when either end's current hash differs from its pin.\nexamples:\n- id: EX-1\n  given: a link whose pins are current\n  when: the test function body changes\n  then: plumb drift reports the link stale and names the target end\n---\n",
+    "SR-003": "---\nid: SR-003\ntitle: Links pin both ends\nstatement: Every link records the content hash of both of its ends, and iaso reports the link as stale when either end's current hash differs from its pin.\nexamples:\n- id: EX-1\n  given: a link whose pins are current\n  when: the test function body changes\n  then: iaso drift reports the link stale and names the target end\n---\n",
     "SR-004": "---\nid: SR-004\ntitle: Approvals pin exact content\nstatement: An approval pins the record hash; an edit after the approval leaves the record unconfirmed until the owner approves again.\nexamples:\n- id: EX-1\n  given: an approved requirement\n  when: its statement is edited\n  then: the requirement is an unconfirmed edit\n---\n"
   },
   "prompts": [

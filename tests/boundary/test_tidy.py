@@ -10,7 +10,7 @@ import pytest
 
 from boundary.test_landing import debug_cases, decision, docs, head, land_branch
 from mergedriver.mdhelpers import commit_all, record, run_git, write_record
-from plumb.boundary import landing
+from iaso.boundary import landing
 
 pytestmark = pytest.mark.sr("SR-286")
 
@@ -38,7 +38,7 @@ def test_ex1_the_named_files_go_in_one_tidy_commit_and_the_rest_stay(repo: Path)
     assert sorted(gone) == sorted(SPECS)
     assert (repo / "docs" / "sp9-intent-loop.md").exists()
     assert (repo / "docs" / "concept.md").exists()
-    texts = [p.read_text(encoding="utf-8") for p in (repo / ".plumb").rglob("FEAT-*.md")]
+    texts = [p.read_text(encoding="utf-8") for p in (repo / ".iaso").rglob("FEAT-*.md")]
     assert not any(s in t for s in SPECS for t in texts)
     assert all(s in landing.lines(repo)[0][1] for s in SPECS)
 
@@ -68,7 +68,7 @@ def test_ex3_a_document_a_current_record_cites_stays_and_goes_to_debugging(
 
 
 def test_ex4_tidying_again_changes_nothing(repo: Path) -> None:
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     docs(repo, "docs/a.md")
     commit_all(repo, "doc")
@@ -91,7 +91,7 @@ def test_ex5_an_owner_file_no_landing_named_is_untouched(repo: Path) -> None:
 
 def test_the_tidy_sweeps_evaluator_scratch_folders_older_than_a_day(
         repo: Path, tmp_path, monkeypatch):
-    """report-0ab44aff, SR-301: a day-old plumb-eval-* folder goes; a fresh one, one named
+    """report-0ab44aff, SR-301: a day-old iaso-eval-* folder goes; a fresh one, one named
     otherwise, one holding a worktree and one a process works in stay."""
     import os
     import subprocess
@@ -99,7 +99,7 @@ def test_the_tidy_sweeps_evaluator_scratch_folders_older_than_a_day(
 
     monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
     names = ("old", "new", "wt", "busy")
-    old, fresh, held, busy = (tmp_path / f"plumb-eval-{n}" for n in names)
+    old, fresh, held, busy = (tmp_path / f"iaso-eval-{n}" for n in names)
     other = tmp_path / "pytest-x"
     for d in (old, fresh, held, busy, other):
         (d / "sub").mkdir(parents=True)

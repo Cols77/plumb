@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.verify import envid
-from plumb.verify.evidence import apply_entry, single_evidence
+from iaso.api import open_core
+from iaso.verify import envid
+from iaso.verify.evidence import apply_entry, single_evidence
 
 
 @pytest.mark.sr("SR-255")
@@ -66,8 +66,8 @@ def test_unknown_identity_never_reused() -> None:
 @pytest.mark.sr("SR-255")
 def test_env_key_reuses_the_cached_platform(tmp_path: Path, monkeypatch) -> None:
     """``platform.machine()`` costs a WMI query (about 0.2 s) on Windows: the env key caches
-    it under .plumb/cache, keyed by the interpreter, and the key itself is unchanged."""
-    (tmp_path / ".plumb").mkdir()
+    it under .iaso/cache, keyed by the interpreter, and the key itself is unchanged."""
+    (tmp_path / ".iaso").mkdir()
     first = envid.env_key(tmp_path)
 
     def no_wmi():
@@ -78,10 +78,10 @@ def test_env_key_reuses_the_cached_platform(tmp_path: Path, monkeypatch) -> None
 
 
 @pytest.mark.sr("SR-255")
-def test_env_key_follows_the_test_interpreter_not_plumbs(tmp_path: Path, monkeypatch) -> None:
-    """Field: the pre-push hook reaches plumb through the plugin's interpreter, but the tests
+def test_env_key_follows_the_test_interpreter_not_iasos(tmp_path: Path, monkeypatch) -> None:
+    """Field: the pre-push hook reaches iaso through the plugin's interpreter, but the tests
     run in the project's .venv. The key (and so the evidence) must be the test venv's, whatever
-    interpreter plumb itself runs in, or a hook never sees a direct run's passes."""
+    interpreter iaso itself runs in, or a hook never sees a direct run's passes."""
     venv = tmp_path / ".venv"
     (venv / "Scripts").mkdir(parents=True)
     exe = venv / "Scripts" / "python.exe"

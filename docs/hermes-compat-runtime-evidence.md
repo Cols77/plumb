@@ -68,13 +68,13 @@ Official plugin documentation describes Python plugins as a supported extension 
 
 The committed regression surface includes canonical-content parity, owned
 path-to-uv updates, missing-skill registration safety, foreign-file preservation,
-dry-run, uninstall, and explicit `skill_view("plumb:<name>")` resolution in a
+dry-run, uninstall, and explicit `skill_view("iaso:<name>")` resolution in a
 temporary Hermes home/plugin manager. Namespaced plugin skills are explicit
 loads, not entries in the flat available-skills prompt.
 
 The plugin owns the generated `skills/<name>/SKILL.md` files and registers bare
 names only when their recorded digest matches. Explicit qualified loads are
-`plumb:plumb` and `plumb:plumb-clarify`; flat discovery is intentionally not
+`iaso:iaso` and `iaso:iaso-clarify`; flat discovery is intentionally not
 claimed. The installer preserves foreign files, supports idempotent updates,
 dry-run and owned-only uninstall. Actual PluginManager/skill_view resolution is
 covered in a temporary-home subprocess with no network or model call.
@@ -83,7 +83,7 @@ covered in a temporary-home subprocess with no network or model call.
 
 Result: no adapter-level security contract change is justified.
 
-The existing Plumb owner-terminal and marker checks remain defense in depth. They prove behavior for marked/noninteractive test boundaries, not tamper-proof security against an agent with arbitrary code execution. Hermes exposes terminal subprocesses, PTY-capable paths and delegation; an adversarial process may remove a marker or write files directly. A text deny-regex would not establish an approval boundary.
+The existing Iaso owner-terminal and marker checks remain defense in depth. They prove behavior for marked/noninteractive test boundaries, not tamper-proof security against an agent with arbitrary code execution. Hermes exposes terminal subprocesses, PTY-capable paths and delegation; an adversarial process may remove a marker or write files directly. A text deny-regex would not establish an approval boundary.
 
 The official MCP trust guidance is also placement/configuration based: local stdio commands and remote servers execute with the configured trust and permissions. The supported product decision still belongs to the owner: either keep the current explicit owner-terminal boundary, or separately authorize an out-of-band approval mechanism. No such contract amendment was inferred here.
 
@@ -93,8 +93,8 @@ Result: reproduced as a real baseline limitation; no production fix attempted.
 
 Commands, with worktree import proven first:
 
-- `PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src C:/coding/plumb/.venv/Scripts/python.exe ...`: printed `C:\coding\plumb-wt\hermes-compat\src\plumb\__init__.py`
-- `pytest tests/host/test_latency.py::test_intent_lines_survive_cpu_contention -o addopts= -q --tb=short`: failed in 16.07 s under full CPU contention; output was only `plumb: check skipped (budget)`, and the expected kept record line was absent
+- `PYTHONPATH=C:/coding/iaso-wt/hermes-compat/src C:/coding/iaso/.venv/Scripts/python.exe ...`: printed `C:\coding\iaso-wt\hermes-compat\src\iaso\__init__.py`
+- `pytest tests/host/test_latency.py::test_intent_lines_survive_cpu_contention -o addopts= -q --tb=short`: failed in 16.07 s under full CPU contention; output was only `iaso: check skipped (budget)`, and the expected kept record line was absent
 - Same test without contention: passed, 1 test in 14.17 s
 
 The source explains the failure path. `hookio.py` has a 1.9 s hard watchdog. `stop.handle` performs `git_changed`, `open_core`, index/status/path analysis and `session_intent` before its first `ctx.keep` at `stop.py:530-544`. Under contention the watchdog can fire before that first keep, so the writer emits only the skip notice. This contradicts the module's intended guarantee that the read-back is kept before expensive evidence work; it is a concrete ordering/budget defect, not evidence that increasing budgets is safe.
@@ -113,7 +113,7 @@ A future offline matrix should use temporary files and symlinks for both patch m
 
 Result: unsupported for this adapter release.
 
-The Python plugin hook contract provides user-message context injection and final-response transformation. It does not provide a streaming delivery receipt, a native status bar, or proof that another transform did not win. `transform_llm_output` is first-nonempty-result-wins; `post_llm_call` is skipped for empty/interrupted responses. `/plumb` gateway injection is queue acceptance only and requires a session key plus explicit grant.
+The Python plugin hook contract provides user-message context injection and final-response transformation. It does not provide a streaming delivery receipt, a native status bar, or proof that another transform did not win. `transform_llm_output` is first-nonempty-result-wins; `post_llm_call` is skipped for empty/interrupted responses. `/iaso` gateway injection is queue acceptance only and requires a session key plus explicit grant.
 
 Official desktop plugins are a separate JavaScript/ESM SDK loaded from `$HERMES_HOME/desktop-plugins/<id>/plugin.js`; that SDK does expose status-bar and other UI contribution areas. It is not the Python project-plugin lifecycle used by this adapter. Native UX therefore needs a separately scoped desktop-plugin card, not a claim added to the Python bridge.
 
@@ -125,7 +125,7 @@ Official desktop plugins are a separate JavaScript/ESM SDK loaded from `$HERMES_
 | A2 context selection | Accepted with installed-runtime corrections | Preserve root-local boundary |
 | A3 conservative uninstall | Accepted; unknown Claude/override ownership preserved | No ownership database |
 | A4 activation status | Accepted; installation is not callback evidence | Real callback requires owner enablement |
-| A5 project root binding | Accepted for installed path and `.plumb` guard | Does not prove session routing |
+| A5 project root binding | Accepted for installed path and `.iaso` guard | Does not prove session routing |
 | A6 lazy brief / child filtering | Accepted for supplied parent metadata | Parentless synthetic turns remain unsupported |
 | A7 support boundary | Accepted in docs/status | Keep fallback labels |
 | A8 existing behavior | Accepted focused/conformance coverage | Full regression remains incomplete |

@@ -1,4 +1,4 @@
-"""A background plumb process opens no console window on Windows, for itself or for what it
+"""A background iaso process opens no console window on Windows, for itself or for what it
 runs, and still outlives the process that started it (the owner: "Why are there still windows
 spawning during executions?")."""
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.background import popen_options
+from iaso.background import popen_options
 
 windows_only = pytest.mark.skipif(os.name != "nt", reason="console windows are a Windows thing")
 
@@ -69,7 +69,7 @@ def test_the_flags_never_detach_the_console() -> None:
 def test_ex3_the_process_outlives_the_one_that_started_it(tmp_path: Path) -> None:
     linger, out = tmp_path / "linger.py", tmp_path / "alive.txt"
     linger.write_text(LINGER, encoding="utf-8")
-    starter = (f"import subprocess, sys; from plumb.background import popen_options; "
+    starter = (f"import subprocess, sys; from iaso.background import popen_options; "
                f"subprocess.Popen([sys.executable, {str(linger)!r}, {str(out)!r}], "
                f"**popen_options({str(tmp_path)!r}))")
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [

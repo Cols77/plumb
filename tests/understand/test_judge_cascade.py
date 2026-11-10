@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Judgment
+from iaso.api import open_core
+from iaso.contracts import Judgment
 from understand.fakes import FakeDispatcher
 from understand.test_judge_job import (
     MESSAGE,
@@ -77,13 +77,13 @@ def fast_track_on(core: Any, monkeypatch: pytest.MonkeyPatch,
 
 
 def configure(repo: Path, extra: str = "") -> Any:
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n" + extra, encoding="utf-8")
     return open_core(repo)
 
 
 def run(core: Any, ids: list[str], *, jev: Any, model: FakeDispatcher):
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     job = build_job(core, ids)
     return job, verdict.cascade(core, job, system="judge", schema={}, jev=jev,
@@ -104,10 +104,10 @@ def test_ex1_jev_above_the_threshold_gives_the_verdict_and_the_model_is_not_aske
     assert (v["verdict"], v["by"], v["confidence"]) == ("supported", "jev", 0.95)
     assert v["judge"].startswith("jev:")
     assert model.jobs == []                                  # the model was not called
-    from plumb.judgment.verdict import refusal
+    from iaso.judgment.verdict import refusal
 
     assert refusal(v["by"], v["verdict"]) is None            # the fast track may use it
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     approvals = [e["payload"] for e in judge.apply(core, job, cascaded.answer).entries
                  if e["kind"] == "approval"]
@@ -126,7 +126,7 @@ def test_ex2_jev_below_the_threshold_sends_the_record_to_the_model(world: Path) 
     assert len(model.jobs) == 1
     assert v["jev"]["score"] == 0.3 and not v["jev"]["clears"]
     # the verdict is logged with who gave it, and cards and the tidy job get it as before
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     applied = judge.apply(core, job, cascaded.answer)
     logged = next(e["payload"] for e in applied.entries if e["kind"] == "verdict")
@@ -134,7 +134,7 @@ def test_ex2_jev_below_the_threshold_sends_the_record_to_the_model(world: Path) 
     assert logged["jev_score"] == 0.3                       # JEV's score is logged
     assert [e for e in applied.entries if e["kind"] == "approval"] == []   # a question first
     # and auto-approval refuses it in code, however sure the model was
-    from plumb.capture.autoapprove import verdict_refusal
+    from iaso.capture.autoapprove import verdict_refusal
 
     assert "never takes the fast track" in (verdict_refusal(logged) or "")
 
@@ -144,8 +144,8 @@ def test_a_jev_verdict_in_the_log_is_not_refused_by_auto_approval(
     core = configure(world)
     fast_track_on(core, monkeypatch)
     job, cascaded = run(core, ["INT-001"], jev=StubJev(0.95), model=FakeDispatcher())
-    from plumb.capture.autoapprove import verdict_refusal
-    from plumb.understand import judge
+    from iaso.capture.autoapprove import verdict_refusal
+    from iaso.understand import judge
 
     applied = judge.apply(core, job, cascaded.answer)
     logged = next(e["payload"] for e in applied.entries if e["kind"] == "verdict")
@@ -153,7 +153,7 @@ def test_a_jev_verdict_in_the_log_is_not_refused_by_auto_approval(
 
 
 def test_a_verdict_with_no_marker_is_not_taken_as_jevs() -> None:
-    from plumb.capture.autoapprove import verdict_refusal
+    from iaso.capture.autoapprove import verdict_refusal
 
     assert verdict_refusal({"verdict": "supported"}) is not None
     assert verdict_refusal({"verdict": "beyond", "by": "jev"}) is not None
@@ -171,8 +171,8 @@ def test_ex3_judge_model_setting_picks_the_model_that_judges(
         asked.append(model)
         return fake
 
-    monkeypatch.setattr("plumb.understand.dispatch.configured", configured)
-    from plumb.understand import judge, verdict
+    monkeypatch.setattr("iaso.understand.dispatch.configured", configured)
+    from iaso.understand import judge, verdict
 
     job = build_job(core, ["SR-001"])
     cascaded = verdict.cascade(core, job, system="judge", schema={}, jev=StubJev(0.1))
@@ -196,7 +196,7 @@ def test_without_jev_the_model_judges(world: Path) -> None:
 
 
 def test_a_jev_that_cannot_answer_sends_the_record_to_the_model(world: Path) -> None:
-    from plumb.judgment import JudgmentUnavailable
+    from iaso.judgment import JudgmentUnavailable
 
     class Down(StubJev):
         def approval(self, *a: Any, **k: Any) -> Judgment:
@@ -223,7 +223,7 @@ def test_without_a_calibration_jev_clears_on_the_floor_but_the_switch_is_off(
 
 
 def test_ex4_neither_reachable_the_verdict_waits_and_says_so_once(world: Path) -> None:
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     core = configure(world)
     calibrate_to(core)
@@ -241,7 +241,7 @@ def test_ex4_neither_reachable_the_verdict_waits_and_says_so_once(world: Path) -
 
 def test_the_worker_runs_the_cascade_and_logs_which_judge_answered(
         world: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import queue, verdict, worker
+    from iaso.understand import queue, verdict, worker
 
     core = configure(world)
     fast_track_on(core, monkeypatch)

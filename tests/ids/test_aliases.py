@@ -1,7 +1,7 @@
 """IDS I6: approvals and trailers carried across a renumber (sp6 5.4, 5.5; R17; SR-071).
 
 An "ok" carries over only while the words are byte-identical, and it is labelled "carried by
-renumber SR-002 -> SR-003" in /plumb show and the merge-boundary glance."""
+renumber SR-002 -> SR-003" in /iaso show and the merge-boundary glance."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import pytest
 
 from ids import scenario
 from ids.gitrepo import commit_all, run_git
-from plumb import ids
-from plumb.api import open_core
-from plumb.capture.records import record_fields
-from plumb.cli import main
+from iaso import ids
+from iaso.api import open_core
+from iaso.capture.records import record_fields
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -38,7 +38,7 @@ def test_approval_carried_for_pure_renumber(tmp_path: Path, capsys) -> None:
 
 
 def test_carried_label_in_the_merge_glance(tmp_path: Path) -> None:
-    from plumb.boundary.glance import glance_line, glance_rows
+    from iaso.boundary.glance import glance_line, glance_rows
 
     s, new = _fixed(tmp_path)
     rows = [r for r in glance_rows(open_core(s.origin), set()) if r["kind"] == "renumber"]
@@ -74,7 +74,7 @@ def test_approval_of_other_content_not_carried(tmp_path: Path) -> None:
 
 
 def test_revoking_the_new_id_drops_the_carry(tmp_path: Path) -> None:
-    from plumb import approvals
+    from iaso import approvals
 
     s, new = _fixed(tmp_path)
     approvals.revoke(open_core(s.origin), [new])
@@ -82,7 +82,7 @@ def test_revoking_the_new_id_drops_the_carry(tmp_path: Path) -> None:
 
 
 def test_claims_reads_incoming_trailers_as_new_id(tmp_path: Path) -> None:
-    from plumb.claims import claims_check
+    from iaso.claims import claims_check
 
     s, new = _fixed(tmp_path)
     fork = run_git(s.origin, "merge-base", "HEAD", "incoming").strip()
@@ -94,7 +94,7 @@ def test_claims_reads_incoming_trailers_as_new_id(tmp_path: Path) -> None:
 
 
 def test_claims_without_the_map_would_misread(tmp_path: Path, monkeypatch) -> None:
-    from plumb import claims
+    from iaso import claims
 
     s, _ = _fixed(tmp_path)
     fork = run_git(s.origin, "merge-base", "HEAD", "incoming").strip()
@@ -105,7 +105,7 @@ def test_claims_without_the_map_would_misread(tmp_path: Path, monkeypatch) -> No
 
 
 def test_validate_rejects_forged_renumber(tmp_path: Path) -> None:
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     s, new = _fixed(tmp_path)
     core = open_core(s.origin)

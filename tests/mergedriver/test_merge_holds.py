@@ -2,7 +2,7 @@
 the owner has not confirmed holds a merge into the default branch (EX-28) and only that one
 (EX-29), a question waiting for the owner holds (EX-30), records waiting on a judge are
 counted and never hold (EX-31), tests, questions and proofs hold only a merge into the
-default branch (EX-32, DEC-271); ``plumb proof --ask`` and the question-answer hook carry the
+default branch (EX-32, DEC-271); ``iaso proof --ask`` and the question-answer hook carry the
 owner's yes."""
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ from pathlib import Path
 import pytest
 
 from mergedriver.mdhelpers import commit_all, ex, make_repo, record, run_git, write_record
-from plumb import cli
-from plumb.api import open_core
-from plumb.boundary import merge_report
-from plumb.boundary.premerge import check, unstaged_plumb
-from plumb.capture import proof
-from plumb.hosts.claude_code import question_answer
+from iaso import cli
+from iaso.api import open_core
+from iaso.boundary import merge_report
+from iaso.boundary.premerge import check, unstaged_iaso
+from iaso.capture import proof
+from iaso.hosts.claude_code import question_answer
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -46,7 +46,7 @@ def _change(root: Path, rel: str, message: str) -> None:
 
 def _shown(root: Path) -> None:
     core = open_core(root)
-    proof.set_plan(core, "SR-001", "run plumb show SR-001", "command")
+    proof.set_plan(core, "SR-001", "run iaso show SR-001", "command")
     proof.set_evidence(open_core(root), "SR-001", "https://x.test/run", "it printed both pins",
                        passed=True)
 
@@ -99,7 +99,7 @@ def _proof_confirmed_in(root: Path) -> list[str]:
 
 def test_proof_asked_in_a_worktree_is_confirmed_by_the_hook_run_in_main(
         delivered, hook_input) -> None:
-    """report-89c846ed: ``plumb proof --ask`` in a worktree files the question there, in that
+    """report-89c846ed: ``iaso proof --ask`` in a worktree files the question there, in that
     worktree's own session folder; the owner's yes, heard by the hook run against main, tags
     the answer and leaves the committed outcome on the branch that delivers the record."""
     root, feat = delivered
@@ -111,15 +111,15 @@ def test_proof_asked_in_a_worktree_is_confirmed_by_the_hook_run_in_main(
     tagged = [e for e in open_core(root).events() if e.kind == "question-answer"]
     assert [e.payload["proof"]["record"] for e in tagged] == ["SR-001"]
     # recorded once: the outcome lands in the checkout that filed the question, not in main too
-    assert len(list((feat / ".plumb" / "log" / "proof-confirmed").glob("*.json"))) == 1
-    assert not list((root / ".plumb" / "log" / "proof-confirmed").glob("*.json"))
-    assert len(list((root / ".plumb" / "log" / "question-answer").glob("*.json"))) == 1
+    assert len(list((feat / ".iaso" / "log" / "proof-confirmed").glob("*.json"))) == 1
+    assert not list((root / ".iaso" / "log" / "proof-confirmed").glob("*.json"))
+    assert len(list((root / ".iaso" / "log" / "question-answer").glob("*.json"))) == 1
 
 
 def test_a_proof_asked_past_the_log_readers_cap_still_finds_its_worktree(
         delivered, hook_input, monkeypatch) -> None:
     """report-89c846ed: every checkout of this machine, not only the ones a log read consults."""
-    from plumb import log
+    from iaso import log
 
     root, feat = delivered
     asked = proof.ask(open_core(feat), "SR-001", "worktree-session")
@@ -175,7 +175,7 @@ def test_main_merged_into_a_feature_branch_holds_no_proof(tmp_path: Path) -> Non
 def _ask_about_sr001(root: Path) -> None:
     """An open judge question to the owner about SR-001 as it reads in ``root`` now."""
     question = "Should links pin both ends?"
-    path = root / ".plumb" / "session" / "s1" / "judge_questions.json"
+    path = root / ".iaso" / "session" / "s1" / "judge_questions.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{
         "key": question.lower(), "question": question, "header": "Pins", "job": "j1",
@@ -230,8 +230,8 @@ def catching_up(repo: Path) -> Path:
     sys.path.insert(0, str(Path(__file__).parents[1] / "merge"))  # merge_helpers' project
     from merge_helpers import commit, git, project, repin_all, write
 
-    from plumb import approvals
-    from plumb.verify import open_verify
+    from iaso import approvals
+    from iaso.verify import open_verify
 
     project(repo)
     approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
@@ -241,9 +241,9 @@ def catching_up(repo: Path) -> Path:
     commit(repo, "notes")
     git(repo, "checkout", "-q", "main")
     write(repo, "src/pkg/mod.py", "def add(a, b):\n    return a - b\n")
-    sr001 = repo / ".plumb/requirements/SR-001.md"
+    sr001 = repo / ".iaso/requirements/SR-001.md"
     # reworded: unconfirmed, so the judge's question to the owner stays open
-    write(repo, ".plumb/requirements/SR-001.md", sr001.read_text(encoding="utf-8")
+    write(repo, ".iaso/requirements/SR-001.md", sr001.read_text(encoding="utf-8")
           .replace("returns a + b.", "returns the sum a + b."))
     repin_all(repo)
     open_verify(open_core(repo)).run(nodes=["tests/test_mod.py"])
@@ -274,16 +274,16 @@ def test_ex32_in_the_report_form(catching_up: Path) -> None:
 
 
 def test_an_untracked_log_entry_is_not_unstaged(tmp_path: Path) -> None:
-    """SR-329: an untracked .plumb/log entry is the landing job's to commit; an untracked
+    """SR-329: an untracked .iaso/log entry is the landing job's to commit; an untracked
     record file still is unstaged."""
     root = make_repo(tmp_path / "main")
     _sr001(root)
     commit_all(root, "SR-001")
-    entry = root / ".plumb" / "log" / "events" / "20990101T000000Z-x.json"
+    entry = root / ".iaso" / "log" / "events" / "20990101T000000Z-x.json"
     entry.parent.mkdir(parents=True, exist_ok=True)
     entry.write_text("{}\n", encoding="utf-8")
     write_record(root, record("SR-002", "other rule", statement="Other.", examples=[ex(1)]))
-    assert unstaged_plumb(root) == [".plumb/requirements/SR-002.md"]
+    assert unstaged_iaso(root) == [".iaso/requirements/SR-002.md"]
 
 
 # --------------------------------------------------------------------------- proof --ask
@@ -295,7 +295,7 @@ def test_ask_is_refused_until_the_evidence_passed(tmp_path: Path, capsys) -> Non
     _sr001(root)
     assert cli.main(["proof", "SR-001", "--ask", "--root", str(root)]) != 0
     assert "not shown working" in capsys.readouterr().err
-    assert not list((root / ".plumb" / "session").glob("*/" + proof.QUESTIONS_FILE))
+    assert not list((root / ".iaso" / "session").glob("*/" + proof.QUESTIONS_FILE))
 
 
 def test_ask_prints_the_question_and_files_it(tmp_path: Path, capsys,
@@ -303,7 +303,7 @@ def test_ask_prints_the_question_and_files_it(tmp_path: Path, capsys,
     root = make_repo(tmp_path / "main")
     _sr001(root)
     _shown(root)
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s9")
+    monkeypatch.setenv("IASO_SESSION_ID", "s9")
     capsys.readouterr()
     assert cli.main(["proof", "SR-001", "--ask", "--root", str(root)]) == 0
     (asked,) = json.loads(capsys.readouterr().out)["questions"]
@@ -353,9 +353,9 @@ def test_an_unrelated_answer_carries_no_proof(tmp_path: Path, hook_input) -> Non
 
 def test_a_hand_written_pending_entry_cannot_redirect_the_yes(tmp_path: Path,
                                                                hook_input) -> None:
-    """DEC-257: ``.plumb/session`` is not guarded; a pending entry pointing SR-001's question
+    """DEC-257: ``.iaso/session`` is not guarded; a pending entry pointing SR-001's question
     at SR-002, or at a question that is not the record's, confirms nothing."""
-    from plumb.understand import files
+    from iaso.understand import files
 
     root = make_repo(tmp_path / "main")
     _sr001(root)
@@ -393,6 +393,6 @@ def test_yes_must_be_among_the_options_shown(tmp_path: Path, hook_input) -> None
 
 
 def question_answer_key(text: str) -> str:
-    from plumb.understand.judge import question_key
+    from iaso.understand.judge import question_key
 
     return question_key(text)

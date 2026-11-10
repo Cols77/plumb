@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import DispatchError
+from iaso.api import open_core
+from iaso.contracts import DispatchError
 from understand.test_judge_job import intent_text, log_prompt, requirement_text
 
 pytestmark = pytest.mark.sr("SR-214", "SR-252", "SR-252", "SR-272")
@@ -21,8 +21,8 @@ def test_calibration_from_logged_scores_leaves_the_generated_no_examples_out(
         repo: Path, write_record) -> None:
     """A generated 'no' shares its source record's id and hash, so a logged verdict would
     score it as the record it was made from; no verdict covers it (SR-106)."""
-    from plumb.approvals import approval_items
-    from plumb.capture import calibrate
+    from iaso.approvals import approval_items
+    from iaso.capture import calibrate
     from understand.fakes import as_worker
 
     digest = log_prompt(repo, "Build a calculator that adds and multiplies whole numbers.")
@@ -60,9 +60,9 @@ def test_the_worker_keeps_the_count_of_a_pass_between_its_jobs(repo: Path) -> No
     """The line of the backlog pass reads 10/160 while the next job starts, not 0 (SR-107)."""
     import time
 
-    from plumb.progress import Reporter
-    from plumb.understand import files
-    from plumb.understand.worker import _Pass
+    from iaso.progress import Reporter
+    from iaso.understand import files
+    from iaso.understand.worker import _Pass
 
     Reporter(repo, SESSION, "judge").update("judging the backlog", 10, 160)
     worker = _Pass(open_core(repo), SESSION, "token")
@@ -98,7 +98,7 @@ class _Asked:
 
 
 def test_the_evaluation_set_gives_a_real_model_the_prompt_and_schema_not_the_answer() -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     cases = evalrun.load_cases("clarify")[:2]
     model = _Asked()
@@ -110,7 +110,7 @@ def test_the_evaluation_set_gives_a_real_model_the_prompt_and_schema_not_the_ans
 
 
 def test_the_evaluation_set_reads_each_kinds_answer_its_own_way() -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     read = {"entries": [{"id": "INT-008", "answer": "accepted"},
                         {"id": "SR-088", "answer": "change"}]}
@@ -128,7 +128,7 @@ def test_the_evaluation_set_reads_each_kinds_answer_its_own_way() -> None:
 
 
 def test_a_model_answer_that_fails_the_schema_fails_its_case() -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     class Broken(_Asked):
         def run(self, job: Any, **_: Any) -> Any:
@@ -148,8 +148,8 @@ def test_a_model_answer_that_fails_the_schema_fails_its_case() -> None:
 def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_record) -> None:
     """A read that finished after its turn ended is told with the next turn's summary, once
     (spec 9.1: collected at the next turn)."""
-    from plumb.approvals import approval_items
-    from plumb.understand import summary
+    from iaso.approvals import approval_items
+    from iaso.understand import summary
     from understand.fakes import as_worker
     from understand.test_read_job import int_text
 
@@ -177,16 +177,16 @@ def test_a_late_confirmation_is_told_once_at_the_next_turn(repo: Path, write_rec
 
 def test_the_claude_command_is_given_a_schema_without_our_label() -> None:
     """The real claude command refuses a schema that carries ``id`` ("use $id"): the label
-    names the schema in plumb and is left off the command line (found against the real model)."""
-    from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher, cli_schema
-    from plumb.understand.kinds import KINDS
+    names the schema in iaso and is left off the command line (found against the real model)."""
+    from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher, cli_schema
+    from iaso.understand.kinds import KINDS
 
     for module in (KINDS[name] for name in ("read", "judge", "clarify")):
         schema = dict(module.schema)
         assert "id" in schema or not schema
         assert "id" not in cli_schema(schema)
         assert cli_schema(schema).get("type") == schema.get("type")
-    job = __import__("plumb.understand.files", fromlist=["x"]).make_job(
+    job = __import__("iaso.understand.files", fromlist=["x"]).make_job(
         "clarify", SESSION, "clarify.v1", {})
     argv = ClaudeCodeDispatcher(model="haiku").command("claude", job, "system", {
         "id": "x.v1", "type": "object"})

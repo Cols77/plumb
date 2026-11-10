@@ -1,5 +1,5 @@
 #!/bin/sh
-# plumb: the check before an edit tool runs (SR-103). Shell only: no interpreter, no other program,
+# iaso: the check before an edit tool runs (SR-103). Shell only: no interpreter, no other program,
 # so it answers fast. It reads the hook's JSON on stdin and the one small gate file of the
 # session; while that file says closed it refuses Edit, Write, MultiEdit and NotebookEdit.
 # Edits made through the shell (redirects, in-place editors) are not checked by this guard.
@@ -18,7 +18,7 @@ path=${path#*\"}
 path=${path%%\"*}
 case "$path" in
   *..*) ;;
-  *.plumb[/\\]*session[/\\]*diagrams[/\\]*) exit 0 ;;
+  *.iaso[/\\]*session[/\\]*diagrams[/\\]*) exit 0 ;;
 esac
 session=${input#*\"session_id\"}
 session=${session#*\"}
@@ -26,12 +26,15 @@ session=${session%%\"*}
 case "$session" in
   ""|*[!A-Za-z0-9_-]*) exit 0 ;;
 esac
-# the .plumb/ folder: PLUMB_ROOT (the plugin hook passes the one its walk up found, so a session
-# started in a subfolder is gated too), else the project folder (the per-repository install)
-file="${PLUMB_ROOT:-${CLAUDE_PROJECT_DIR:-.}}/.plumb/session/$session/gate"
-if [ -z "$PLUMB_ROOT" ] && [ ! -r "$file" ]; then
-  # the per-repository install passes no PLUMB_ROOT: a session started in a subfolder reads
-  # the gate of the .plumb/ above it, the walk stopping at the git root
+# the records folder (.iaso/) of IASO_ROOT (the plugin hook
+# passes the one its walk up found, so a session started in a subfolder is gated too), else of
+# the project folder (the per-repository install)
+r="${IASO_ROOT:-${CLAUDE_PROJECT_DIR:-.}}"
+sd=.iaso
+file="$r/$sd/session/$session/gate"
+if [ -z "$IASO_ROOT" ] && [ ! -r "$file" ]; then
+  # the per-repository install passes no IASO_ROOT: a session started in a subfolder reads
+  # the gate of the records folder above it, the walk stopping at the git root
   d=${CLAUDE_PROJECT_DIR:-$PWD}
   while :; do
     case $d in
@@ -40,8 +43,9 @@ if [ -z "$PLUMB_ROOT" ] && [ ! -r "$file" ]; then
     esac
   done
   while [ -n "$d" ]; do
-    if [ -d "$d/.plumb/session" ]; then
-      file="$d/.plumb/session/$session/gate"
+    sd=.iaso
+    if [ -d "$d/$sd/session" ]; then
+      file="$d/$sd/session/$session/gate"
       break
     fi
     [ -e "$d/.git" ] && break
@@ -63,5 +67,5 @@ reason=${reason%%\"*}
 case "$reason" in
   ""|*\*) reason="your request is still being checked" ;;
 esac
-printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"plumb: edits are on hold until the owner has answered: '"$reason"'. Run plumb clarify --wait, show the owner what it returns, and do not build until they have answered. This guard covers the edit tools only; edits made through the shell are not checked."}}'
+printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"iaso: edits are on hold until the owner has answered: '"$reason"'. Run iaso clarify --wait, show the owner what it returns, and do not build until they have answered. This guard covers the edit tools only; edits made through the shell are not checked."}}'
 exit 0

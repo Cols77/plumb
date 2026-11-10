@@ -1,4 +1,4 @@
-"""M5: ``plumb merge-check [BASE] [--no-run] [--json]``: one screen, capped lists, and no
+"""M5: ``iaso merge-check [BASE] [--no-run] [--json]``: one screen, capped lists, and no
 writes but the merge evidence (sp3 7, SR-052)."""
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, git, project, write
 
-from plumb import approvals, cli
-from plumb.api import open_core
+from iaso import approvals, cli
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -20,10 +20,10 @@ def _snapshot(root: Path) -> dict[str, str]:
     out = {}
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        # .plumb/cache/ and the gitignored derived map are caches: rebuilt, never state;
-        # .plumb/session/ holds the band's progress line, runtime only
-        if not path.is_file() or rel.startswith((".git/", ".plumb/cache/", ".plumb/session/")) \
-                or rel == ".plumb/test_map.txt":
+        # .iaso/cache/ and the gitignored derived map are caches: rebuilt, never state;
+        # .iaso/session/ holds the band's progress line, runtime only
+        if not path.is_file() or rel.startswith((".git/", ".iaso/cache/", ".iaso/session/")) \
+                or rel == ".iaso/test_map.txt":
             continue
         if "__pycache__" in rel or ".pytest_cache" in rel:
             continue
@@ -33,7 +33,7 @@ def _snapshot(root: Path) -> dict[str, str]:
 
 def test_report_caps_lists(repo: Path, capsys) -> None:
     """SR-052 EX-2: 25 untraced paths show 10 and the rest in --json; listed in the full
-    report (plumb context merge), never by the merge check itself (SR-374 EX-6)."""
+    report (iaso context merge), never by the merge check itself (SR-374 EX-6)."""
     base = _head(repo)
     for n in range(25):
         write(repo, f"src/m{n:02d}.py", "x = 1\n")
@@ -43,7 +43,7 @@ def test_report_caps_lists(repo: Path, capsys) -> None:
     out = capsys.readouterr().out
     shown = [line for line in out.splitlines() if line.startswith("  untraced src/m")]
     assert len(shown) == 10
-    assert "+15 more (plumb merge-check --json)" in out
+    assert "+15 more (iaso merge-check --json)" in out
     assert cli.main(["merge-check", base, "--no-run", "--json", "--root", str(repo)]) == 0
     assert len(json.loads(capsys.readouterr().out)["untraced"]) == 25
 
@@ -53,7 +53,7 @@ def _head(root: Path) -> str:
 
 
 def test_writes_nothing_but_merge_evidence(repo: Path, capsys) -> None:
-    """SR-052 EX-1: --no-run changes no file outside .plumb/cache."""
+    """SR-052 EX-1: --no-run changes no file outside .iaso/cache."""
     project(repo)
     sha = commit(repo, "project")
     write(repo, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
@@ -73,7 +73,7 @@ def test_default_base_and_green_exit(repo: Path, capsys) -> None:
     code = cli.main(["merge-check", "--run", "--root", str(repo)])  # BASE defaults to main
     out = capsys.readouterr().out
     assert code == 0, out
-    assert out.startswith("plumb merge-check: main..HEAD")
+    assert out.startswith("iaso merge-check: main..HEAD")
     assert "nothing holds the merge" in out
 
 
@@ -84,14 +84,14 @@ def test_usage_errors(repo: Path, capsys) -> None:
 
 
 def test_merge_wait_line_is_counted_with_no_id(repo: Path) -> None:
-    from plumb.boundary import merge_report, render
+    from iaso.boundary import merge_report, render
 
     base = _head(repo)
     for n in range(1, 13):
-        write(repo, f".plumb/requirements/SR-{n:03d}.md",
+        write(repo, f".iaso/requirements/SR-{n:03d}.md",
               f"---\nid: SR-{n:03d}\ntitle: R{n}\nstatement: s{n}.\n---\n")
     report = merge_report(open_core(repo), base, run_full=False)
     assert len(report.awaiting) == 12 and report.exit == 0          # listed (SR-260 EX-31)
-    line = next(x for x in render(report) if x.startswith("plumb: waiting on a judge"))
-    assert line.startswith("plumb: waiting on a judge: 12 records")              # counted
-    assert "SR-0" not in line and "plumb approve" not in line                     # SR-267
+    line = next(x for x in render(report) if x.startswith("iaso: waiting on a judge"))
+    assert line.startswith("iaso: waiting on a judge: 12 records")              # counted
+    assert "SR-0" not in line and "iaso approve" not in line                     # SR-267

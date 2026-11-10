@@ -1,4 +1,4 @@
-"""Slice 4 (INT-090): the end-of-turn text goes. The owner gets at most one plumb line, or
+"""Slice 4 (INT-090): the end-of-turn text goes. The owner gets at most one iaso line, or
 nothing (SR-265); every card, stale link, untraced file and warning goes to the agent's
 channel as text (SR-266); what only the owner can settle is tagged for the agent to ask with
 the question tool (SR-295)."""
@@ -17,12 +17,12 @@ from host.fakes import FakeVerify
 from mergedriver.mdhelpers import conflicted
 from mod.helpers import SESSION
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.contracts import NodeEvidence, Target
-from plumb.hosts.claude_code import stop
-from plumb.present.owner_text import JUDGE_APPROVED
-from plumb.understand import summary
+from iaso import approvals
+from iaso.api import open_core
+from iaso.contracts import NodeEvidence, Target
+from iaso.hosts.claude_code import stop
+from iaso.present.owner_text import JUDGE_APPROVED
+from iaso.understand import summary
 from understand.test_read_job import make_core, record_text
 
 IDS = re.compile(r"\b(IC|SR|INT|DEC|FEAT)-\d+")
@@ -30,7 +30,7 @@ FEAT = "---\nid: FEAT-001\ntitle: deadline reminders\n---\n"
 
 
 def _start_turn(root: Path) -> None:
-    path = root / ".plumb" / "session" / SESSION / "turn.json"
+    path = root / ".iaso" / "session" / SESSION / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}), "utf-8")
@@ -39,7 +39,7 @@ def _start_turn(root: Path) -> None:
 def _edit(root: Path, rel: str, text: str) -> None:
     (root / rel).parent.mkdir(parents=True, exist_ok=True)
     (root / rel).write_text(text, "utf-8")
-    with (root / ".plumb" / "session" / SESSION / "touched.txt").open("a", encoding="utf-8") as f:
+    with (root / ".iaso" / "session" / SESSION / "touched.txt").open("a", encoding="utf-8") as f:
         f.write(rel + "\n")
 
 
@@ -58,7 +58,7 @@ def _owner(data: dict) -> str:
 
 def _agent(root: Path) -> str:
     """The agent's channel: what the stop queued for the next prompt, taken once."""
-    path = root / ".plumb" / "session" / SESSION / "agent_notes.json"
+    path = root / ".iaso" / "session" / SESSION / "agent_notes.json"
     if not path.exists():
         return ""
     notes = json.loads(path.read_text("utf-8"))
@@ -100,7 +100,7 @@ def test_sr265_ex7_a_judge_approval_gets_no_line_and_no_question(
     monkeypatch.setattr(summary, "_confirmations",
                         lambda *a, **k: (f"1 {JUDGE_APPROVED}",))
     _start_turn(repo)
-    _edit(repo, ".plumb/requirements/SR-009.md", record_text(9))
+    _edit(repo, ".iaso/requirements/SR-009.md", record_text(9))
     assert _stop(repo, hook_input) == {}
     summary.after_stop(open_core(repo), SESSION)   # SR-375: the worker tells the agent
     assert JUDGE_APPROVED in _agent(repo)
@@ -113,11 +113,11 @@ def test_sr265_ex7_a_judge_approval_gets_no_line_and_no_question(
 def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
         confirmed: Path, hook_input, monkeypatch) -> None:
     """SR-266 EX-2: the agent's channel names them; the owner's text is at most one line."""
-    from plumb.awareness import turn as awareness
-    from plumb.present.delta import Line
+    from iaso.awareness import turn as awareness
+    from iaso.present.delta import Line
 
-    warning = "plumb: SR-001 is also being changed on branch feat-x"
-    stale_note = "plumb: SR-001's link to src/remind.py is stale"
+    warning = "iaso: SR-001 is also being changed on branch feat-x"
+    stale_note = "iaso: SR-001's link to src/remind.py is stale"
     monkeypatch.setattr(awareness, "at_stop", lambda *a, **k: [Line(warning)])
     monkeypatch.setattr(stop, "stale_hold", lambda *a, **k: ([], [stale_note]))
     _start_turn(confirmed)
@@ -127,7 +127,7 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
     agent = _agent(confirmed)
     # SR-373: one next action; the untraced file comes before the links it moved
     assert warning in agent and stale_note not in agent
-    untraced = json.loads((confirmed / ".plumb" / "session" / SESSION /
+    untraced = json.loads((confirmed / ".iaso" / "session" / SESSION /
                            "untraced.json").read_text("utf-8"))
     assert untraced["paths"] == ["src/other.py"]          # the next prompt names it
 
@@ -135,8 +135,8 @@ def test_sr266_ex2_stale_links_untraced_files_and_warnings_go_to_the_agent(
 @pytest.mark.sr("SR-266")
 def test_sr266_ex4_the_agent_keeps_the_conflict_id_the_owner_sees_none(
         repo: Path, hook_input, capsys) -> None:
-    """SR-266 EX-4: `plumb conflicts` gives the agent the id; the owner's line has none."""
-    from plumb import cli
+    """SR-266 EX-4: `iaso conflicts` gives the agent the id; the owner's line has none."""
+    from iaso import cli
 
     ic = conflicted(repo)
     _start_turn(repo)
@@ -186,7 +186,7 @@ def test_sr295_ex1_an_open_conflict_is_handed_to_the_agent_to_ask(repo: Path,
 def test_sr295_ex3_stale_links_and_untraced_files_alone_show_the_owner_nothing(
         confirmed: Path, hook_input, monkeypatch) -> None:
     """SR-295 EX-3: what the agent can fix is the agent's: the owner sees nothing."""
-    stale_note = "plumb: SR-001's link to src/remind.py is stale"
+    stale_note = "iaso: SR-001's link to src/remind.py is stale"
     monkeypatch.setattr(stop, "stale_hold", lambda *a, **k: ([], [stale_note]))
     _start_turn(confirmed)
     # a traced file: an untraced one would be SR-373's next action before the stale link
@@ -200,10 +200,10 @@ def test_sr295_ex3_stale_links_and_untraced_files_alone_show_the_owner_nothing(
 def test_sr295_a_card_only_in_the_agents_channel_is_not_shown_to_the_owner(tmp_path: Path
                                                                            ) -> None:
     """A card the stop drew went to the agent alone: a bare 'ok' must not confirm it. Only
-    plumb's panel, active this turn, puts the drawn card before the owner."""
+    iaso's panel, active this turn, puts the drawn card before the owner."""
     from types import SimpleNamespace
 
-    session_dir = tmp_path / ".plumb" / "session" / SESSION
+    session_dir = tmp_path / ".iaso" / "session" / SESSION
     session_dir.mkdir(parents=True)
     ctx = SimpleNamespace(root=tmp_path, session_id=SESSION, session_dir=session_dir,
                           extra={"display": "owner"})

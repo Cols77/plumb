@@ -16,17 +16,17 @@ import pytest
 
 from awareness.gitrepo import commit_all, run_git, write_record
 from awareness.scenario import change, setup
-from plumb.api import open_core
-from plumb.awareness import inflight
-from plumb.awareness import publish as pub
+from iaso.api import open_core
+from iaso.awareness import inflight
+from iaso.awareness import publish as pub
 
 pytestmark = pytest.mark.sr("SR-258")
 
 
 def _stop_hook(root: Path, changed: list[str] | None = None) -> list[str]:
     """The stop hook's awareness step (publish, then the claim kept in step)."""
-    from plumb.awareness.early import question, turn_conflicts
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness.early import question, turn_conflicts
+    from iaso.awareness.turn import claim_changes
 
     claim_changes(open_core(root), pub.publish(open_core(root), changed or []))
     return [question(c) for c in turn_conflicts(open_core(root).paths.session)]
@@ -38,7 +38,7 @@ def _merged_then_continued(tmp_path: Path, *, hooks: bool = True,
     feat-x (--no-ff), then, with ``main_moves``, commits a later SR-005 of its own; feat-x
     commits one more unrelated change and (with ``hooks``) runs its session start and stop
     hook."""
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness.turn import at_session_start
 
     main, other = setup(tmp_path)
     change(other, "A relay pins the stated group, named by its title.")
@@ -78,7 +78,7 @@ def test_capture_on_main_asks_nothing(tmp_path: Path) -> None:
 
 
 def test_clarify_read_back_on_main_asks_nothing(tmp_path: Path) -> None:
-    from plumb.capture.clarify import clarify
+    from iaso.capture.clarify import clarify
 
     main, _other = _merged_then_continued(tmp_path)
     view = clarify(open_core(main), "make SR-005 relay checks pin only the affirmed records")
@@ -89,14 +89,14 @@ def test_stop_hook_claim_on_main_asks_nothing(tmp_path: Path) -> None:
     main, _other = _merged_then_continued(tmp_path)
     write_record(main, "SR-005", "relay checks", feature="FEAT-002",
                  statement="A relay pins only the records the owner's words affirm.")
-    asked = _stop_hook(main, [".plumb/requirements/SR-005.md"])
+    asked = _stop_hook(main, [".iaso/requirements/SR-005.md"])
     assert asked == []
     assert _decisions(main) == []
 
 
 def test_brief_and_status_on_main_name_nothing_of_feat_x(tmp_path: Path) -> None:
-    from plumb.awareness.lines import brief_lines, status_section
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness.lines import brief_lines, status_section
+    from iaso.awareness.turn import at_session_start
 
     main, _other = _merged_then_continued(tmp_path)
     at_session_start(open_core(main))
@@ -122,7 +122,7 @@ def test_merged_commit_clears_it_after_main_moved_on(tmp_path: Path) -> None:
     """The stop hook stamped the commit that wrote feat-x's version; main merged it, then
     changed SR-005 again: the stamped commit is reachable from main, so it is gone even
     before feat-x runs another hook."""
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness.turn import claim_changes
 
     main, other = setup(tmp_path)
     change(other, "A relay pins the stated group, named by its title.")

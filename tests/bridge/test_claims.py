@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.claims import claims_check, glob_match, load_policy
+from iaso import cli
+from iaso.claims import claims_check, glob_match, load_policy
 
 pytestmark = pytest.mark.sr("SR-261")
 
@@ -63,13 +63,13 @@ def test_claims_reports_undeclared_paths(ranged) -> None:
 def test_a_deleted_test_is_declared_by_the_record_that_linked_it_before(ranged) -> None:
     repo, _ = ranged
     base = _commit(repo, {"tests/test_links.py": "def test(): pass\n"}, "test\n\nSR: SR-003")
-    (repo / ".plumb" / "requirements" / "SR-003.md").write_text(
+    (repo / ".iaso" / "requirements" / "SR-003.md").write_text(
         SR_003.replace("- kind: verified_by\n  path: tests/test_links.py\n", ""), "utf-8")
     (repo / "tests" / "test_links.py").unlink()
     _commit(repo, {}, "retire the test\n\nSR: SR-003")
     assert claims_check(repo, f"{base}..HEAD")["undeclared"] == []
     # a file that still exists needs a current link: unlinking and changing it is undeclared
-    (repo / ".plumb" / "requirements" / "SR-003.md").write_text(
+    (repo / ".iaso" / "requirements" / "SR-003.md").write_text(
         SR_003.replace("- kind: implemented_by\n  path: src/links.py\n", ""), "utf-8")
     sha = _commit(repo, {"src/links.py": "x = 2\n"}, "change\n\nSR: SR-003")
     assert claims_check(repo, f"{base}..HEAD")["undeclared"] == [
@@ -78,7 +78,7 @@ def test_a_deleted_test_is_declared_by_the_record_that_linked_it_before(ranged) 
 
 def test_claims_default_exempt_globs(ranged) -> None:
     repo, base = ranged
-    _commit(repo, {"docs/notes.md": "n\n", ".plumb/requirements/x.md": "",
+    _commit(repo, {"docs/notes.md": "n\n", ".iaso/requirements/x.md": "",
                    "uv.lock": "", "tests/test_links.py": "def test(): pass\n"},
             "docs\n\nSR: SR-003")
     result = claims_check(repo, f"{base}..HEAD")
@@ -89,7 +89,7 @@ def test_claims_default_exempt_globs(ranged) -> None:
 
 def test_claims_extra_exempt_from_policy(ranged) -> None:
     repo, base = ranged
-    (repo / ".plumb" / "claims.yaml").write_text("exempt: ['scripts/**']\n", encoding="utf-8")
+    (repo / ".iaso" / "claims.yaml").write_text("exempt: ['scripts/**']\n", encoding="utf-8")
     _commit(repo, {"scripts/x.py": ""}, "script\n\nSR: SR-003")
     assert claims_check(repo, f"{base}..HEAD")["undeclared"] == []
     assert "docs/**" in load_policy(repo).exempt
@@ -98,7 +98,7 @@ def test_claims_extra_exempt_from_policy(ranged) -> None:
 def test_claims_baseline_entries(ranged) -> None:
     repo, base = ranged
     sha = _commit(repo, {"src/other.py": "y\n"}, "other\n\nSR: SR-003")
-    (repo / ".plumb" / "claims.yaml").write_text(
+    (repo / ".iaso" / "claims.yaml").write_text(
         f"baseline:\n- {{commit: {sha[:10]}, path: src/other.py, nc: NC-0001}}\n"
         f"- {{commit: abc, path: x}}\n", encoding="utf-8")
     result = claims_check(repo, f"{base}..HEAD")

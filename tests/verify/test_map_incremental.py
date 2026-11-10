@@ -2,7 +2,7 @@
 
 Adding or removing one Python file changes the file set, so every import edge must be
 resolved again (a new file can satisfy an import). That re-resolution answers from the
-scanned file set, not from the filesystem: on plumb's own repository it used to stat and
+scanned file set, not from the filesystem: on iaso's own repository it used to stat and
 resolve every edge again and cost about 1.7 s, which pushed SessionStart past its budget.
 """
 
@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import imports
-from plumb.verify.testmap import build_map
+from iaso.api import open_core
+from iaso.verify import imports
+from iaso.verify.testmap import build_map
 
 
 @pytest.fixture

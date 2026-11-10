@@ -11,8 +11,8 @@ from understand.fakes import as_worker
 from understand.test_read_apply import approvals, entries_of, write_applied
 from understand.test_read_job import SESSION, log_prompt, make_core, record_text
 
-from plumb.api import open_core
-from plumb.understand import conflict_items, judge, read
+from iaso.api import open_core
+from iaso.understand import conflict_items, judge, read
 
 ASKED = "What should happen when the board is full?"
 

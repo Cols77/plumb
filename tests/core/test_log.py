@@ -11,21 +11,21 @@ import pytest
 from logutil import entries as log_entries
 from logutil import entry_files, legacy_entry, tamper, write_legacy
 
-from plumb import log
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
 
 @pytest.fixture
-def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
-    p = PlumbPaths(tmp_path)
+def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> IasoPaths:
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
+    p = IasoPaths(tmp_path)
     p.log_dir.mkdir(parents=True)
     return p
 
 
-def test_append_chains_prev_digest(paths: PlumbPaths) -> None:
+def test_append_chains_prev_digest(paths: IasoPaths) -> None:
     first = log.append(paths, "events", "repin", {"a": 1})
     second = log.append(paths, "events", "approval", {"b": 2})
     assert first.prev is None
@@ -39,7 +39,7 @@ def test_append_chains_prev_digest(paths: PlumbPaths) -> None:
     assert log.verify_chain(paths, "events") == []
 
 
-def test_digest_detects_modified_line(paths: PlumbPaths) -> None:
+def test_digest_detects_modified_line(paths: IasoPaths) -> None:
     log.append(paths, "events", "approval", {"records": [{"id": "SR-001"}]})
     log.append(paths, "events", "repin", {})
     name = tamper(paths.root, "events", 0, lambda t: t.replace("SR-001", "SR-002"))
@@ -47,14 +47,14 @@ def test_digest_detects_modified_line(paths: PlumbPaths) -> None:
     assert any("digest" in p and p.startswith(name) for p in problems)
 
 
-def test_missing_prev_not_reported(paths: PlumbPaths) -> None:
+def test_missing_prev_not_reported(paths: IasoPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     (paths.log_dir / entries[1].name).unlink()
     problems = log.verify_chain(paths, "events")
     assert problems == []  # DEC-224: a prev naming no entry here is not an error
 
 
-def test_reordered_legacy_lines_are_no_error(paths: PlumbPaths) -> None:  # SR-322, DEC-234
+def test_reordered_legacy_lines_are_no_error(paths: IasoPaths) -> None:  # SR-322, DEC-234
     first = legacy_entry("repin", {"i": 0}, None)
     second = legacy_entry("repin", {"i": 1}, first["digest"])
     third = legacy_entry("repin", {"i": 2}, second["digest"])
@@ -62,7 +62,7 @@ def test_reordered_legacy_lines_are_no_error(paths: PlumbPaths) -> None:  # SR-3
     assert log.verify_chain(paths, "events") == []
 
 
-def test_union_merged_fork_accepted(paths: PlumbPaths, tmp_path: Path) -> None:
+def test_union_merged_fork_accepted(paths: IasoPaths, tmp_path: Path) -> None:
     """Two branches that each appended: their entry files sit side by side after the merge,
     the chain forks, and every prev still resolves."""
     log.append(paths, "events", "repin", {"base": True})
@@ -84,7 +84,7 @@ def test_union_merged_fork_accepted(paths: PlumbPaths, tmp_path: Path) -> None:
     assert log.verify_chain(paths, "events") == []
 
 
-def test_concurrent_appends_do_not_interleave(paths: PlumbPaths) -> None:
+def test_concurrent_appends_do_not_interleave(paths: IasoPaths) -> None:
     def worker(n: int) -> None:
         for i in range(10):
             log.append(paths, "events", "repin", {"worker": n, "i": i, "pad": "x" * 200})
@@ -102,7 +102,7 @@ def test_concurrent_appends_do_not_interleave(paths: PlumbPaths) -> None:
     assert not paths.lock.exists()
 
 
-def test_read_kinds_streams_and_legacy_offset(paths: PlumbPaths) -> None:
+def test_read_kinds_streams_and_legacy_offset(paths: IasoPaths) -> None:
     log.append(paths, "events", "repin", {"i": 0})
     log.append(paths, "events", "approval", {"i": 1})
     log.append(paths, "evidence", "test-run", {"i": 2})
@@ -111,7 +111,7 @@ def test_read_kinds_streams_and_legacy_offset(paths: PlumbPaths) -> None:
     assert all(e.offset == -1 and e.name for e in entries)
     assert [e.kind for e in log.read(paths, "events", kinds=["approval"])] == ["approval"]
     assert [e.stream for e in log.read(paths, "evidence")] == ["evidence"]
-    assert list(log.read(PlumbPaths(paths.root / "nowhere"), "events")) == []
+    assert list(log.read(IasoPaths(paths.root / "nowhere"), "events")) == []
     # legacy lines keep their byte offsets for since_offset during the transition
     shutil.rmtree(paths.log_dir)
     one = legacy_entry("repin", {"i": 0}, None)
@@ -124,14 +124,14 @@ def test_read_kinds_streams_and_legacy_offset(paths: PlumbPaths) -> None:
                                              since_offset=legacy[1].offset)] == [1]
 
 
-def test_marker_recorded(paths: PlumbPaths, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_marker_recorded(paths: IasoPaths, monkeypatch: pytest.MonkeyPatch) -> None:
     assert log.append(paths, "events", "repin", {}).marker == "none"
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     assert log.append(paths, "events", "repin", {}).marker == "claude-code"
     assert log_entries(paths.root, "events")[1]["marker"] == "claude-code"
 
 
-def test_stale_lock_is_removed(paths: PlumbPaths) -> None:
+def test_stale_lock_is_removed(paths: IasoPaths) -> None:
     import os
     import time
 

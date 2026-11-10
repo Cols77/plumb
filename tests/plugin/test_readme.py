@@ -13,8 +13,8 @@ README = Path(__file__).resolve().parents[2] / "README.md"
 def test_readme_is_one_page_and_names_no_retired_command() -> None:
     text = README.read_text(encoding="utf-8")
     assert len(text.splitlines()) <= 60
-    for retired in ("plumb approve", "plumb revoke", "plumb relay", "settle", "pushback",
+    for retired in ("iaso approve", "iaso revoke", "iaso relay", "settle", "pushback",
                     "triage --approve", "spec approve"):
         assert retired not in text, retired
-    for kept in ("/plumb intent", "/plumb status", "/plumb go", "plumb --help"):
+    for kept in ("/iaso intent", "/iaso status", "/iaso go", "iaso --help"):
         assert kept in text, kept

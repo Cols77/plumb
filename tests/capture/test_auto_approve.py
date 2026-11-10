@@ -11,8 +11,8 @@ from capture_helpers import log_prompt, run
 from jev_fixtures import calibrated
 from understand.test_one_judge import run_judge_job
 
-from plumb.api import open_core
-from plumb.capture.autoapprove import auto_approve_state
+from iaso.api import open_core
+from iaso.capture.autoapprove import auto_approve_state
 
 PROMPT = "add multiply next to add; multiply returns the product of two numbers"
 INTENT = {"quote": "add multiply next to add", "readback": "add multiply next to add",
@@ -28,7 +28,7 @@ REQUIREMENT = {"title": "multiply returns the product",
 def ready(repo: Path, write_record, monkeypatch):
     stub = calibrated(repo, write_record, monkeypatch, requirements=True)
     assert run(repo, "config", "auto-approve", "on") == 0  # the owner's terminal (test)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")  # the agent captures
+    monkeypatch.setenv("IASO_AGENT_SESSION", "session-1")  # the agent captures
     yield repo, stub
     stub.close()
 
@@ -61,7 +61,7 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
     assert state_of(repo, intent) == "confirmed"
     state = auto_approve_state(open_core(repo))
     assert state.reason == "on"
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     assert not [f for f in validate(open_core(repo)) if f.severity == "error"]
 
@@ -70,7 +70,7 @@ def test_an_equivalent_model_name_does_not_suspend(ready) -> None:
 def test_a_judge_model_change_after_a_logged_calibration_keeps_the_fast_track(ready) -> None:
     """SR-242 EX-10 under DEC-143: the fingerprint's judge model differs from
     understand.judge_model now; nothing is suspended, the fast track stays on."""
-    from plumb.capture.calibrate import fingerprint
+    from iaso.capture.calibrate import fingerprint
 
     repo, _ = ready
     core = open_core(repo)

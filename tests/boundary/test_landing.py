@@ -11,10 +11,10 @@ import pytest
 
 from core.test_log_compaction import put
 from mergedriver.mdhelpers import commit_all, ex, record, run_git, write_record
-from plumb.api import open_core
-from plumb.boundary import landing
-from plumb.contracts import Target
-from plumb.validate import validate
+from iaso.api import open_core
+from iaso.boundary import landing
+from iaso.contracts import Target
+from iaso.validate import validate
 from understand.fakes import engine_standins  # noqa: F401
 from understand.test_backlog import bulk
 from understand.test_judge_job import SESSION
@@ -48,7 +48,7 @@ def decision(*tidy: str) -> Any:
 
 
 def debug_cases(root: Path, sha: str) -> list[dict[str, Any]]:
-    path = root / ".plumb" / "cache" / "debug" / f"{sha}.json"
+    path = root / ".iaso" / "cache" / "debug" / f"{sha}.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
@@ -69,7 +69,7 @@ def test_ex1_the_landing_tidies_compacts_and_names_both(repo: Path) -> None:
     assert result["removed"] == ["docs/a.md", "docs/b.md"] and result["archived"] == 1
     changed = run_git(repo, "show", "--no-renames", "--name-status", "--format=", "HEAD").stdout.split("\n")
     assert "D\tdocs/a.md" in changed and "D\tdocs/b.md" in changed
-    assert "A\t.plumb/log/judgment/archive.jsonl" in changed
+    assert "A\t.iaso/log/judgment/archive.jsonl" in changed
     line = landing.lines(repo)[0][1]
     assert "docs/a.md" in line and "docs/b.md" in line and "compacted 1" in line
 
@@ -77,12 +77,12 @@ def test_ex1_the_landing_tidies_compacts_and_names_both(repo: Path) -> None:
 @pytest.mark.sr("SR-296")
 def test_a_tracked_local_kind_entry_compacts_into_a_committed_deletion(repo: Path) -> None:
     put(repo, "job-note", {"kind": "k", "job": "j", "detail": "d"})
-    run_git(repo, "add", "-f", ".plumb/log/job-note")
+    run_git(repo, "add", "-f", ".iaso/log/job-note")
     commit_all(repo, "a job-note tracked before it became local")
     sha, before = land_branch(repo, lambda root: docs(root, "x.md"))
     result = landing.land(repo, sha, before)
     assert result["archived"] == 1 and not debug_cases(repo, sha)
-    assert run_git(repo, "ls-files", "--deleted", "--", ".plumb/log").stdout == ""
+    assert run_git(repo, "ls-files", "--deleted", "--", ".iaso/log").stdout == ""
     assert run_git(repo, "log", "-1", "--format=%B").stdout.rstrip().endswith("SR: SR-296")
 
 
@@ -92,24 +92,24 @@ def test_ex15_the_landing_commit_names_no_log_path_the_log_code_picks(repo: Path
     the log code drops a local kind's untracked segment and keeps a tracked one's removal."""
     import inspect
 
-    from plumb import log
+    from iaso import log
 
     source = inspect.getsource(landing._commit)
-    assert ".plumb/log" not in source and "LOCAL_KINDS" not in source
+    assert ".iaso/log" not in source and "LOCAL_KINDS" not in source
     put(repo, "job-note", {"kind": "k", "job": "j", "detail": "d"})
-    run_git(repo, "add", "-f", ".plumb/log/job-note")
+    run_git(repo, "add", "-f", ".iaso/log/job-note")
     commit_all(repo, "a tracked job-note")
-    tracked = ".plumb/log/" + sorted(log.tracked_names(repo))[0]
+    tracked = ".iaso/log/" + sorted(log.tracked_names(repo))[0]
     (repo / tracked).unlink()   # a tracked local entry is committed only as a removal
-    assert log.committable(repo, ["docs/a.md", tracked, ".plumb/log/job-note/archive.jsonl",
-                                  ".plumb/log/judgment/archive.jsonl"]) == [
-        "docs/a.md", tracked, ".plumb/log/judgment/archive.jsonl"]
+    assert log.committable(repo, ["docs/a.md", tracked, ".iaso/log/job-note/archive.jsonl",
+                                  ".iaso/log/judgment/archive.jsonl"]) == [
+        "docs/a.md", tracked, ".iaso/log/judgment/archive.jsonl"]
 
 
 @pytest.mark.sr("SR-296")
 def test_ex2_every_waiting_record_is_queued_by_the_landing(repo: Path, write_record,
                                                             engine_standins) -> None:
-    from plumb.understand import backlog, files
+    from iaso.understand import backlog, files
 
     bulk(repo, write_record, {"alpha": 39})
     sha, before = land_branch(repo, lambda root: None)
@@ -124,7 +124,7 @@ def test_ex2_every_waiting_record_is_queued_by_the_landing(repo: Path, write_rec
 @pytest.mark.sr("SR-296")
 def test_ex3_three_stale_links_become_three_cases(repo: Path,
                                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     monkeypatch.setattr(backlog, "queue_waiting", lambda core, session, **kw: backlog.Started())
     write_record(repo, record("SR-001", "rule", statement="s", examples=[ex(1)]))
@@ -157,11 +157,11 @@ def test_ex4_running_again_changes_nothing(repo: Path) -> None:
 @pytest.mark.sr("SR-296")
 def test_ex5_a_fast_forward_starts_the_landing(repo: Path,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.boundary.premerge import run_post_merge
+    from iaso.boundary.premerge import run_post_merge
 
     started: list[tuple[str, str]] = []
     monkeypatch.setattr(landing, "spawn", lambda root, h, b: started.append((h, b)))
-    run_git(repo, "config", "plumb.mergeHold", "false")
+    run_git(repo, "config", "iaso.mergeHold", "false")
     sha, before = land_branch(repo, lambda root: docs(root, "x.txt"), ff=True)
     assert run_post_merge(repo) == 0
     assert started == [(sha, before)]
@@ -170,7 +170,7 @@ def test_ex5_a_fast_forward_starts_the_landing(repo: Path,
 @pytest.mark.sr("SR-296")
 def test_ex6_a_failing_step_is_a_case_and_the_rest_still_run(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import backlog
+    from iaso.understand import backlog
 
     def broken(*args: Any) -> Any:
         raise RuntimeError("tidy broke")
@@ -192,7 +192,7 @@ def test_ex1_another_worktrees_loop_gate_and_leftover_cards_are_unchanged(repo: 
                                                                   tmp_path: Path) -> None:
     other = tmp_path / "other"
     run_git(repo, "worktree", "add", "-q", "-b", "other", str(other))
-    session = other / ".plumb" / "session" / "s2"
+    session = other / ".iaso" / "session" / "s2"
     session.mkdir(parents=True)
     (session / "gate.json").write_text('{"state": "closed"}', encoding="utf-8")
     (session / "intent.json").write_text('{"stage": "build"}', encoding="utf-8")
@@ -279,7 +279,7 @@ def test_ex1_entries_about_an_inflight_branchs_record_stay_live(repo: Path,
     sha, before = land_branch(repo, lambda root: docs(root, "docs/x.md"))
     landing.land(repo, sha, before)
     live = [json.loads(p.read_text(encoding="utf-8"))["payload"]["record"]
-            for p in (repo / ".plumb" / "log" / "escalation-declined").glob("*.json")]
+            for p in (repo / ".iaso" / "log" / "escalation-declined").glob("*.json")]
     assert live == ["SR-050"]
 
 
@@ -295,7 +295,7 @@ def land_worktree(repo: Path, tmp_path: Path, *, dirty: str = "", loop: bool = F
     if dirty:
         docs(tree, dirty)
     if loop:
-        path = repo / ".plumb" / "session" / "s9" / "intent" / "abc.json"
+        path = repo / ".iaso" / "session" / "s9" / "intent" / "abc.json"
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps({"digest": "sha256:abc", "intent": "INT-001", "note": "feat",
                                     "stages": {"clarify": {"state": "open"}}}), "utf-8")
@@ -307,7 +307,7 @@ def land_worktree(repo: Path, tmp_path: Path, *, dirty: str = "", loop: bool = F
 @pytest.mark.sr("SR-320")
 def test_ex7_a_merged_clean_worktree_is_removed_and_its_branch_kept(repo: Path,
                                                                     tmp_path: Path) -> None:
-    tree, result = land_worktree(repo, tmp_path, dirty=".plumb/log/x/y.json")
+    tree, result = land_worktree(repo, tmp_path, dirty=".iaso/log/x/y.json")
     assert not tree.exists() and result["worktrees"] == ["wt-feat"] and result["kept"] == []
     assert run_git(repo, "branch", "--list", "feat").stdout.strip() != ""
     assert "removed finished worktrees wt-feat" in landing.lines(repo)[0][1]
@@ -386,7 +386,7 @@ def test_ex15_a_reset_only_branch_is_kept_like_a_fresh_fork(repo: Path,
 @pytest.mark.sr("SR-296")
 def test_ex11_a_second_landing_run_queues_no_judge_job_twice(repo: Path, write_record,
                                                               engine_standins) -> None:
-    from plumb.understand import backlog, files
+    from iaso.understand import backlog, files
 
     bulk(repo, write_record, {"alpha": 3})
     sha, before = land_branch(repo, lambda root: None)
@@ -415,7 +415,7 @@ def test_a_helper_or_tsx_file_linked_as_a_test_is_no_unrun_case(repo: Path) -> N
 
 @pytest.mark.sr("SR-338")
 def test_ex2_ended_session_folders_go_unmarked_ones_stay(repo: Path) -> None:
-    sessions = repo / ".plumb" / "session"
+    sessions = repo / ".iaso" / "session"
     for name in ("ended", "live"):
         (sessions / name).mkdir(parents=True)
         (sessions / name / "gate").write_text("{}", encoding="utf-8")
@@ -429,7 +429,7 @@ def test_ex2_ended_session_folders_go_unmarked_ones_stay(repo: Path) -> None:
 
 @pytest.mark.sr("SR-338")
 def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
-    own = repo / ".plumb" / "session" / "s-own"
+    own = repo / ".iaso" / "session" / "s-own"
     own.mkdir(parents=True)
     (own / "ended.json").write_text("{}", encoding="utf-8")
     assert landing.ended_sessions(repo, "s-own") == [] and own.is_dir()
@@ -437,7 +437,7 @@ def test_ex3_the_landings_own_session_folder_stays(repo: Path) -> None:
 
 @pytest.mark.sr("SR-340")
 def test_ex3_an_ended_session_folder_holding_a_waiting_question_stays(repo: Path) -> None:
-    sessions = repo / ".plumb" / "session"
+    sessions = repo / ".iaso" / "session"
     for name in ("asked", "done"):
         (sessions / name).mkdir(parents=True)
         (sessions / name / "ended.json").write_text("{}", encoding="utf-8")

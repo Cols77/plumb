@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from plumb.cli import main
+from iaso.cli import main
 
 
 def run(repo: Path, *argv: str) -> int:
@@ -18,7 +18,7 @@ def log_prompt(repo: Path, text: str, *, at: str = "2026-10-06T10:00:00Z",
                session: str = "test-session", via: str | None = "hook") -> str:
     """Append ``text`` to the prompt log as the prompt hook does; returns its digest."""
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     entry = {"digest": digest, "session": session, "at": at, "text": text}
     if via is not None:
@@ -35,7 +35,7 @@ def write_stated(repo: Path, records: list[tuple[str, str]], *, at: str = "2026-
                                         for i, h in records]}
     if groups is not None:
         data["groups"] = groups
-    path = repo / ".plumb" / "session" / "stated.json"
+    path = repo / ".iaso" / "session" / "stated.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
 
@@ -47,9 +47,9 @@ def event_kinds(repo: Path) -> list[str]:
 
 
 def tree_bytes(repo: Path) -> dict[str, bytes]:
-    """Every file under .plumb/ except session state and caches."""
+    """Every file under .iaso/ except session state and caches."""
     out = {}
-    for path in sorted((repo / ".plumb").rglob("*")):
+    for path in sorted((repo / ".iaso").rglob("*")):
         rel = path.relative_to(repo).as_posix()
         generated = "/session/" in rel or "/cache/" in rel or rel.endswith("test_map.txt")
         if path.is_file() and not generated:
@@ -62,9 +62,9 @@ def agent_shell_setup(monkeypatch) -> None:
     shell on a host whose adapter cannot set the marker (concept 4.6 check 4)."""
     import io
 
-    from plumb import approvals
+    from iaso import approvals
 
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     monkeypatch.setattr(approvals, "owner_terminal_answer", REAL_TERMINAL_CHECK)
     monkeypatch.setattr("sys.stdin", io.StringIO("y\ny\ny\n"))
 
@@ -77,7 +77,7 @@ def record_text(record_id: str, title: str, **fields) -> str:
     return "---\n" + yaml.safe_dump(data, sort_keys=False) + "---\n"
 
 
-from plumb.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK  # noqa: E402
+from iaso.approvals import owner_terminal_answer as REAL_TERMINAL_CHECK  # noqa: E402
 
 # --------------------------------------------------------------------------- a JEV stub
 
@@ -139,9 +139,9 @@ class JevStub:
 def use_jev(repo: Path, stub: JevStub, monkeypatch, *, extra: str = "") -> None:
     """Configure ``repo`` for JEV against ``stub``, with the credential in the environment
     and no user store."""
-    from plumb.judgment import jev as jev_mod
+    from iaso.judgment import jev as jev_mod
 
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  hook_timeout_ms: 2000\n"
         f"  jev: {{base_url: '{stub.url}'}}\n" + extra, encoding="utf-8")
     monkeypatch.setenv("TYPESAFE_API_KEY", KEY)
@@ -150,7 +150,7 @@ def use_jev(repo: Path, stub: JevStub, monkeypatch, *, extra: str = "") -> None:
 
 class CoverageJudge:
     """A test double for the configured judge: it rates how much of a restatement the owner's
-    words cover, by term overlap. It stands in for JEV in tests that need a judgment; plumb
+    words cover, by term overlap. It stands in for JEV in tests that need a judgment; iaso
     itself has no rule-based judge (INT-029)."""
 
     name = "double"
@@ -158,8 +158,8 @@ class CoverageJudge:
 
     def entailment(self, premise: str, hypothesis: str, *, subject: str, claim_kind: str,
                    quote_only: str | None = None):
-        from plumb.contracts import Judgment
-        from plumb.judgment.textjudge import _LABEL, stems
+        from iaso.contracts import Judgment
+        from iaso.judgment.textjudge import _LABEL, stems
 
         supported = stems(premise)
         wanted: set[str] = set()
@@ -182,7 +182,7 @@ class CoverageJudge:
 
 def use_coverage_judge(monkeypatch) -> CoverageJudge:
     """``get_backend`` answers with the double unless the repository configures a judge."""
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
     real = judgment.get_backend
     double = CoverageJudge()
@@ -196,7 +196,7 @@ def use_coverage_judge(monkeypatch) -> CoverageJudge:
 
 def approve_set(core, anchor: str) -> None:
     """A set approval as the judge worker writes it (the owner-terminal command is gone)."""
-    from plumb.capture.spec import set_payload
+    from iaso.capture.spec import set_payload
 
     records, digest = set_payload(core, anchor)
     core.log_append("events", "approval", {

@@ -1,7 +1,7 @@
 """R17, R2: an early intent-conflict card read on a branch that is neither side (the default
 branch after one side merged) labels both versions by branch, never "this work";
 the owner's choice there names a branch, and an open merge conflict on the same record is
-the one card asked (SR-081 EX-10). One test per entry point: /plumb conflicts, the stop
+the one card asked (SR-081 EX-10). One test per entry point: /iaso conflicts, the stop
 hook's card and ``conflict choose``, each run from the default
 branch."""
 
@@ -16,9 +16,9 @@ from mergedriver.mdhelpers import install_driver
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, run_git, write_record
 from awareness.scenario import capture
-from plumb import cli
-from plumb.api import open_core
-from plumb.awareness import early
+from iaso import cli
+from iaso.api import open_core
+from iaso.awareness import early
 
 pytestmark = pytest.mark.sr("SR-259")
 A = "A reminder is sent 48 hours before the deadline."
@@ -73,7 +73,7 @@ def test_conflicts_on_default_branch_labels_both_sides_by_branch(tmp_path: Path)
 
 
 def test_stop_hook_conflict_on_default_branch_labels_both_sides(tmp_path: Path) -> None:
-    """The conflict /plumb conflicts asks the stop hook to hand back is stated by branch."""
+    """The conflict /iaso conflicts asks the stop hook to hand back is stated by branch."""
     main, _dec = _on_main_after_b(tmp_path)
     _conflicts(main)
     found = early.turn_conflicts(open_core(main).paths.session)
@@ -100,7 +100,7 @@ def _held_merge_of_b(tmp_path: Path) -> tuple[Path, str]:
 
 
 def test_conflicts_shows_one_card_per_record(tmp_path: Path) -> None:
-    """/plumb conflicts and the stop hook's card: only the merge card asks."""
+    """/iaso conflicts and the stop hook's card: only the merge card asks."""
     main, _dec = _held_merge_of_b(tmp_path)
     text = _conflicts(main)
     assert text.count("▸ Conflict") == 1 and "Conflict IC-" in text

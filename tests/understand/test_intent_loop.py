@@ -1,4 +1,4 @@
-"""The intent loop's commands and state (SR-193, SR-194, SR-197): ``plumb intent open``, ``gate``,
+"""The intent loop's commands and state (SR-193, SR-194, SR-197): ``iaso intent open``, ``gate``,
 ``done`` and ``status``."""
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from typing import Any
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb.api import open_core
-from plumb.capture import proof
-from plumb.contracts import Target
-from plumb.understand import clarify, cmd_intent, files, gate, hooks, typed, worker
+from iaso.api import open_core
+from iaso.capture import proof
+from iaso.contracts import Target
+from iaso.understand import clarify, cmd_intent, files, gate, hooks, typed, worker
 from understand.test_read_job import int_text, record_text
 
 pytestmark = pytest.mark.sr("SR-222")
@@ -62,7 +62,7 @@ def _loop(repo: Path) -> dict[str, Any]:
 
 def test_ex1_the_typed_command_is_checked_and_opens_the_loop(repo: Path, engine_standins: Any,
                                                              capsys: pytest.CaptureFixture) -> None:
-    text = "/plumb intent " + WORDS
+    text = "/iaso intent " + WORDS
     assert typed.parse(text) == typed.Typed("intent", words=WORDS)
     assert clarify.commanded_words(text) == WORDS
     engine_standins.dispatcher.script = {"clarify": NO_GAP}
@@ -75,14 +75,14 @@ def test_ex1_the_typed_command_is_checked_and_opens_the_loop(repo: Path, engine_
     assert {s: v["state"] for s, v in loop["stages"].items()} == {
         "clarify": "open", "plan": "open", "build": "open"}
     assert "intent loop open" in capsys.readouterr().out
-    assert not list((repo / ".plumb" / "intents").glob("*.md"))   # no record until it is clear
+    assert not list((repo / ".iaso" / "intents").glob("*.md"))   # no record until it is clear
 
 
 def test_the_same_words_retyped_get_a_new_check_and_a_fresh_loop(
         repo: Path, engine_standins: Any) -> None:
-    """A retyped /plumb intent is a new request: its check runs under its own job id, so the
+    """A retyped /iaso intent is a new request: its check runs under its own job id, so the
     loop starts over instead of carrying the first send's stages."""
-    text = "/plumb intent " + WORDS
+    text = "/iaso intent " + WORDS
     engine_standins.dispatcher.script = {"clarify": NO_GAP}
     digest = _say(repo, text)
     worker.run_once(open_core(repo), SESSION)
@@ -105,7 +105,7 @@ def test_the_same_words_retyped_get_a_new_check_and_a_fresh_loop(
 def test_a_later_bare_slash_command_does_not_lose_the_loop(repo: Path,
                                                            engine_standins: Any) -> None:
     engine_standins.dispatcher.script = {"clarify": NO_GAP}
-    digest = _say(repo, "/plumb:plumb-intent " + WORDS)
+    digest = _say(repo, "/iaso:iaso-intent " + WORDS)
     worker.run_once(open_core(repo), SESSION)
     log_prompt(repo, "/reload-plugins", session=SESSION)
     assert _run(repo, "open", "--wait", "--timeout", "5") == 0
@@ -164,7 +164,7 @@ def test_a_passed_clarify_gate_leaves_a_hold_only_the_owner_or_the_check_opens(
 
 def test_without_a_session_no_loop_is_claimed(intent: Path, tmp_path: Path,
                                                monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.stale import SESSION_ENV
+    from iaso.stale import SESSION_ENV
 
     for name in SESSION_ENV:
         monkeypatch.delenv(name, raising=False)
@@ -224,7 +224,7 @@ def test_sr197_ex2_a_stated_proof_not_shown_keeps_the_intent_open(
 
 def test_without_a_loop_verb_the_command_captures_an_intent(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.capture import cli as capture_cli
+    from iaso.capture import cli as capture_cli
 
     seen: list[list[str]] = []
     monkeypatch.setattr(capture_cli, "run", lambda command, argv: seen.append(argv) or 0)

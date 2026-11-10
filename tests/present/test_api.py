@@ -1,4 +1,4 @@
-"""PRESENT's provided interface, ``plumb.present.api`` (sp5 9, plan 3.5; SR-064 EX-5): the
+"""PRESENT's provided interface, ``iaso.present.api`` (sp5 9, plan 3.5; SR-064 EX-5): the
 read-only views HOSTS (the MCP server, adapters) and CAPTURE call, the same as the CLI."""
 
 from __future__ import annotations
@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from present_helpers import FEAT1, FEAT2, INT1, SR1, SR2, SR3, write_all
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import Resolution, Target
-from plumb.present import api
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import Resolution, Target
+from iaso.present import api
 
 pytestmark = pytest.mark.sr("SR-202")
 
@@ -35,7 +35,7 @@ def records(repo: Path, write_record) -> Path:
 
 
 def _snapshot(repo: Path) -> dict[str, bytes]:
-    root = repo / ".plumb"
+    root = repo / ".iaso"
     return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*"))
             if p.is_file() and "cache" not in p.relative_to(root).parts
             and p.name != "test_map.txt"}
@@ -85,4 +85,4 @@ def test_brief_is_what_the_cli_prints(records: Path, capsys) -> None:
     capsys.readouterr()
     assert cli.main(["brief", "--root", str(records)]) == 0
     assert capsys.readouterr().out.splitlines() == lines
-    assert lines[0].startswith("plumb brief")
+    assert lines[0].startswith("iaso brief")

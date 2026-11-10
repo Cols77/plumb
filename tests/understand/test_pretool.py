@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import install, pretool
-from plumb.understand import gate
+from iaso.hosts.claude_code import install, pretool
+from iaso.understand import gate
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -46,7 +46,7 @@ def test_ex5_edit_refused_while_closed_message_names_clarify_wait(repo: Path) ->
         answer = pretool.decide(repo, SESSION, tool)
         out = answer["hookSpecificOutput"]
         assert out["permissionDecision"] == "deny" and out["hookEventName"] == "PreToolUse"
-        assert "plumb clarify --wait" in out["permissionDecisionReason"]
+        assert "iaso clarify --wait" in out["permissionDecisionReason"]
         assert "your request is being checked" in out["permissionDecisionReason"]
     # the Python route of the hook prints the same answer
     stdout = io.StringIO()
@@ -62,18 +62,18 @@ def test_gate_sh_lets_the_card_diagram_through_while_closed(repo: Path) -> None:
         input=json.dumps({"session_id": SESSION, "tool_name": "Write",
                           "tool_input": {"file_path": path}}),
         env={"PATH": __import__("os").environ["PATH"], "CLAUDE_PROJECT_DIR": str(repo)}).stdout
-    assert run(f"{repo}/.plumb/session/{SESSION}/diagrams/ab12.html") == ""
-    assert run(rf"C:\x\.plumb\session\{SESSION}\diagrams\ab12.html") == ""
-    assert "deny" in run(f"{repo}/.plumb/session/{SESSION}/diagrams/../../../src/a.py")
+    assert run(f"{repo}/.iaso/session/{SESSION}/diagrams/ab12.html") == ""
+    assert run(rf"C:\x\.iaso\session\{SESSION}\diagrams\ab12.html") == ""
+    assert "deny" in run(f"{repo}/.iaso/session/{SESSION}/diagrams/../../../src/a.py")
     assert "deny" in run("src/a.py")
 
 
 def test_python_route_lets_the_card_diagram_through_while_closed(repo: Path) -> None:
-    """SR-146: the hook falls through to this route for any path naming .plumb."""
+    """SR-146: the hook falls through to this route for any path naming .iaso."""
     _closed(repo)
-    ok = {"file_path": rf"C:\x\.plumb\session\{SESSION}\diagrams\ab12.html"}
+    ok = {"file_path": rf"C:\x\.iaso\session\{SESSION}\diagrams\ab12.html"}
     assert pretool.decide(repo, SESSION, "Write", ok) == {}
-    bad = {"file_path": f"{repo}/.plumb/session/{SESSION}/diagrams/../../../src/a.py"}
+    bad = {"file_path": f"{repo}/.iaso/session/{SESSION}/diagrams/../../../src/a.py"}
     assert pretool.decide(repo, SESSION, "Write", bad)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
@@ -88,7 +88,7 @@ def test_edit_allowed_when_open(repo: Path) -> None:
 
 
 def _core(repo: Path):
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     return open_core(repo)
 
@@ -101,12 +101,12 @@ def test_another_session_is_not_held(repo: Path) -> None:
 def test_script_text_contains_no_python() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert text.startswith("#!/bin/sh")
-    for word in ("python", "plumb -m", "uv run", "import ", "json.loads"):
-        assert word not in text.lower().replace("plumb clarify --wait", "")
+    for word in ("python", "iaso -m", "uv run", "import ", "json.loads"):
+        assert word not in text.lower().replace("iaso clarify --wait", "")
     assert "sed" not in text.split()                  # nor any other program: builtins only
     for tool in pretool.EDIT_TOOLS:
         assert tool in text
-    assert "plumb clarify --wait" in text and "shell are not checked" in text
+    assert "iaso clarify --wait" in text and "shell are not checked" in text
     assert pretool.REASON.split("{reason}")[1].strip(". ") in text.replace("\n", " ")
 
 
@@ -160,17 +160,17 @@ def test_bash_edit_not_gated_and_reason_says_so(repo: Path) -> None:
 
 
 def test_install_registers_pretool(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(__import__("sys").modules, "plumb.claims", None)
-    uv = install.Launcher("uv", "uv run --no-sync plumb", "uv run --no-sync plumb")
+    monkeypatch.setitem(__import__("sys").modules, "iaso.claims", None)
+    uv = install.Launcher("uv", "uv run --no-sync iaso", "uv run --no-sync iaso")
     assert "pre-tool" in install.available_hooks()
     install.install(repo, launcher=uv, hooks=("session-start", "pre-tool"))
     settings = json.loads((repo / ".claude" / "settings.json").read_text(encoding="utf-8"))
     (group,) = settings["hooks"]["PreToolUse"]
     assert group["matcher"] == "Edit|Write|MultiEdit|NotebookEdit"
     (hook,) = group["hooks"]
-    assert hook["command"] == 'sh "$CLAUDE_PROJECT_DIR/.claude/plumb/gate.sh"'
+    assert hook["command"] == 'sh "$CLAUDE_PROJECT_DIR/.claude/iaso/gate.sh"'
     assert "async" not in hook
-    script = repo / ".claude" / "plumb" / "gate.sh"
+    script = repo / ".claude" / "iaso" / "gate.sh"
     assert script.read_text(encoding="utf-8") == SCRIPT.read_text(encoding="utf-8")
     assert b"\r\n" not in script.read_bytes()
     status = "\n".join(install.status(repo))
@@ -186,7 +186,7 @@ def test_install_registers_pretool(repo: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_the_hook_route_is_listed_in_the_help(capsys: pytest.CaptureFixture) -> None:
-    from plumb.hosts.claude_code import cli
+    from iaso.hosts.claude_code import cli
 
     assert cli.run("hook", ["--help"]) == 0
     assert "pre-tool" in capsys.readouterr().out
@@ -195,8 +195,8 @@ def test_the_hook_route_is_listed_in_the_help(capsys: pytest.CaptureFixture) -> 
 @pytest.mark.sr("SR-226")
 def test_python_route_walks_up_from_a_subfolder(repo: Path,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
-    """SR-121: a session started in src/ reads the gate of the .plumb/ above it, as gate.sh
-    does, instead of a src/.plumb that does not exist."""
+    """SR-121: a session started in src/ reads the gate of the .iaso/ above it, as gate.sh
+    does, instead of a src/.iaso that does not exist."""
     _closed(repo)
     src = repo / "src"
     src.mkdir(exist_ok=True)

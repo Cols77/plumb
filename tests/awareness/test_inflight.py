@@ -1,4 +1,4 @@
-"""R17: the refs/plumb/claims register of intent in flight (SR-080)."""
+"""R17: the refs/iaso/claims register of intent in flight (SR-080)."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 
 from awareness.gitrepo import commit_all, run_git
 from awareness.scenario import change, setup
-from plumb.api import open_core
-from plumb.awareness import inflight
+from iaso.api import open_core
+from iaso.awareness import inflight
 
 pytestmark = pytest.mark.sr("SR-258")
 
@@ -83,8 +83,8 @@ def test_slow_git_under_load_still_retries(tmp_path: Path, monkeypatch: pytest.M
 _WORKER = """
 import sys
 from pathlib import Path
-from plumb.api import open_core
-from plumb.awareness import inflight
+from iaso.api import open_core
+from iaso.awareness import inflight
 root, tag = Path(sys.argv[1]), sys.argv[2]
 for n in range(5):
     inflight.record_claim(open_core(root), records={f"SR-00{n}": {"title": tag}},
@@ -138,9 +138,9 @@ def test_claim_never_refuses_anything(tmp_path: Path) -> None:
     change(other, "feat-x's version")
     result = change(main, "main's version")
     assert "SR-005" in result.updated
-    record = (main / ".plumb" / "requirements" / "SR-005.md").read_text(encoding="utf-8")
+    record = (main / ".iaso" / "requirements" / "SR-005.md").read_text(encoding="utf-8")
     assert "main's version" in record
-    (main / ".plumb" / "requirements" / "SR-005.md").write_text(record + "\n",
+    (main / ".iaso" / "requirements" / "SR-005.md").write_text(record + "\n",
                                                                 encoding="utf-8")
 
 
@@ -155,7 +155,7 @@ def test_hook_read_needs_no_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     """The register is read from git's files (a loose blob) on a hook path."""
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
-    (main / ".plumb" / "cache" / inflight.CACHE).unlink(missing_ok=True)
+    (main / ".iaso" / "cache" / inflight.CACHE).unlink(missing_ok=True)
 
     def refuse(*a, **k):  # noqa: ANN002, ANN003, ANN202
         raise AssertionError("git process")
@@ -169,7 +169,7 @@ def test_session_start_drops_a_merged_branch_claim(tmp_path: Path) -> None:
     """The hook path keeps a claim whose reachability it cannot know without git; the
     session start learns (with git, cached) that its branch merged, and every later hook
     read drops it."""
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness.turn import at_session_start
 
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
@@ -225,7 +225,7 @@ def test_merged_claim_is_pruned_by_the_next_writer(tmp_path: Path) -> None:
 
 def test_session_start_drops_a_claim_refreshed_at_the_tip(tmp_path: Path) -> None:
     """The hook-free read keeps what it cannot know; the session start learns it."""
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness.turn import at_session_start
 
     main, _other = _refreshed_at_tip(tmp_path)
     run_git(main, "merge", "-q", "--no-ff", "-m", "merge feat-x", "feat-x")
@@ -237,8 +237,8 @@ def test_session_start_drops_a_claim_refreshed_at_the_tip(tmp_path: Path) -> Non
 def test_stop_hook_moves_the_claim_to_a_new_commit(tmp_path: Path) -> None:
     """The stop hook after a commit with no record change moves the branch's claims to its
     tip, so a fast-forward merge of that commit clears them."""
-    from plumb.awareness import publish as pub
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness import publish as pub
+    from iaso.awareness.turn import claim_changes
 
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
@@ -286,8 +286,8 @@ def test_fast_forward_to_main_survives_another_writer(tmp_path: Path) -> None:
 
 def test_fast_forward_to_main_survives_the_stop_hook_and_session_start(tmp_path: Path
                                                                        ) -> None:
-    from plumb.awareness import publish as pub
-    from plumb.awareness.turn import at_session_start, claim_changes
+    from iaso.awareness import publish as pub
+    from iaso.awareness.turn import at_session_start, claim_changes
 
     main, other = _fast_forwarded_to_main(tmp_path)
     claim_changes(open_core(other), pub.publish(open_core(other), []))
@@ -304,8 +304,8 @@ def test_fast_forward_to_main_survives_the_stop_hook_and_session_start(tmp_path:
 def _merged_and_pruned(tmp_path: Path) -> tuple[Path, Path]:
     """feat-x claims SR-005, commits, its stop hook runs; main merges feat-x; the next
     writer prunes the merged claim. feat-x's worktree stays open."""
-    from plumb.awareness import publish as pub
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness import publish as pub
+    from iaso.awareness.turn import claim_changes
 
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
@@ -321,8 +321,8 @@ def _merged_and_pruned(tmp_path: Path) -> tuple[Path, Path]:
 def test_stop_hook_after_the_merge_claims_nothing(tmp_path: Path) -> None:
     """The stop hook (claim_changes): the merged records are not claimed again, so a later
     change on main asks nothing."""
-    from plumb.awareness import publish as pub
-    from plumb.awareness.turn import claim_changes
+    from iaso.awareness import publish as pub
+    from iaso.awareness.turn import claim_changes
 
     main, other = _merged_and_pruned(tmp_path)
     data = pub.publish(open_core(other), [])
@@ -334,11 +334,11 @@ def test_stop_hook_after_the_merge_claims_nothing(tmp_path: Path) -> None:
 
 
 def test_inflight_sync_after_the_merge_claims_nothing(tmp_path: Path) -> None:
-    """``plumb inflight sync``."""
+    """``iaso inflight sync``."""
     import contextlib
     import io
 
-    from plumb.cli import main as cli_main
+    from iaso.cli import main as cli_main
 
     main, other = _merged_and_pruned(tmp_path)
     with contextlib.redirect_stdout(io.StringIO()):
@@ -357,7 +357,7 @@ def test_capture_after_the_merge_claims_only_what_it_changed(tmp_path: Path) -> 
 def test_publish_keeps_pending_edits_when_only_main_moved(tmp_path: Path) -> None:
     """``changing.json``: main moving (here: merging feat-x) empties the committed part and
     keeps the edits since the last commit."""
-    from plumb.awareness import publish as pub
+    from iaso.awareness import publish as pub
 
     main, other = _merged_and_pruned(tmp_path)
     (other / "notes.txt").write_text("after the merge\n", encoding="utf-8")
@@ -370,8 +370,8 @@ def test_other_worktrees_stop_naming_a_merged_branch(tmp_path: Path) -> None:
     """The overlap read of another worktree's ``changing.json``: feat-x's file still lists
     SR-005 as committed (feat-x ran no hook since the merge); main's session start learns
     the merge (one git call, cached) and every later hook read ignores it."""
-    from plumb.awareness import scan
-    from plumb.awareness.turn import at_session_start
+    from iaso.awareness import scan
+    from iaso.awareness.turn import at_session_start
 
     main, _other = _merged_and_pruned(tmp_path)
     assert {o.branch for o in scan.overlaps(open_core(main), ["SR-005"])} == {"feat-x"}

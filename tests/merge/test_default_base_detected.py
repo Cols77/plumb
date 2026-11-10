@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from conftest import git
 
-from plumb.api import open_core
-from plumb.awareness import publish
-from plumb.boundary.cli import merge_settings
+from iaso.api import open_core
+from iaso.awareness import publish
+from iaso.boundary.cli import merge_settings
 
 pytestmark = pytest.mark.sr("SR-216")
 
@@ -25,7 +25,7 @@ def test_the_base_is_detected_when_the_config_does_not_set_it(repo: Path) -> Non
 
 def test_a_configured_base_wins(repo: Path) -> None:
     git(repo, "branch", "-m", "main", "master")
-    config = repo / ".plumb" / "config.yaml"
+    config = repo / ".iaso" / "config.yaml"
     config.write_text(config.read_text(encoding="utf-8") + "\nmerge:\n  default_base: trunk\n",
                       encoding="utf-8")
     assert merge_settings(open_core(repo))["default_base"] == "trunk"

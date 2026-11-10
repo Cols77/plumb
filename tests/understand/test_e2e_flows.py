@@ -1,7 +1,7 @@
 """Phase I end-to-end flows (sp8 plan 12.2, SR-101 to SR-111).
 
 Every flow runs through the real hook entry points as subprocesses (``harness.Session``), with a
-scripted model: ``PLUMB_FAKE_DISPATCH`` names a file of ``{kind: answer}`` that the worker
+scripted model: ``IASO_FAKE_DISPATCH`` names a file of ``{kind: answer}`` that the worker
 reads before each job, so a test changes the model's next answers by rewriting that file. The
 worker is the real worker, started by the hooks as in a session. Nothing here reaches a model.
 """
@@ -20,11 +20,11 @@ import pytest
 from conftest import git
 
 from core.stale_asked import asked
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.present import owner_text
-from plumb.understand import files
-from plumb.understand.repin import Meaning
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.present import owner_text
+from iaso.understand import files
+from iaso.understand.repin import Meaning
 from understand.fakes import owner_level
 from understand.harness import Session
 from understand.test_read_job import int_text, record_text
@@ -70,8 +70,8 @@ def calls(s: Session, kind: str | None = None) -> list[dict[str, str]]:
     return [r for r in rows if kind in (None, r["kind"])]
 
 
-def plumb(s: Session, *argv: str, timeout: float = 90) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, "-m", "plumb", *argv], capture_output=True,
+def iaso(s: Session, *argv: str, timeout: float = 90) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, "-m", "iaso", *argv], capture_output=True,
                           text=True, encoding="utf-8", cwd=s.repo, env=s.env(), timeout=timeout)
 
 
@@ -104,7 +104,7 @@ def judge_clear(*ids: str, **contradicted: list[str]) -> dict[str, Any]:
 
 
 def last_digest(repo: Path) -> str:
-    rows = (repo / ".plumb" / "session" / "prompts.jsonl").read_text(
+    rows = (repo / ".iaso" / "session" / "prompts.jsonl").read_text(
         encoding="utf-8").splitlines()
     return json.loads(rows[-1])["digest"]
 
@@ -126,7 +126,7 @@ def agent_of(s: Session) -> str:
     background worker said for that turn end (SR-375: it claims ``after_stop.json``)."""
     from host.fakes import agent_notes
 
-    session = s.repo / ".plumb" / "session" / s.session_id
+    session = s.repo / ".iaso" / "session" / s.session_id
     until = time.monotonic() + 30
     while time.monotonic() < until and any(session.glob("after_stop.json*")):
         time.sleep(0.1)
@@ -169,10 +169,10 @@ def test_flow_1_request_with_gaps_is_asked_through_the_question_tool(repo: Path)
     s = Session(repo)
     model(s, clarify=GAPS)
     s.start()
-    s.say("/plumb clarify let users export their data")
+    s.say("/iaso clarify let users export their data")
     assert s.worker_idle(30)
 
-    done = plumb(s, "clarify", "--wait", "--json", "--root", str(repo), "--timeout", "30")
+    done = iaso(s, "clarify", "--wait", "--json", "--root", str(repo), "--timeout", "30")
     asked = json.loads(done.stdout)
     assert asked["state"] == "ask" and "card" not in asked
     assert [q["question"] for q in asked["questions"]] == ["Which format?"]
@@ -191,7 +191,7 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
     s = Session(repo)
     show(s, ["INT-008", "SR-088"])
     message = ("INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features "
-               "might have to remain internal to plumb.")
+               "might have to remain internal to iaso.")
     entries = [
         {"id": "INT-008", "hash": index["INT-008"].hash, "answer": "accepted",
          "evidence": "INT-008 ok", "confidence": 0.97},
@@ -205,7 +205,7 @@ def test_flow_2_mixed_answer_one_job_confirm_and_change(repo: Path, write_record
     s.start()
     # SR-298: session start queues the waiting records from a process of its own; the answer
     # is sent once that backlog is judged, so the reading below is the message's own
-    from plumb.understand import jobs as queued_jobs
+    from iaso.understand import jobs as queued_jobs
 
     until = time.monotonic() + 60
     while time.monotonic() < until and not (
@@ -259,7 +259,7 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     """SR-248 EX-3, SR-252 EX-6: after a capture the judge model's question waits for the
     question tool (``clarify --wait`` answers ``ask``); the turn end draws no trial or read-back
     card and nothing is approved without a question round."""
-    (repo / ".plumb" / "config.yaml").write_text(ROOMY, encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text(ROOMY, encoding="utf-8")
     git(repo, "checkout", "-q", "-b", "calculator")   # SR-361: the work is on its own branch
     s = Session(repo)
     s.start()
@@ -279,13 +279,13 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     model(s, judge={"verdicts": [{"id": rid, "verdict": "beyond", "confidence": 0.9}
                                  for rid in ids], "questions": [asked]})
     (repo / "capture.json").write_text(json.dumps(_capture_doc()), encoding="utf-8")
-    done = plumb(s, "capture", "--file", str(repo / "capture.json"), "--prompt",
+    done = iaso(s, "capture", "--file", str(repo / "capture.json"), "--prompt",
                  short(last_digest(repo)))
     assert done.returncode == 0, done.stderr
     assert s.worker_idle(30)
     assert len(calls(s, "judge")) == 1
 
-    waited = plumb(s, "clarify", "--wait", "--json")
+    waited = iaso(s, "clarify", "--wait", "--json")
     assert waited.returncode == 0, waited.stderr
     shown = json.loads(waited.stdout)
     assert shown["state"] == "ask"
@@ -295,7 +295,7 @@ def test_flow_3_capture_asks_through_the_question_tool_and_draws_no_trial(repo: 
     at_owner_level(question["question"], *(o["description"] for o in question["options"]))
 
     s.stop()
-    assert not (repo / ".plumb" / "session" / s.session_id / "cards.json").exists()  # no trial card
+    assert not (repo / ".iaso" / "session" / s.session_id / "cards.json").exists()  # no trial card
     assert not events(repo, "approval")                  # no approval without a question round
 
 
@@ -344,13 +344,13 @@ def test_flow_5_schema_failure_and_a_record_edited_after_it_was_shown(
     s.say("INT-008 ok")
     assert s.worker_idle(30)
     assert owner_words_approvals(repo) == {}
-    failed = json.loads(next((repo / ".plumb" / "session" / SID / "results").glob(
+    failed = json.loads(next((repo / ".iaso" / "session" / SID / "results").glob(
         "read-*.json")).read_text(encoding="utf-8"))
     assert failed["status"] == "error" and failed["error"]["step"] == "schema"
 
     # the record is edited after the owner saw it: an answer about the old version confirms
     # nothing, whatever the model says
-    path = repo / ".plumb" / "intents" / "INT-008.md"
+    path = repo / ".iaso" / "intents" / "INT-008.md"
     path.write_text(path.read_text(encoding="utf-8").replace("Internal features",
                                                               "Internal features, reworded"),
                     encoding="utf-8")
@@ -414,7 +414,7 @@ def test_flow_5_a_job_not_finished_at_the_turns_end_is_collected_next_turn(
 
 def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothing(
         repo: Path, write_record) -> None:
-    from plumb.understand import jobs, queue
+    from iaso.understand import jobs, queue
 
     write_record(repo, int_text(8, "Internal features"))
     index = open_core(repo).index()
@@ -424,8 +424,8 @@ def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothin
                                          "read": {"entries": []}}), encoding="utf-8")
     s.start()
     s.say("let users export their data")                            # read while a card waits
-    s.say("/plumb clarify let users export their data")             # a request with gaps
-    base = repo / ".plumb" / "session" / SID
+    s.say("/iaso clarify let users export their data")             # a request with gaps
+    base = repo / ".iaso" / "session" / SID
     by_kind = {json.loads(p.read_text(encoding="utf-8"))["kind"]: p
                for p in (base / "jobs").glob("*.json")}
     clarify_id, read_id = by_kind["clarify"].stem, by_kind["read"].stem
@@ -447,7 +447,7 @@ def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothin
         "cards": []})
     queue.enqueue(open_core(repo), forged)
 
-    waited = json.loads(plumb(s, "clarify", "--wait", "--json", "--root", str(repo),
+    waited = json.loads(iaso(s, "clarify", "--wait", "--json", "--root", str(repo),
                               "--timeout", "1").stdout)
     assert waited["state"] == "couldnt_check"                       # the file opened no gate
     assert deny(s)
@@ -457,7 +457,7 @@ def test_flow_6_a_result_file_and_a_job_file_written_by_the_agent_confirm_nothin
     notes = " ".join(str(e.payload) for e in events(repo, "job-note"))
     assert notes, "the agent's files were not reported"
     # the worker's own check is what the owner gets in the end
-    final = json.loads(plumb(s, "clarify", "--wait", "--json", "--root", str(repo),
+    final = json.loads(iaso(s, "clarify", "--wait", "--json", "--root", str(repo),
                              "--timeout", "30").stdout)
     assert final["state"] == "ask" and not deny(s)
 
@@ -481,7 +481,7 @@ CALC = "def add(a, b):\n    return a + b\n"
 
 def test_flow_7_stale_edit_names_the_link_hold_card_and_reformat(
         repo: Path, write_record) -> None:
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     write_record(repo, SR1)
     (repo / "src").mkdir()

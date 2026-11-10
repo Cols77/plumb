@@ -1,0 +1,218 @@
+"""``iaso explain <anything>``: why a behaviour, a file or a record exists, in the owner's
+terms (ruling R9, "the user don't necessarily know the code").
+
+The argument is plain language ("the doubling thing"), a record ID or a repository path; IDs
+and paths work but are never required. It resolves, in this order:
+
+1. record IDs named in the text (``SR-001``, ``INT-003`` ...);
+2. a repository path (a file, or the end of a link): the requirements that own it;
+3. plain words: the records whose title, statement, examples or quote share the most terms
+   (``iaso.query.relevant``), best first.
+
+For each record it prints the upward chain: the requirement, the owner's words it derives
+from (INT quote), the decisions that decide it, its feature, its examples, the state of the
+tests that verify them, and the code it is implemented by. ``iaso why`` is an alias. The host
+agent runs it for ``/iaso explain`` and restates the answer for the owner.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from iaso.text import quote_label
+
+MAX_MATCHES = 3
+
+_STATE = {"confirmed": "confirmed", "proposed": "proposed, waiting on a judge",
+          "unconfirmed-edit": "changed since it was approved, waiting on a judge"}
+
+
+def _clip(text: Any, width: int = 160) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+def _state(core: Any, record_id: str, status: Any) -> str:
+    """The record's state; a confirmed one says who confirmed it, labelled like every other
+    surface (``present.cards.confirmed_label``, R8 B, R13 Q4)."""
+    from iaso.present.cards import confirmed_label
+
+    if status is None:
+        return "?"
+    return confirmed_label(core, record_id, status) or _STATE.get(status.confirmation,
+                                                                  status.confirmation)
+
+
+def resolve(core: Any, query: str) -> tuple[list[str], str, str | None]:
+    """``(record ids, how, path)``: what ``query`` names, through ``iaso.present.resolve``
+    (sp5 5). ``how`` is ``id``, ``path``, ``test``, ``words``, ``ambiguous`` or ``none``;
+    ``path`` is the repository path when the query (or its clear best match) is one."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
+    return ids, how, path
+
+
+def resolve_words(core: Any, query: str) -> Any:
+    from iaso.present.resolve import resolve as present_resolve
+
+    return present_resolve(core, query)
+
+
+def _from_resolution(core: Any, resolution: Any) -> tuple[list[str], str, str | None]:
+    if resolution.how == "none":
+        return [], "none", None
+    if resolution.ambiguous:
+        return [], "ambiguous", None
+    items = list(resolution.items)
+    records = [i.ref for i in items if i.kind == "record"]
+    paths = [i.ref for i in items if i.kind == "path"]
+    if resolution.how == "path" or (not records and paths):
+        path = paths[0] if paths else resolution.query.strip("'\"")
+        if not records and paths:
+            index = core.index()
+            owners = list(core.records_for_paths([path]).get(path, ()))
+            requirements = [i for i in owners if index[i].kind == "requirement"]
+            records = sorted(requirements or owners)
+        return records[:MAX_MATCHES], "path", path
+    return records[:MAX_MATCHES], resolution.how, None
+
+
+def _tests(core: Any, record_id: str) -> list[str]:
+    """``tests/test_mod.py (EX-1): passing``: each acceptance test with its state."""
+    try:
+        from iaso.verify import open_verify
+    except ImportError:
+        return []
+    try:
+        items = open_verify(core).acceptance([record_id]).get(record_id, [])
+    except Exception:  # noqa: BLE001 - a lane failure degrades to no test line
+        return []
+    out = []
+    for item in items:
+        if item.get("masked"):
+            state = "passes only because the test was changed; awaiting you"
+        elif item.get("failing"):
+            state = "regression: it passed before and fails now" if item.get("regression") \
+                else "failing"
+        elif item.get("unverified"):
+            state = "never run" if item.get("state") == "none" else \
+                "not rerun since the code changed"
+        else:
+            state = "passing"
+        examples = f" ({', '.join(item['examples'])})" if item.get("examples") else ""
+        out.append(f"{item['test']}{examples}: {state}")
+    return out
+
+
+def _example_text(example: Any) -> str:
+    if example.criterion:
+        return f"{example.id}: {example.criterion}"
+    return f"{example.id}: given {example.given}, when {example.when}, then {example.then}"
+
+
+def record_chain(core: Any, record_id: str, statuses: Mapping[str, Any]) -> list[str]:
+    """The upward chain of one record, in the owner's terms."""
+    index = core.index()
+    record = index[record_id]
+    fields = record.fields
+    state = _state(core, record_id, statuses.get(record_id))
+    lines = [f"{record_id} \"{record.title}\" ({state})"]
+    what = (fields.get("statement") or fields.get("readback") or fields.get("description")
+            or fields.get("question"))
+    if what:
+        lines.append("  what: " + _clip(what))
+    if record.kind == "intent" and fields.get("quote"):
+        quote = fields["quote"]
+        quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
+        lines.append(f"  {quote_label(fields)}: \"" + _clip(quote) + "\"")
+    if record.kind == "decision":
+        if fields.get("chosen"):
+            lines.append("  chosen: " + _clip(fields["chosen"]))
+        alternatives = fields.get("alternatives") or []
+        if alternatives:
+            alternatives = [alternatives] if isinstance(alternatives, str) else alternatives
+            lines.append("  also possible: " + _clip("; ".join(map(str, alternatives))))
+    for link in record.links:
+        target = link.target.record
+        if link.kind == "derives_from" and target in index:
+            parent = index[target]
+            quote = parent.fields.get("quote")
+            quote = " / ".join(map(str, quote)) if isinstance(quote, list) else quote
+            target_state = _state(core, target, statuses.get(target))
+            lines.append(f"  why: {target} \"{parent.title}\" ({target_state})"
+                         + (f", {quote_label(parent.fields)}: \"{_clip(quote, 120)}\""
+                            if quote else ""))
+    for other in index.values():
+        if other.kind != "decision":
+            continue
+        if any(link.kind == "decides" and link.target.record == record_id
+               for link in other.links):
+            chosen = other.fields.get("chosen")
+            lines.append(f"  decided: {other.id} \"{other.title}\""
+                         + (f", chosen: {_clip(chosen, 80)}" if chosen else "")
+                         + f" ({_state(core, other.id, statuses.get(other.id))})")
+    feature = fields.get("feature")
+    if feature and feature in index:
+        lines.append(f"  feature: {feature} \"{index[feature].title}\"")
+    for example in record.examples:
+        lines.append("  example " + _clip(_example_text(example)))
+    if record.kind == "requirement":
+        for test in _tests(core, record_id):
+            lines.append("  test " + test)
+        code = [link.target.path or link.target.test or link.target.symbol
+                for link in record.links if link.kind == "implemented_by"]
+        if code:
+            lines.append("  code: " + ", ".join(str(c) for c in code))
+    if record.kind in ("intent", "feature", "decision"):
+        below = sorted(other.id for other in index.values()
+                       if any(link.target.record == record_id
+                              and link.kind in ("derives_from", "upstream")
+                              for link in other.links)
+                       or (record.kind == "feature"
+                           and str(other.fields.get("feature")) == record_id))
+        decided = [link.target.record for link in record.links
+                   if link.kind == "decides" and link.target.record]
+        below = sorted({*below, *decided})
+        if below:
+            lines.append("  led to: " + ", ".join(
+                f"{i} \"{_clip(index[i].title, 60)}\"" for i in below if i in index))
+    return lines
+
+
+def explain_lines(core: Any, query: str) -> tuple[list[str], dict[str, Any]]:
+    """The answer lines and ``{query, how, path, records, candidates}``. When the words do
+    not clearly name one thing, the candidates are listed in the owner's terms with the
+    question (sp5 5), and nothing is explained."""
+    resolution = resolve_words(core, query)
+    ids, how, path = _from_resolution(core, resolution)
+    statuses = core.status()
+    data: dict[str, Any] = {"query": query, "how": how, "path": path, "records": ids,
+                            "candidates": [i.ref for i in resolution.items]
+                            if resolution.ambiguous else []}
+    if how == "ambiguous":
+        from iaso.present.resolve import candidate_lines
+
+        return candidate_lines(resolution), data
+    if not ids:
+        if how == "path" or path:
+            return [f"{path}: no requirement owns this file yet (an untraced change at the "
+                    "merge boundary); ask the agent to read it back and record a proposed "
+                    "requirement"], data
+        return [f"nothing in iaso's records matches \"{query}\"; try other words, a file "
+                "path or a record ID (iaso brief lists the records)"], data
+    lines: list[str] = []
+    if how == "path":
+        lines.append(f"{path} is code for:")
+    elif how == "words":
+        lines.append(f"\"{query}\" best matches:")
+    for record_id in ids:
+        lines.extend(record_chain(core, record_id, statuses))
+    lines.append("iaso show <ID> prints a record in full; iaso impact <ID|path> lists what "
+                 "a change would reach.")
+    return lines, data
+
+
+def matches(core: Any, query: str) -> Sequence[str]:
+    """The record ids ``query`` resolves to (for tests and the host)."""
+    return resolve(core, query)[0]

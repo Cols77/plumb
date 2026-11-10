@@ -1,4 +1,4 @@
-"""SR-351: the repins of a debug pass in plumb's own main checkout land on a debug branch,
+"""SR-351: the repins of a debug pass in iaso's own main checkout land on a debug branch,
 committed with the requirement trailer and announced as ready to land; the checkout stays
 unchanged. The meaning cascade is stubbed to repin; git is real."""
 
@@ -10,45 +10,45 @@ from types import SimpleNamespace
 
 import pytest
 
-from plumb import debug, selfdebug
-from plumb.api import open_core
-from plumb.links import AfterTests, repin
-from tests.debug.test_selffix import SR1, _git, plumb_repo  # noqa: F401 - fixture
+from iaso import debug, selfdebug
+from iaso.api import open_core
+from iaso.links import AfterTests, repin
+from tests.debug.test_selffix import SR1, _git, iaso_repo  # noqa: F401 - fixture
 
 pytestmark = pytest.mark.sr("SR-351")
 
 
 def test_ex1_a_repin_is_a_commit_on_a_debug_branch_announced_and_main_is_unchanged(
-        plumb_repo: Path, write_record, monkeypatch, capsys) -> None:  # noqa: F811
-    write_record(plumb_repo, SR1.format(suffix=" of two numbers"))
-    _git(plumb_repo, "commit", "-qam", "reword")   # DEC-001 is stale in main
-    monkeypatch.setattr("plumb.links.repin_after_tests", lambda core, record, **kw: (
+        iaso_repo: Path, write_record, monkeypatch, capsys) -> None:  # noqa: F811
+    write_record(iaso_repo, SR1.format(suffix=" of two numbers"))
+    _git(iaso_repo, "commit", "-qam", "reword")   # DEC-001 is stale in main
+    monkeypatch.setattr("iaso.links.repin_after_tests", lambda core, record, **kw: (
         AfterTests(changes=[{"link": c["link"], "tier": "tests pass"}
                             for c in repin(core, record, all_stale=True)])))
-    head = _git(plumb_repo, "rev-parse", "HEAD")
-    assert debug.run("debug", ["--root", str(plumb_repo)]) == 1   # the hook case stays open
+    head = _git(iaso_repo, "rev-parse", "HEAD")
+    assert debug.run("debug", ["--root", str(iaso_repo)]) == 1   # the hook case stays open
     assert "DEC-001#0: resolved" in capsys.readouterr().out
-    assert _git(plumb_repo, "status", "--porcelain", "--untracked-files=no") == ""
-    assert _git(plumb_repo, "rev-parse", "HEAD") == head
-    assert _git(plumb_repo, "rev-list", "--count", "main..debug/repin").strip() == "1"
-    assert "SR: SR-001" in _git(plumb_repo, "log", "-1", "--format=%B", "debug/repin")
-    assert _git(plumb_repo, "status", "--porcelain", "--untracked-files=all",
-                "--", ":!.plumb/wt") == ""
+    assert _git(iaso_repo, "status", "--porcelain", "--untracked-files=no") == ""
+    assert _git(iaso_repo, "rev-parse", "HEAD") == head
+    assert _git(iaso_repo, "rev-list", "--count", "main..debug/repin").strip() == "1"
+    assert "SR: SR-001" in _git(iaso_repo, "log", "-1", "--format=%B", "debug/repin")
+    assert _git(iaso_repo, "status", "--porcelain", "--untracked-files=all",
+                "--", ":!.iaso/wt") == ""
     assert all(s.state == "current" for s in open_core(
-        plumb_repo / ".plumb" / "wt" / "debug-repin").link_states(["DEC-001"]))
-    (key, text), = debug.lines(plumb_repo, "s1")
+        iaso_repo / ".iaso" / "wt" / "debug-repin").link_states(["DEC-001"]))
+    (key, text), = debug.lines(iaso_repo, "s1")
     assert key.startswith("ready:repin-") and "debug/repin" in text
     assert "reviewed" not in text
 
 
 @pytest.fixture
-def stale_dec(plumb_repo: Path, write_record, monkeypatch) -> Path:
-    write_record(plumb_repo, SR1.format(suffix=" of two numbers"))
-    _git(plumb_repo, "commit", "-qam", "reword")
-    monkeypatch.setattr("plumb.links.repin_after_tests", lambda core, record, **kw: (
+def stale_dec(iaso_repo: Path, write_record, monkeypatch) -> Path:
+    write_record(iaso_repo, SR1.format(suffix=" of two numbers"))
+    _git(iaso_repo, "commit", "-qam", "reword")
+    monkeypatch.setattr("iaso.links.repin_after_tests", lambda core, record, **kw: (
         AfterTests(changes=[{"link": c["link"], "tier": "tests pass"}
                             for c in repin(core, record, all_stale=True)])))
-    return plumb_repo
+    return iaso_repo
 
 
 def test_a_second_pass_after_main_moved_replaces_the_first_announcement(stale_dec: Path) -> None:
@@ -94,28 +94,28 @@ def test_a_failed_commit_reports_open_and_drops_the_edits(stale_dec: Path,
 
 
 def test_main_uncommitted_work_is_not_touched(stale_dec: Path) -> None:
-    (stale_dec / "src" / "plumb" / "calc.py").write_text("# edited", "utf-8")
+    (stale_dec / "src" / "iaso" / "calc.py").write_text("# edited", "utf-8")
     debug.run("debug", ["--root", str(stale_dec)])
-    assert (stale_dec / "src" / "plumb" / "calc.py").read_text("utf-8") == "# edited"
+    assert (stale_dec / "src" / "iaso" / "calc.py").read_text("utf-8") == "# edited"
 
 
 def test_a_failure_in_the_work_reports_open_and_cleans_the_worktree(
         stale_dec: Path, capsys) -> None:
     def work(c):
-        wt = stale_dec / ".plumb" / "wt" / "debug-repin"
+        wt = stale_dec / ".iaso" / "wt" / "debug-repin"
         (wt / "junk.txt").write_text("x", "utf-8")
         raise RuntimeError("model fell over")
 
     found, error = debug.on_branch(open_core(stale_dec), work)
     assert "model fell over" in error
-    wt = stale_dec / ".plumb" / "wt" / "debug-repin"
+    wt = stale_dec / ".iaso" / "wt" / "debug-repin"
     assert not (wt / "junk.txt").exists()
     assert _git(wt, "status", "--porcelain") == ""
     assert debug._pass(open_core(stale_dec), [], False) is not None
 
 
 def test_the_turn_end_settle_stays_in_place(stale_dec: Path) -> None:
-    from plumb import stale
+    from iaso import stale
 
     stale.settle_drift(open_core(stale_dec), "s1", [SimpleNamespace(record="DEC-001")])
     assert _git(stale_dec, "branch", "--list", "debug/repin") == ""

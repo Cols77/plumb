@@ -1,5 +1,5 @@
 {
-  "description": "plumb's background checks (SP7 4.3) and its in-app panel",
+  "description": "iaso's background checks (SP7 4.3) and its in-app panel",
   "modules": [
     "./register.tsx"
   ],
@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-start",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" session-start",
             "timeout": 120
           }
         ]
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" prompt",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" prompt",
             "timeout": 120
           }
         ]
@@ -29,11 +29,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task|AskUserQuestion|mcp__plumb_ask__ask_owner",
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit|Read|Grep|Glob|Agent|Task|AskUserQuestion|mcp__iaso_ask__ask_owner",
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" pre-tool",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" pre-tool",
             "timeout": 10
           }
         ]
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" post-edit",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" post-edit",
             "timeout": 120,
             "async": true
           }
@@ -56,17 +56,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" edit-check",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" edit-check",
             "timeout": 10
           }
         ]
       },
       {
-        "matcher": "AskUserQuestion|mcp__plumb_ask__ask_owner",
+        "matcher": "AskUserQuestion|mcp__iaso_ask__ask_owner",
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" question-answer",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" question-answer",
             "timeout": 120,
             "async": true
           }
@@ -78,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" stop",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" stop",
             "timeout": 120
           }
         ]
@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" subagent-stop",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" subagent-stop",
             "timeout": 120
           }
         ]
@@ -100,7 +100,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/plumb-hook\" session-end",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/bin/iaso-hook\" session-end",
             "timeout": 120
           }
         ]

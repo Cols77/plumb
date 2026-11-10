@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import summary
+from iaso.api import open_core
+from iaso.understand import summary
 
 pytestmark = pytest.mark.sr("SR-300")
 
@@ -18,7 +18,7 @@ CASES = [{"id": f"c{n}", "kind": "stale-link", "target": f"SR-{n}", "detail": "d
 
 def test_ex1_three_cases_are_told_with_the_workflow_on_sonnet(repo: Path) -> None:
     summary.write_cases(open_core(repo), "abc123", CASES)
-    path = repo / ".plumb" / "cache" / "debug" / "abc123.json"
+    path = repo / ".iaso" / "cache" / "debug" / "abc123.json"
     rows = json.loads(path.read_text(encoding="utf-8"))
     assert [r["id"] for r in rows] == ["c1", "c2", "c3"]
     assert set(rows[0]) == {"id", "kind", "target", "detail", "state"}
@@ -30,13 +30,13 @@ def test_ex1_three_cases_are_told_with_the_workflow_on_sonnet(repo: Path) -> Non
 
 def test_ex4_no_cases_write_nothing(repo: Path) -> None:
     summary.write_cases(open_core(repo), "abc123", [])
-    assert not (repo / ".plumb" / "cache" / "debug").exists()
+    assert not (repo / ".iaso" / "cache" / "debug").exists()
 
 
 def test_ex2_a_resolved_case_is_counted_and_no_longer_told(repo: Path) -> None:
     """SR-300 EX-2: the debug workflow repins one stale link and marks its case done: the
     next text counts it resolved and lists the two still open."""
-    from plumb.boundary import landing
+    from iaso.boundary import landing
 
     summary.write_cases(open_core(repo), "abc123", CASES)
     assert summary.resolve_cases(repo, ["c2"]) == 1

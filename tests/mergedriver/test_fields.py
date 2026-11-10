@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from mergedriver.mdhelpers import Counter, ex, link, parse, record
-from plumb.mergedriver import merge_texts
-from plumb.model import record_hash, split_frontmatter
+from iaso.mergedriver import merge_texts
+from iaso.model import record_hash, split_frontmatter
 
 LABELS = ("main", "feat-x")
 

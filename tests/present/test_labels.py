@@ -1,7 +1,7 @@
 """Every surface that states a confirmed record says who confirmed it: you, you (relayed), a
 judge with its model and score ("judge-approved (auto-jev, jev-1.13, 0.96)", SR-251), with the
 "self-recorded message" label (R8 B, R13 Q4). One label path
-(``plumb.present.cards.confirmed_label``); one test per surface."""
+(``iaso.present.cards.confirmed_label``); one test per surface."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from present_helpers import FEAT1, INT1, SR1, SR2, fake_capture, write_all
 
-from plumb import api, cli
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import api, cli
+from iaso.api import open_core
+from iaso.contracts import Target
 
 SELF = "self-recorded message"
 CASES = [("owner", "", "confirmed by you"),

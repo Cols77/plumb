@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.boundary import landing
-from plumb.capture import proof
-from plumb.capture.records import CaptureError, record_fields
-from plumb.contracts import Target
-from plumb.understand import cmd_intent
+from iaso.api import open_core
+from iaso.boundary import landing
+from iaso.capture import proof
+from iaso.capture.records import CaptureError, record_fields
+from iaso.contracts import Target
+from iaso.understand import cmd_intent
 
 INT = "---\nid: INT-001\ntitle: Grounded\nquote: q\nreadback: Ground the work.\n---\n"
 SR = "---\nid: {id}\ntitle: Thing {id}\nstatement: The thing works.\n---\n"
@@ -131,5 +131,5 @@ def test_sr396_ex4_landing_names_the_evaluator_for_a_post_merge_proof(core) -> N
     proof.set_plan(core, "SR-002", "run it", "command", post=True)
     lines = dict(landing.proof_lines(Path(core.root), ["SR-001", "SR-002"]))
     picked, plain = lines["post-merge-proof:SR-001"], lines["post-merge-proof:SR-002"]
-    assert "plumb evaluate proof SR-001" in picked and "--ask" not in picked
+    assert "iaso evaluate proof SR-001" in picked and "--ask" not in picked
     assert "--ask" in plain and "evaluate" not in plain

@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, project, write
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.boundary import merge_report, render
-from plumb.verify import open_verify
+from iaso import approvals
+from iaso.api import open_core
+from iaso.boundary import merge_report, render
+from iaso.verify import open_verify
 
 pytestmark = pytest.mark.sr("SR-254")
 
@@ -139,15 +139,15 @@ def test_merge_evidence_only_on_green(confirmed) -> None:
 
 
 # One full run per invocation, at every entry point that can reach ``fullrun.full_run``:
-# merge_report (test_red_run_not_repeated_and_holds_5), ``plumb merge-check BASE``,
-# ``plumb merge-check --hook pre-push`` (one report per pushed base) and
-# ``plumb validate --merge BASE`` (report only, never runs).
+# merge_report (test_red_run_not_repeated_and_holds_5), ``iaso merge-check BASE``,
+# ``iaso merge-check --hook pre-push`` (one report per pushed base) and
+# ``iaso validate --merge BASE`` (report only, never runs).
 
 
 @pytest.fixture
 def red(repo: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, Counting]:
     """Every record confirmed, a failing suite, and the default runner counted."""
-    import plumb.boundary.fullrun as fullrun
+    import iaso.boundary.fullrun as fullrun
 
     project(repo, test=FAILING)
     approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
@@ -158,7 +158,7 @@ def red(repo: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str, Countin
 
 
 def test_cli_single_base_runs_once(red, capsys) -> None:
-    from plumb import cli
+    from iaso import cli
 
     root, sha, runner = red
     assert cli.main(["merge-check", sha, "--run", "--root", str(root)]) == 5
@@ -166,8 +166,8 @@ def test_cli_single_base_runs_once(red, capsys) -> None:
 
 
 def test_cli_without_run_runs_nothing(red, capsys) -> None:
-    """A bare ``plumb merge-check`` is the quick check: it never starts the full suite."""
-    from plumb import cli
+    """A bare ``iaso merge-check`` is the quick check: it never starts the full suite."""
+    from iaso import cli
 
     root, sha, runner = red
     cli.main(["merge-check", sha, "--root", str(root)])
@@ -181,7 +181,7 @@ def test_hook_many_bases_runs_once(red, monkeypatch: pytest.MonkeyPatch, capsys)
 
     from merge_helpers import git
 
-    from plumb.boundary.cli import _hook_pre_push
+    from iaso.boundary.cli import _hook_pre_push
 
     root, sha, runner = red
     write(root, "notes.md", "n\n")
@@ -192,11 +192,11 @@ def test_hook_many_bases_runs_once(red, monkeypatch: pytest.MonkeyPatch, capsys)
     monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
     assert _hook_pre_push(open_core(root), True) == 5
     assert runner.calls == 1
-    assert capsys.readouterr().out.count("plumb pre-push: refs/heads/") == 2
+    assert capsys.readouterr().out.count("iaso pre-push: refs/heads/") == 2
 
 
 def test_validate_merge_never_runs(red, capsys) -> None:
-    from plumb import cli
+    from iaso import cli
 
     root, sha, runner = red
     assert cli.main(["validate", "--merge", sha, "--root", str(root)]) == 5

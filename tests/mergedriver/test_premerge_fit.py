@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from mergedriver.mdhelpers import commit_all, ex, make_repo, plumb, record, run_git, write_record
-from plumb.api import open_core
-from plumb.boundary.premerge import check
+from mergedriver.mdhelpers import commit_all, ex, make_repo, iaso, record, run_git, write_record
+from iaso.api import open_core
+from iaso.boundary.premerge import check
 
 
 def _pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -17,7 +17,7 @@ def _pair(tmp_path: Path) -> tuple[Path, Path]:
     write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
     (root / "src").mkdir()
     (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    assert iaso(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
     commit_all(root, "SR-005")
     other = tmp_path / "feat"
     run_git(root, "worktree", "add", "-q", "-b", "feat-x", str(other))
@@ -35,7 +35,7 @@ def _merge(root: Path):
 @pytest.mark.sr("SR-306")
 def test_ex1_a_validate_error_already_on_main_refuses_the_merge(tmp_path: Path) -> None:
     root, other = _pair(tmp_path)
-    (root / ".plumb" / "requirements" / "SR-005.md").write_text("not a record\n", encoding="utf-8")
+    (root / ".iaso" / "requirements" / "SR-005.md").write_text("not a record\n", encoding="utf-8")
     commit_all(root, "break main\n\nSR: SR-005")
     (other / "other.txt").write_text("feat\n", encoding="utf-8")
     commit_all(other, "plain")
@@ -60,7 +60,7 @@ def test_ex3_a_link_stale_at_the_base_does_not_hold(tmp_path: Path) -> None:
     write_record(root, record(statement="A relay pins every stated record.", examples=[ex(1)]))
     (root / "src").mkdir()
     (root / "src" / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert plumb(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
+    assert iaso(root, "link", "SR-005", "implemented_by", "src/a.py").returncode == 0
     commit_all(root, "SR-005")
     (root / "src" / "a.py").write_text("x = 2\n", encoding="utf-8")
     commit_all(root, "stale before the fork")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
+from iaso import cli
 
 pytestmark = pytest.mark.sr("SR-380")
 
@@ -24,7 +24,7 @@ def test_ex1_spec_approve_does_not_exist(repo: Path, capsys) -> None:
 
 
 def test_ex5_no_card_press_surface_is_left(capsys) -> None:
-    assert importlib.util.find_spec("plumb.mod.press") is None
-    assert importlib.util.find_spec("plumb.mod.offers") is None
+    assert importlib.util.find_spec("iaso.mod.press") is None
+    assert importlib.util.find_spec("iaso.mod.offers") is None
     assert cli.main(["mod", "press", "--session", "s1"]) != 0
     assert "invalid choice" in capsys.readouterr().err

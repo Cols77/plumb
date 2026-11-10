@@ -1,0 +1,107 @@
+{
+  "intent": "INT-051",
+  "status": "discovery; one-project scope; existing cards/mods are behaviour baseline; browser session integration unresolved",
+  "verified_existing": {
+    "core": "Python library and CLI; repository Markdown records, hash-pinned links and append-only logs",
+    "cards": [
+      "readback/confirmation",
+      "choice/clarify",
+      "beyond",
+      "contradicts",
+      "regression",
+      "test_changed",
+      "conflict",
+      "early_conflict",
+      "stale_link",
+      "trial",
+      "couldnt_check"
+    ],
+    "card_states": [
+      "open",
+      "answered",
+      "closed",
+      "left_open",
+      "change_requested",
+      "withdrawn"
+    ],
+    "background_jobs": [
+      "read",
+      "judge",
+      "clarify"
+    ],
+    "owner_action": "Mod offers pin displayed content; press checks session key, offer and current record hash. This is host-specific, not an existing browser authentication system.",
+    "mcp": "read-only; does not provide browser mutation or agent lifecycle endpoints",
+    "capture_provenance": "Current prompt absent from host log; captured without --prompt through supported CLI, quote unchecked and proposed.",
+    "mod_agent_followup": "plugin/hooks/register.tsx ui.press calls iaso.press; uses prompt.fill for correction text, appends model_note to session as a user-type message, then refreshes snapshot. It does not spawn an independent repair agent in this handler. This code alone does not prove automatic turn scheduling."
+  },
+  "proposals_not_decisions": {
+    "ux": "Prioritized issue inbox with focused resolution view, evidence/diff and linked agent activity; track human answer separately from repair and verified completion.",
+    "backend": "Reuse Iaso Python core behind explicit read and owner-action APIs, with event updates and optional agent-runtime adapters; retain .iaso as authority. Choose runtime persistence and hosting after deployment scope is known.",
+    "agent_visibility": "Show purpose, project/branch, current step, last activity, blocking issue and result; expose detailed events on demand. Do not invent completion percentages.",
+    "agent_integration": "Browser companion to the relevant coding-agent session, reusing Iaso actions. Feasibility of attaching to an existing live session must be checked before selecting a host bridge."
+  },
+  "candidates": [
+    {
+      "name": "CloudCLI",
+      "url": "https://github.com/siteboon/claudecodeui",
+      "license": "AGPL-3.0 per repository",
+      "fit": "Agent sessions, browser chat, terminal and plugins; investigate plugin integration before full fork.",
+      "plugin": "https://github.com/cloudcli-ai/cloudcli-plugin-starter",
+      "plugin_license": "MIT per repository"
+    },
+    {
+      "name": "Vibe Kanban",
+      "url": "https://github.com/BloopAI/vibe-kanban",
+      "license": "Apache-2.0 per repository",
+      "fit": "Workspaces, agent execution and diff review; larger fork and upstream transition must be assessed.",
+      "status_source": "https://www.vibekanban.com/blog/shutdown"
+    },
+    {
+      "name": "Agent Inbox",
+      "url": "https://github.com/langchain-ai/agent-inbox",
+      "license": "MIT per repository",
+      "fit": "Focused interruption response UX; assumes LangGraph deployment, so substantial adapter or frontend extraction needed for Iaso."
+    }
+  ],
+  "interview_branches": [
+    "Primary workflow: issue resolution, agent workspace, or multi-project control centre",
+    "Primary users, project count, hosting and remote/mobile access",
+    "Issue triage, urgency and resolution workflow per kind",
+    "Meaning of progress and evidence of completion",
+    "Agent visibility and supported hosts",
+    "Agent lifecycle controls, resume semantics, worktree isolation and concurrency",
+    "Human action provenance, stale content, multiple tabs/users and recovery",
+    "Backend transport, persistence, event replay and deployment",
+    "Fork versus plugin versus standalone UI, licensing preferences and maintenance appetite",
+    "Acceptance scenarios and design review"
+  ],
+  "question_1": {
+    "question": "What should the browser become first?",
+    "recommended": "Issue-resolution workspace with agent visibility; agents may execute elsewhere",
+    "options": [
+      "Issue-resolution workspace",
+      "Agent workspace with lifecycle controls",
+      "Multi-project, multi-agent and multi-person control centre"
+    ],
+    "answer": {
+      "verbatim": "1.",
+      "selected": "Issue-resolution workspace",
+      "intent": "INT-052",
+      "decision": "DEC-052",
+      "iaso_state": "proposed; host prompt verification unavailable"
+    }
+  },
+  "scope": {
+    "project": "one at a time",
+    "focus": "resolve every Iaso issue type including intent conflicts",
+    "team_assignments": "existing harness responsibility",
+    "agent_integration": "Preserve existing cards/mods behaviour and agent follow-up; do not invent a separate autonomy policy. Browser connection mechanism and conversation location unresolved.",
+    "records": [
+      "INT-053",
+      "DEC-053",
+      "INT-054",
+      "INT-055",
+      "DEC-054"
+    ]
+  }
+}

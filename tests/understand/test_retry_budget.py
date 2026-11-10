@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import dispatch, files, worker
+from iaso.api import open_core
+from iaso.understand import dispatch, files, worker
 
 pytestmark = pytest.mark.sr("SR-325")
 

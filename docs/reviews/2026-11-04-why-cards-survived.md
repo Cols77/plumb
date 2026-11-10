@@ -2,7 +2,7 @@
 
 ## What the owner saw
 
-The status band said 73 questions await them; `/plumb status` said 29. The other 44 were open
+The status band said 73 questions await them; `/iaso status` said 29. The other 44 were open
 cards in old sessions' card stores (27 choice, 7 principle, 7 trial, 3 clarify), which nothing
 can show or answer since the card surface was removed.
 
@@ -31,7 +31,7 @@ can show or answer since the card surface was removed.
 4. **The sentence had no example.** SR-373's "no card store" has no example and so no test: a
    requirement's claim with no example holds nothing at the merge. Requirements waiting on a
    judge (about 460) were also not read against the code.
-5. **Two counts, one label.** The band and `/plumb status` computed "questions waiting" separately
+5. **Two counts, one label.** The band and `/iaso status` computed "questions waiting" separately
    and no test compared them. The owner found the gap by reading both.
 6. **No check that a retired feature is gone.** The owner asked on 2026-10-26 that ponytail audits
    catch this; an audit is a habit, not a gate, and none caught it.
@@ -44,12 +44,12 @@ can show or answer since the card surface was removed.
 
 ## What changed
 
-- The band counts judge questions only, the same as `/plumb status`; a test asserts that both
+- The band counts judge questions only, the same as `/iaso status`; a test asserts that both
   give the same count with a card present in a store.
 - The leftover card files of old sessions are deleted (archive kept outside the repository).
 - The job reads the judge's waiting questions against the owner's logged answers and confirmed
   records. A question closes only when the quoted words are really in that answer or record, is
-  logged as `answer-bound`, tells the agent one line, and `plumb question reopen` undoes it.
+  logged as `answer-bound`, tells the agent one line, and `iaso question reopen` undoes it.
 
 ## What is still open
 

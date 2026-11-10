@@ -2,7 +2,7 @@
 recorded once (the decision) and both lanes build on it (SR-081 EX-6 to EX-9).
 
 One test per entry point that shows the card (capture, the clarify read-back, the stop
-hook's question card, /plumb conflicts) and per path that records the answer (the prompt
+hook's question card, /iaso conflicts) and per path that records the answer (the prompt
 hook's relay, a host without a prompt hook, the owner's own terminal), plus the merge side:
 a merge-time conflict between the two versions the owner already chose between is settled
 by that answer, never asked again."""
@@ -19,10 +19,10 @@ import pytest
 
 from awareness.scenario import change, setup
 from awareness.test_claim_check import agent_channel, early_asks
-from plumb import cli
-from plumb.api import open_core
-from plumb.awareness import early, inflight
-from plumb.hosts.claude_code import stop
+from iaso import cli
+from iaso.api import open_core
+from iaso.awareness import early, inflight
+from iaso.hosts.claude_code import stop
 
 pytestmark = pytest.mark.sr("SR-259")
 
@@ -34,7 +34,7 @@ def _later(seconds: float = 5.0) -> str:
 def _start_turn(root: Path, session: str = "s1", ago: float = 0.5) -> None:
     """``ago``: how far back the turn began; a turn that holds a relay needs seconds of room,
     because the stop hook compares whole seconds and a slow machine stretches the relay."""
-    path = root / ".plumb" / "session" / session / "turn.json"
+    path = root / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - ago,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}),
@@ -68,7 +68,7 @@ def _choose(root: Path, ref: str, take: str) -> int:
 
 
 def _validate_errors(root: Path) -> list[str]:
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     return [f.line() for f in validate(open_core(root)) if f.severity == "error"]
 
@@ -103,7 +103,7 @@ def test_capture_card_answer_keep_theirs(tmp_path: Path, hook_input: Any) -> Non
     assert _validate_errors(main) == []                      # the re-check accepts it
     # both lanes build on it: feat-x reads the owner's answer at once (no extra turn)
     line = early.check_text(open_core(other), "make SR-005 pin the stated group")
-    assert line.lines == ['plumb: SR-005 "relay checks": the owner settled it on branch '
+    assert line.lines == ['iaso: SR-005 "relay checks": the owner settled it on branch '
                           "main: \"feat-x's version\"; build on that"]
 
 
@@ -158,8 +158,8 @@ def test_clarify_card_answer_before_capture(tmp_path: Path, hook_input: Any) -> 
     assert _state(main, dec.id) == "confirmed"
 
 
-def test_plumb_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -> None:
-    """/plumb conflicts shows the unanswered early conflict and asks the stop hook to show
+def test_iaso_conflicts_lists_the_early_card(tmp_path: Path, hook_input: Any) -> None:
+    """/iaso conflicts shows the unanswered early conflict and asks the stop hook to show
     it; the owner's "keep feat-x's" then records it."""
     main, _other = setup(tmp_path)
     change(_other, "A relay pins the stated group, named by its title.")
@@ -197,7 +197,7 @@ class _Verdict:
         self.name, self.verdict, self.confidence = name, verdict, confidence
 
     def contradiction(self, prompt: str, record: Any) -> Any:
-        from plumb.contracts import Judgment
+        from iaso.contracts import Judgment
 
         return Judgment(action="contradiction", subject=record.id, verdict=self.verdict,
                         confidence=self.confidence, tier="accept", backend=self.name,

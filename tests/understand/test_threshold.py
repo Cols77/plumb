@@ -8,8 +8,8 @@ import pytest
 from understand.fakes import as_worker
 from understand.test_read_job import SESSION, make_core, record_text
 
-from plumb.api import open_core
-from plumb.understand.threshold import MIN_LABELS, reader_threshold
+from iaso.api import open_core
+from iaso.understand.threshold import MIN_LABELS, reader_threshold
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -75,6 +75,6 @@ def test_trial_yes_and_no_are_labels_too(core) -> None:
 
 
 def test_configured_start_is_used_without_labels(core, repo: Path) -> None:
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "understand:\n  reader_threshold_start: 0.95\n", encoding="utf-8")
     assert reader_threshold(open_core(repo)) == 0.95

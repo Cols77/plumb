@@ -4,9 +4,9 @@ The eval's scratch repository is what must name a judge (case eval-8ba65c4a), no
 """
 from pathlib import Path
 
-from plumb.config import load_config
+from iaso.config import load_config
 
 
 def test_unset_backend_stays_unset(tmp_path: Path) -> None:
-    (tmp_path / ".plumb").mkdir()
+    (tmp_path / ".iaso").mkdir()
     assert load_config(tmp_path).judgment.backend == ""

@@ -10,7 +10,7 @@ def loops_seams(monkeypatch: pytest.MonkeyPatch) -> None:
     """INT-123: no test runs `claude`, opens a window or messages a session. A command-level
     test gets the running sessions from ``loops.claude_sessions`` (none here); a test that needs
     some replaces it itself."""
-    from plumb.understand import loops
+    from iaso.understand import loops
 
     monkeypatch.setattr(loops, "claude_sessions", lambda: {})
 

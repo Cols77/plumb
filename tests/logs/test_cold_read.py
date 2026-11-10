@@ -4,7 +4,7 @@ Guarantee: wherever git writes many entry files into a worktree, the first read 
 them from another worktree's pack cache or from git's object store, never by a first open of
 each file (about 7 ms per file on Windows: seconds, past the hook ceiling). One test per entry
 point: a new worktree (with and without a warm sibling), a new clone (CRLF checkout), a merge
-that brings many entries, a deleted pack cache, and ``plumb log migrate``. Entry files git did
+that brings many entries, a deleted pack cache, and ``iaso log migrate``. Entry files git did
 not write (untracked appends, an edited file) are still read from disk."""
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from logutil import legacy_entry, write_legacy
 
 from logs.gitrepo import add_worktree, commit_all, make_repo, run_git
 from logs.test_read_cost import populate
-from plumb import log
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
@@ -39,12 +39,12 @@ def direct_reads(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def _digests(root: Path) -> list[str]:
-    return [entry.digest for entry in log.read(PlumbPaths(root), "events")]
+    return [entry.digest for entry in log.read(IasoPaths(root), "events")]
 
 
 def _committed(tmp_path: Path, n: int = N) -> Path:
     main = make_repo(tmp_path / "main")
-    populate(PlumbPaths(main), n)
+    populate(IasoPaths(main), n)
     commit_all(main, f"{n} events")
     return main
 
@@ -55,7 +55,7 @@ def _expected(root: Path) -> list[str]:
         (((raw.get("at", ""), 1, *log._sort_name(name), 0)), log._to_entry("events", raw, -1,
                                                                              name))
         for name, raw in ((f"{p.parent.name}/{p.name}", log._parse_entry(p.read_bytes()))
-                          for p in PlumbPaths(root).log_dir.glob("*/*.json"))
+                          for p in IasoPaths(root).log_dir.glob("*/*.json"))
         if raw is not None and log.stream_of(str(raw.get("kind"))) == "events"])]
 
 
@@ -73,7 +73,7 @@ def test_new_worktree_without_a_warm_sibling_reads_from_git(
         tmp_path: Path, direct_reads: list[str]) -> None:
     main = _committed(tmp_path)
     wt = add_worktree(main, tmp_path / "wt", "wt")
-    assert not PlumbPaths(main).log_pack("events").exists()
+    assert not IasoPaths(main).log_pack("events").exists()
     assert _digests(wt) == _expected(wt)
     assert direct_reads == []
 
@@ -83,7 +83,7 @@ def test_new_clone_with_crlf_checkout_reads_from_git(
     main = _committed(tmp_path)
     clone = tmp_path / "clone"
     run_git(tmp_path, "clone", "-q", "-c", "core.autocrlf=true", main.as_uri(), str(clone))
-    sample = next(PlumbPaths(clone).log_dir.glob("*/*.json")).read_bytes()
+    sample = next(IasoPaths(clone).log_dir.glob("*/*.json")).read_bytes()
     assert sample.endswith(b"\r\n")  # sizes on disk differ from the blobs
     assert _digests(clone) == _expected(main)
     assert direct_reads == []
@@ -94,7 +94,7 @@ def test_merge_bringing_many_entries_reads_them_from_git(
     main = _committed(tmp_path)
     _digests(main)  # warm
     feat = add_worktree(main, tmp_path / "feat", "feat")
-    populate(PlumbPaths(feat), N, start=1000)  # written, never read on that side
+    populate(IasoPaths(feat), N, start=1000)  # written, never read on that side
     commit_all(feat, "more events")
     run_git(main, "merge", "-q", "--no-edit", "feat")
     direct_reads.clear()
@@ -105,7 +105,7 @@ def test_merge_bringing_many_entries_reads_them_from_git(
 def test_deleted_pack_cache_rebuilt_from_git(tmp_path: Path, direct_reads: list[str]) -> None:
     main = _committed(tmp_path)
     expected = _digests(main)
-    PlumbPaths(main).log_pack("events").unlink()
+    IasoPaths(main).log_pack("events").unlink()
     direct_reads.clear()
     assert _digests(main) == expected
     assert direct_reads == []
@@ -121,7 +121,7 @@ def test_migrate_leaves_a_warm_pack(tmp_path: Path, direct_reads: list[str]) -> 
         raws.append(raw)
         prev = raw["digest"]
     write_legacy(main, "events", raws)
-    assert not log.migrate(PlumbPaths(main), dry_run=False).refused
+    assert not log.migrate(IasoPaths(main), dry_run=False).refused
     direct_reads.clear()
     assert _digests(main) == [raw["digest"] for raw in raws]
     assert direct_reads == []
@@ -130,7 +130,7 @@ def test_migrate_leaves_a_warm_pack(tmp_path: Path, direct_reads: list[str]) -> 
 def test_untracked_and_edited_entry_files_read_from_disk(
         tmp_path: Path, direct_reads: list[str]) -> None:
     main = _committed(tmp_path)
-    paths = PlumbPaths(main)
+    paths = IasoPaths(main)
     populate(paths, 20, start=5000)  # new entries nobody committed yet
     edited = sorted(paths.log_dir.glob("mod-hello/*.json"))[0]
     edited.write_bytes(edited.read_bytes().replace(b'"quote":"ok, confirm it"',

@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.config import DEFAULT_HOOK_BUDGET_MS, HooksConfig, load_config
-from plumb.hosts.claude_code import hookio
+from iaso.config import DEFAULT_HOOK_BUDGET_MS, HooksConfig, load_config
+from iaso.hosts.claude_code import hookio
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -38,23 +38,23 @@ def test_a_hook_taking_forty_seconds_is_not_cut(repo: Path) -> None:
 
     def handler(ctx):
         ctx.deadline.check("late step")
-        return hookio.HookOutput(text="plumb: checked")
+        return hookio.HookOutput(text="iaso: checked")
 
     out = _run(handler, repo, budget_ms=hookio.hook_budget("prompt"), watchdog=True,
                start=clock)
-    assert out.splitlines() == ["plumb: checked"]
+    assert out.splitlines() == ["iaso: checked"]
     assert hookio.hard_limit_s(repo) > 40.0
     assert HooksConfig().budget_ms["prompt"] > 40000
 
 
 def test_the_hard_limit_still_cuts_at_the_configured_value(repo: Path, tmp_path: Path) -> None:
     """EX-2: a hook that never answers is cut at hooks.hard_limit_s."""
-    (repo / ".plumb" / "config.yaml").write_text("hooks:\n  hard_limit_s: 0.4\n",
+    (repo / ".iaso" / "config.yaml").write_text("hooks:\n  hard_limit_s: 0.4\n",
                                                  encoding="utf-8")
     script = tmp_path / "cut.py"
     script.write_text(
         "import io, sys, time\n"
-        "from plumb.hosts.claude_code import hookio\n"
+        "from iaso.hosts.claude_code import hookio\n"
         "def h(ctx):\n    time.sleep(5)\n"
         "t = time.monotonic()\n"
         f"hookio.run_hook('t', h, stdin=io.StringIO('{{}}'), stdout=sys.stdout, root=r'{repo}',\n"
@@ -64,13 +64,13 @@ def test_the_hard_limit_still_cuts_at_the_configured_value(repo: Path, tmp_path:
                             timeout=30, check=False)
     assert result.stdout.splitlines() == [hookio.SKIP_BUDGET]
     assert time.monotonic() - began < 4.5
-    assert "hard limit 0.4s" in (repo / ".plumb/session/errors.log").read_text("utf-8")
+    assert "hard limit 0.4s" in (repo / ".iaso/session/errors.log").read_text("utf-8")
 
 
 def test_the_settings_are_read_from_config_yaml(repo: Path) -> None:
     """EX-3: configured values win; unset ones fall back to the defaults."""
     assert hookio.hard_limit_s(repo) == hookio.HARD_LIMIT_S == 90.0
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "hooks:\n  hard_limit_s: 3.5\n  budget_ms: {stop: 2500}\n", encoding="utf-8")
     hooks = load_config(repo).hooks
     assert hooks.hard_limit_s == 3.5
@@ -83,7 +83,7 @@ def test_host_timeouts_sit_above_the_hard_limit_and_grace() -> None:
     """EX-4: the plugin bundle's hook timeouts exceed the default limit plus the stop grace."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
     import build_plugin
-    from plumb.hosts.claude_code.stop import STOP_GRACE_S
+    from iaso.hosts.claude_code.stop import STOP_GRACE_S
 
     assert min(_watched_timeouts(build_plugin)) > hookio.HARD_LIMIT_S + STOP_GRACE_S
     budgets = HooksConfig().budget_ms
@@ -94,7 +94,7 @@ def _host_limit() -> float:
     """The longest hard limit the host allows: its shortest hook timeout less the stop grace."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
     import build_plugin
-    from plumb.hosts.claude_code.stop import STOP_GRACE_S
+    from iaso.hosts.claude_code.stop import STOP_GRACE_S
 
     return min(_watched_timeouts(build_plugin)) - STOP_GRACE_S
 
@@ -114,7 +114,7 @@ def _watched_timeouts(build_plugin) -> list[int]:
 
 def test_a_requested_limit_within_host_timeouts_applies(repo: Path) -> None:
     """EX-6: a limit the owner asks for, within what the host allows, is the one used."""
-    (repo / ".plumb" / "config.yaml").write_text("hooks:\n  hard_limit_s: 100\n",
+    (repo / ".iaso" / "config.yaml").write_text("hooks:\n  hard_limit_s: 100\n",
                                                  encoding="utf-8")
     assert hookio.hard_limit_s(repo) == 100.0 <= _host_limit()
 

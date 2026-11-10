@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from merge_helpers import git, project, write
 
-from plumb.api import open_core
-from plumb.boundary.premerge import check
-from plumb.merge import _verification
-from plumb.verify import open_verify
+from iaso.api import open_core
+from iaso.boundary.premerge import check
+from iaso.merge import _verification
+from iaso.verify import open_verify
 
 pytestmark = pytest.mark.sr("SR-254")
 
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.sr("SR-254")
 def commit(root: Path, message: str) -> str:
     """A commit without the log: a worktree's own runs stay in its checkout, as in a real
     landing, so main can only see them across checkouts."""
-    git(root, "add", "-A", "--", ".", ":!.plumb/log")
+    git(root, "add", "-A", "--", ".", ":!.iaso/log")
     git(root, "commit", "-q", "-m", message)
     return git(root, "rev-parse", "HEAD").strip()
 
@@ -60,7 +60,7 @@ def test_green_run_in_the_worktree_counts_after_a_fast_forward(landing) -> None:
 def test_a_worktree_past_the_sibling_cap_still_counts(landing, monkeypatch) -> None:
     """More worktrees than the owner-words reads consult (SIBLING_MAX): the landing's own
     worktree is still read for its full run."""
-    from plumb import log
+    from iaso import log
 
     repo, wt, before = landing
     open_verify(open_core(wt)).run(full=True)
@@ -84,10 +84,10 @@ def test_a_counted_full_run_gives_each_affected_test_its_passing_run(landing) ->
 
 
 def test_green_run_counts_when_only_records_moved_after_it(landing) -> None:
-    """A repin after the tests passed changes the tree only under .plumb/."""
+    """A repin after the tests passed changes the tree only under .iaso/."""
     repo, wt, before = landing
     open_verify(open_core(wt)).run(full=True)
-    record = wt / ".plumb/requirements/SR-002.md"
+    record = wt / ".iaso/requirements/SR-002.md"
     record.write_text(record.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     commit(wt, "repin")
     git(repo, "merge", "-q", "--ff-only", "fix")

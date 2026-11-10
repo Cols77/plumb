@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
-from plumb.verify.funcmap import FuncMap
+from iaso.api import open_core
+from iaso.verify import open_verify
+from iaso.verify.funcmap import FuncMap
 
 MOD = "src/pkg/mod.py"
 NODES = {"tests/test_mod.py::test_add", "tests/test_mod.py::test_add_zero",
@@ -70,7 +70,7 @@ def test_refresh_only_stale_tests(project: Path) -> None:
 def test_workers_combine_data_files(project: Path, tmp_path: Path) -> None:
     from coverage import CoverageData
 
-    from plumb.verify.funcmap import combine_data_files
+    from iaso.verify.funcmap import combine_data_files
 
     parts = []
     for i, ctx in enumerate(["a::t1", "b::t2"]):
@@ -82,7 +82,7 @@ def test_workers_combine_data_files(project: Path, tmp_path: Path) -> None:
         parts.append(name)
     combined = combine_data_files(parts, str(tmp_path / "combined"))
     assert set(combined.measured_contexts()) == {"a::t1", "b::t2"}
-    write(project, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n  workers: 2\n")
+    write(project, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n  workers: 2\n")
     verify, report = _map(project)
     assert report.workers == 2
     assert set(report.recorded) == NODES
@@ -91,7 +91,7 @@ def test_workers_combine_data_files(project: Path, tmp_path: Path) -> None:
 @pytest.mark.sr("SR-255")
 def test_coverage_absent_says_so_and_selects_by_closure(project: Path,
                                                          monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.verify import runner
+    from iaso.verify import runner
 
     monkeypatch.setattr(runner, "coverage_available", lambda: False)
     verify, report = _map(project)
