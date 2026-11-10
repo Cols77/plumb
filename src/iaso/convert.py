@@ -61,17 +61,6 @@ def _texts(folder: Path):
                 continue   # binary: left as it is
 
 
-def _strings(node):
-    if isinstance(node, str):
-        yield node
-    elif isinstance(node, dict):
-        for v in node.values():
-            yield from _strings(v)
-    elif isinstance(node, list):
-        for v in node:
-            yield from _strings(v)
-
-
 def _map_strings(node, fn):
     if isinstance(node, str):
         return fn(node)
@@ -83,10 +72,9 @@ def _map_strings(node, fn):
 
 
 def _hash_map(texts: list[tuple[Path, str]]) -> dict[str, str]:
-    """Old hash to new hash for what the rewrite changes: each record (its hash covers the
-    text) and each log string (a ``quote_digest`` is the digest of its text)."""
+    """Old hash to new hash for each record the rewrite changes (its hash covers the text). A log
+    digest of an owner's message (``prompt_digest``, ``trail``) names what they typed: it stays."""
     from iaso.model import parse_record
-    from iaso.normalize import sha256_text
 
     out: dict[str, str] = {}
     for p, text in texts:
@@ -97,13 +85,6 @@ def _hash_map(texts: list[tuple[Path, str]]) -> dict[str, str]:
             try:
                 out[parse_record(text, p.name).hash] = parse_record(new, p.name).hash
             except Exception:   # not a record file (a study, a note): no hash to follow
-                pass
-        elif p.suffix == ".json" and "log" in p.parts:
-            try:
-                for s in _strings(json.loads(text)):
-                    if rewrite_text(s) != s:
-                        out[sha256_text(s)] = sha256_text(rewrite_text(s))
-            except ValueError:
                 pass
     return out
 
@@ -133,11 +114,29 @@ def _follow(text: str, hashes: dict[str, str]) -> str:
     return re.sub(r"sha256:[0-9a-f]{64}", lambda m: hashes.get(m.group(0), m.group(0)), text)
 
 
+def _pairs(old, new):
+    """The (old, new) dicts holding both a ``quote`` and a ``quote_digest``."""
+    if isinstance(old, dict) and isinstance(new, dict):
+        if isinstance(old.get("quote"), str) and "quote_digest" in old and "quote_digest" in new:
+            yield old, new
+        for k, v in old.items():
+            yield from _pairs(v, new.get(rewrite_text(k)))
+    elif isinstance(old, list) and isinstance(new, list):
+        for u, v in zip(old, new):
+            yield from _pairs(u, v)
+
+
 def _log_entry(text: str, hashes: dict[str, str]) -> str:
     from iaso.log import entry_digest
     from iaso.normalize import canonical_json
 
-    entry = _map_strings(json.loads(text), lambda s: _follow(rewrite_text(s), hashes))
+    from iaso.normalize import sha256_text
+
+    old = json.loads(text)
+    entry = _map_strings(old, lambda s: _follow(rewrite_text(s), hashes))
+    for was, now in _pairs(old, entry):   # a quote_digest is the digest of its own, rewritten, quote
+        if was.get("quote_digest") == sha256_text(str(was.get("quote"))):
+            now["quote_digest"] = sha256_text(str(now["quote"]))
     if isinstance(entry, dict) and "digest" in entry:
         entry["digest"] = entry_digest(entry)
     return canonical_json(entry).decode("utf-8") + "\n"
@@ -227,6 +226,26 @@ def _adopt_leftovers(root: Path, old: Path, new: Path) -> tuple[dict[str, str], 
     return seed, notes
 
 
+def _carry_user_config() -> list[str]:
+    """Copy the user-level files (the judge's key store and settings) from the old config folder to
+    iaso's, keeping their modes and never reading or printing them; one that exists is kept."""
+    import os
+    import shutil
+
+    base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    old, new = base / OLD, base / "iaso"
+    if not old.is_dir():
+        return []
+    carried = 0
+    for src in sorted(p for p in old.rglob("*") if p.is_file()):
+        dst = new / src.relative_to(old)
+        if not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            carried += 1
+    return [f"iaso: copied {carried} user-level settings files from {old} to {new}"] if carried else []
+
+
 def convert(root: Path) -> list[str]:
     """Convert ``root``'s old-name project in place; the lines to tell the owner."""
     root = Path(root)
@@ -261,7 +280,10 @@ def convert(root: Path) -> list[str]:
         text = p.read_text(encoding="utf-8", errors="replace")
         if rewrite_text(text) != text:
             p.write_text(rewrite_text(text), encoding="utf-8", newline="\n")
-    return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/", *notes]
+    return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/", *notes,
+            *_carry_user_config(),
+            "iaso: if Claude Code lists the old plugin, run /plugin marketplace remove " + OLD
+            + ", then /plugin marketplace add <this repository> and /plugin install iaso@iaso"]
 
 
 def convert_if_old(start: Path) -> bool:

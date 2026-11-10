@@ -211,3 +211,42 @@ def test_a_merge_into_a_checkout_with_untracked_state_is_finished_by_the_convert
     assert OLD not in (repo / ".iaso" / "decisions" / "DEC-900.md").read_text().lower()
     assert str(repo / ".iaso" / "wt" / "w1") in _git(repo, "worktree", "list")
     assert (repo / ".iaso" / "wt" / "w1" / ".git").exists() and base
+
+
+@pytest.mark.sr("SR-432")
+def test_log_digests_of_the_owners_message_stay_and_quote_digests_follow_the_quote() -> None:
+    from iaso.convert import _log_entry
+    from iaso.log import entry_digest
+    from iaso.normalize import sha256_text
+
+    quote = f"rename {OLD} now"
+    prompt = sha256_text(f"please rename {OLD} now")
+    entry = {"kind": "approval", "payload": {"quote": quote, "quote_digest": sha256_text(quote),
+                                             "prompt_digest": prompt, "trail": [prompt]}}
+    entry["digest"] = entry_digest(entry)
+    import json
+
+    got = json.loads(_log_entry(json.dumps(entry), {}))
+    assert got["payload"]["prompt_digest"] == prompt and got["payload"]["trail"] == [prompt]
+    assert got["payload"]["quote"] == "rename iaso now"
+    assert got["payload"]["quote_digest"] == sha256_text("rename iaso now")
+    assert got["digest"] == entry_digest(got)
+
+
+@pytest.mark.sr("SR-432")
+def test_the_user_level_settings_are_carried_over_untouched(tmp_path: Path, monkeypatch) -> None:
+    from iaso.convert import _carry_user_config
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / OLD).mkdir()
+    key = tmp_path / OLD / "jev"
+    key.write_text("secret", encoding="utf-8")
+    key.chmod(0o600)
+    (tmp_path / "iaso").mkdir()
+    (tmp_path / "iaso" / "kept").write_text("mine", encoding="utf-8")
+    (tmp_path / OLD / "kept").write_text("old", encoding="utf-8")
+    lines = _carry_user_config()
+    assert (tmp_path / "iaso" / "jev").read_text() == "secret"
+    assert (tmp_path / "iaso" / "jev").stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "iaso" / "kept").read_text() == "mine"   # one that exists is kept
+    assert all("secret" not in line for line in lines) and lines
