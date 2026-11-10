@@ -50,7 +50,9 @@ EVENTS = (("SessionStart", "session-start"), ("UserPromptSubmit", "prompt"),
           ("Stop", "stop"))
 TOML_BEGIN = "# >>> plumb (plumb hosts install codex) >>>"
 TOML_END = "# <<< plumb <<<"
-HOOK_TIMEOUT_S = 10
+# SR-310: above the watchdog's hard limit (90 s) plus the stop grace, as the Claude plugin's hooks;
+# a hook still running when Codex's timeout passes has its output dropped, so the agent sees no line
+HOOK_TIMEOUT_S = 120
 
 
 def host_argv(root: Path, argv: Sequence[str], *,
