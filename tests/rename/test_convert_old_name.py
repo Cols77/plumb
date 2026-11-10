@@ -179,3 +179,35 @@ def test_conversion_keeps_the_log_digests_valid(tmp_path: Path) -> None:
     for line in (repo / ".iaso" / "log" / "approval" / "archive.jsonl").read_text().splitlines():
         got = json.loads(line)
         assert OLD not in line.lower() and got["digest"] == entry_digest(got)
+
+
+@pytest.mark.sr("SR-432")
+def test_a_merge_into_a_checkout_with_untracked_state_is_finished_by_the_converter(
+        tmp_path: Path) -> None:
+    """The landing: the branch holds the converted .iaso; main's checkout keeps untracked
+    sessions, caches, local log kinds, a new record and registered work copies in the old folder."""
+    repo = _old_project(tmp_path / "main")
+    base = _git(repo, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    _git(repo, "worktree", "add", "-q", "-b", "conv", str(tmp_path / "conv"))
+    assert _run("iaso", ["status"], tmp_path / "conv").returncode == 0
+    _git(tmp_path / "conv", "add", "-A")
+    _git(tmp_path / "conv", "commit", "-qm", "converted")
+    old = repo / OLD_DIR
+    (old / "session" / "s1").mkdir(parents=True)
+    (old / "session" / "s1" / "state.json").write_text(f'{{"p": "{OLD_DIR}"}}', encoding="utf-8")
+    (old / "cache").mkdir()
+    (old / "cache" / "c.json").write_text("{}", encoding="utf-8")
+    (old / "decisions").mkdir(exist_ok=True)
+    (old / "decisions" / "DEC-900.md").write_text(
+        f"---\nid: DEC-900\n---\n{OLD} decides\n", encoding="utf-8")
+    (old / "wt").mkdir()
+    _git(repo, "worktree", "add", "-q", "-b", "w1", str(old / "wt" / "w1"))
+    _git(repo, "merge", "--no-commit", "--no-ff", "conv")
+    assert (repo / OLD_DIR).is_dir() and (repo / ".iaso").is_dir()
+    assert _run("iaso", ["status"], repo).returncode == 0
+    assert not (repo / OLD_DIR).exists()
+    assert (repo / ".iaso" / "session" / "s1" / "state.json").is_file()
+    assert (repo / ".iaso" / "cache" / "c.json").is_file()
+    assert OLD not in (repo / ".iaso" / "decisions" / "DEC-900.md").read_text().lower()
+    assert str(repo / ".iaso" / "wt" / "w1") in _git(repo, "worktree", "list")
+    assert (repo / ".iaso" / "wt" / "w1" / ".git").exists() and base

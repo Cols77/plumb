@@ -164,17 +164,83 @@ def _outside(root: Path) -> list[Path]:
     return [p for p in out if p.is_file()]
 
 
+def _merge_dirs(src: Path, dst: Path, left: list[str]) -> None:
+    """Move what ``src`` holds into ``dst``: a path ``dst`` lacks is renamed over, folders merge,
+    a file both hold stays in ``src`` (named in ``left``)."""
+    for child in sorted(src.iterdir()):
+        target = dst / child.name
+        if not target.exists() and not target.is_symlink():
+            child.rename(target)
+        elif child.is_dir() and target.is_dir() and not child.is_symlink():
+            _merge_dirs(child, target, left)
+        else:
+            left.append(str(child))
+    try:
+        src.rmdir()
+    except OSError:
+        pass
+
+
+def _adopt_leftovers(root: Path, old: Path, new: Path) -> tuple[dict[str, str], list[str]]:
+    """A merge into a checkout that keeps untracked state (sessions, local log kinds, caches,
+    work copies) put the tracked ``.iaso`` files beside the old folder: move each registered
+    work copy of ``old/wt`` with ``git worktree move``, then the rest into ``new``. Returns the
+    old-hash to new-hash map of the records the old folder tracked at HEAD (an untracked record
+    pins them) and the lines to tell the owner."""
+    import io
+    import tarfile
+
+    notes: list[str] = []
+    wt_old = (old / "wt").resolve()
+    listing = _git(root, "worktree", "list", "--porcelain").stdout
+    for line in listing.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        path = Path(line[9:])
+        if path.resolve().parent != wt_old:
+            continue
+        (new / "wt").mkdir(parents=True, exist_ok=True)
+        moved = _git(root, "worktree", "move", str(path), str(new / "wt" / path.name))
+        if moved.returncode:
+            notes.append(f"iaso: could not move the work copy {path}: {moved.stderr.strip()}")
+    seed: dict[str, str] = {}
+    import subprocess
+
+    from iaso.background import child_env
+
+    archive = subprocess.run(["git", "-C", str(root), "archive", "HEAD", OLD_DIR],
+                             capture_output=True, env=child_env())
+    if archive.returncode == 0:
+        texts = []
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            for member in tar:
+                if member.isfile() and member.name.endswith((".md", ".json")):
+                    try:
+                        texts.append((Path(member.name), tar.extractfile(member).read().decode("utf-8")))
+                    except (UnicodeDecodeError, OSError):
+                        continue
+        seed = _hash_map(texts)
+    left: list[str] = []
+    _merge_dirs(old, new, left)
+    if left:
+        notes.append(f"iaso: {len(left)} files stayed in {OLD_DIR}/ because .iaso/ holds one: {left[:3]}")
+    return seed, notes
+
+
 def convert(root: Path) -> list[str]:
     """Convert ``root``'s old-name project in place; the lines to tell the owner."""
     root = Path(root)
     old, new = root / OLD_DIR, root / ".iaso"
-    if new.exists():
-        raise SystemExit(f"iaso: both {OLD_DIR}/ and .iaso/ exist in {root}; remove one and retry")
-    moved = _git(root, "mv", OLD_DIR, ".iaso")
-    if moved.returncode:   # not tracked (or not a repository): a plain rename
-        old.rename(new)
+    seed: dict[str, str] = {}
+    notes: list[str] = []
+    if new.exists():   # a merge placed the tracked .iaso files; the old folder keeps the untracked rest
+        seed, notes = _adopt_leftovers(root, old, new)
+    else:
+        moved = _git(root, "mv", OLD_DIR, ".iaso")
+        if moved.returncode:   # not tracked (or not a repository): a plain rename
+            old.rename(new)
     texts = list(_texts(new))
-    hashes = _settle(texts, _hash_map(texts))
+    hashes = _settle(texts, {**seed, **_hash_map(texts)})
     for p, text in texts:
         if p.suffix == ".jsonl" and "log" in p.parts:   # an archive segment: one entry a line
             changed = "".join(_log_entry(line, hashes) for line in text.splitlines() if line.strip())
@@ -195,7 +261,7 @@ def convert(root: Path) -> list[str]:
         text = p.read_text(encoding="utf-8", errors="replace")
         if rewrite_text(text) != text:
             p.write_text(rewrite_text(text), encoding="utf-8", newline="\n")
-    return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/"]
+    return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/", *notes]
 
 
 def convert_if_old(start: Path) -> bool:
