@@ -158,3 +158,24 @@ def test_conversion_renames_files_that_name_the_old_name(tmp_path: Path) -> None
     assert _run("iaso", ["status"], repo).returncode == 0
     assert (repo / ".iaso" / "studies" / "what-iaso-does.md").is_file()
     assert not list((repo / ".iaso" / "studies").glob(f"*{OLD}*"))
+
+
+@pytest.mark.sr("SR-432")
+def test_conversion_keeps_the_log_digests_valid(tmp_path: Path) -> None:
+    """Archive segments (one entry a line) and migrated names follow the rewritten text."""
+    import json
+
+    from iaso.log import entry_digest
+
+    repo = _old_project(tmp_path)
+    segment = repo / OLD_DIR / "log" / "approval"
+    segment.mkdir(parents=True, exist_ok=True)
+    entry = {"at": "2026-10-07T23:10:04Z", "kind": "approval", "payload": {"quote": f"{OLD} ok"}}
+    entry["digest"] = entry_digest(entry)
+    (segment / "archive.jsonl").write_text(json.dumps(entry) + "\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "log")
+    assert _run("iaso", ["status"], repo).returncode == 0
+    for line in (repo / ".iaso" / "log" / "approval" / "archive.jsonl").read_text().splitlines():
+        got = json.loads(line)
+        assert OLD not in line.lower() and got["digest"] == entry_digest(got)

@@ -143,6 +143,19 @@ def _log_entry(text: str, hashes: dict[str, str]) -> str:
     return canonical_json(entry).decode("utf-8") + "\n"
 
 
+def _rename_migrated(new: Path) -> None:
+    """A migrated entry's file name ends in characters of its digest, which the rewrite changed."""
+    from iaso.log import is_migrated_name, parse_name
+
+    for p in (new / "log").rglob("*.json"):
+        if not is_migrated_name(p.name):
+            continue
+        digest = str(json.loads(p.read_text(encoding="utf-8")).get("digest", "")).split(":", 1)[-1]
+        stamp, micros, suffix = parse_name(p.name)
+        if digest[8:16] != suffix:
+            p.rename(p.with_name(p.name.replace(f"-{suffix}.json", f"-{digest[8:16]}.json")))
+
+
 def _outside(root: Path) -> list[Path]:
     """Files outside the records folder that name the old name: settings, git attributes,
     ignore file. Never the git directory: worktrees share it, so its hooks, attributes and config
@@ -163,7 +176,9 @@ def convert(root: Path) -> list[str]:
     texts = list(_texts(new))
     hashes = _settle(texts, _hash_map(texts))
     for p, text in texts:
-        if p.suffix == ".json" and "log" in p.parts:
+        if p.suffix == ".jsonl" and "log" in p.parts:   # an archive segment: one entry a line
+            changed = "".join(_log_entry(line, hashes) for line in text.splitlines() if line.strip())
+        elif p.suffix == ".json" and "log" in p.parts:
             try:
                 changed = _log_entry(text, hashes)
             except ValueError:
@@ -172,6 +187,7 @@ def convert(root: Path) -> list[str]:
             changed = _follow(rewrite_text(text), hashes)
         if changed != text:
             p.write_text(changed, encoding="utf-8", newline="\n")
+    _rename_migrated(new)
     for p in sorted(new.rglob("*"), key=lambda q: len(q.parts), reverse=True):
         if OLD in p.name and not _SKIP & set(p.relative_to(new).parts):   # file names follow the text
             p.rename(p.with_name(rewrite_text(p.name)))
