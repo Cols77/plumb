@@ -61,6 +61,17 @@ def _texts(folder: Path):
                 continue   # binary: left as it is
 
 
+def _strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _strings(v)
+
+
 def _map_strings(node, fn):
     if isinstance(node, str):
         return fn(node)
@@ -128,18 +139,91 @@ def _pairs(old, new):
 
 def _log_entry(text: str, hashes: dict[str, str]) -> str:
     from iaso.log import entry_digest
-    from iaso.normalize import canonical_json
-
-    from iaso.normalize import sha256_text
+    from iaso.normalize import canonical_json, sha256_text
 
     old = json.loads(text)
     entry = _map_strings(old, lambda s: _follow(rewrite_text(s), hashes))
+    if isinstance(old, dict) and old.get("kind") == "premise" and isinstance(old.get("payload"), dict):
+        entry["payload"]["text"] = old["payload"].get("text")   # the owner's message, verbatim: its digest names it
     for was, now in _pairs(old, entry):   # a quote_digest is the digest of its own, rewritten, quote
         if was.get("quote_digest") == sha256_text(str(was.get("quote"))):
             now["quote_digest"] = sha256_text(str(now["quote"]))
     if isinstance(entry, dict) and "digest" in entry:
         entry["digest"] = entry_digest(entry)
     return canonical_json(entry).decode("utf-8") + "\n"
+
+
+def _unrewrite(text: str) -> str:
+    for old, new in _FORMS:
+        text = text.replace(new, old)
+    return text
+
+
+def repair_messages(root: Path) -> list[str]:
+    """Repair what a converter before this fix did to the untracked local log of ``root``: a
+    premise (an owner's message) gets its verbatim text back, and a digest of a message that was
+    remapped to the digest of the rewritten text gets its own back in every entry. Each change is
+    checked: the old text's digest must be the entry's, or appear in the session files. Approval
+    entries are never read or written."""
+    from iaso.log import entry_digest
+    from iaso.normalize import canonical_json, sha256_text
+
+    from iaso.approvals import prompt_digest
+
+    root = Path(root)
+    log, session = root / ".iaso" / "log", root / ".iaso" / "session"
+    tracked = set(_git(root, "ls-files", "-z", ".iaso/log").stdout.split("\0"))
+    known: set[str] = set()   # every digest the (never rewritten) session files hold
+    back: dict[str, str] = {}  # a remapped message digest -> its own, from the session's message texts
+    for p in session.rglob("*") if session.is_dir() else ():
+        if not p.is_file() or p.stat().st_size >= 50_000_000:
+            continue
+        raw = p.read_text(encoding="utf-8", errors="ignore")
+        known.update(re.findall(r"sha256:[0-9a-f]{64}", raw))
+        if p.suffix == ".json" and OLD in raw.lower():
+            try:
+                for text in _strings(json.loads(raw)):
+                    if OLD in text.lower() and prompt_digest(text) in raw:
+                        for remapped in (sha256_text(rewrite_text(text)), prompt_digest(rewrite_text(text))):
+                            back[remapped] = prompt_digest(text)
+            except ValueError:
+                pass
+    files = [p for p in log.rglob("*.json") if p.parent.name != "approval"
+             and p.relative_to(root).as_posix() not in tracked]
+    texts = 0
+    for p in files:
+        if p.parent.name != "premise":
+            continue
+        entry = json.loads(p.read_text(encoding="utf-8"))
+        pay = entry.get("payload") or {}
+        text, digest = pay.get("text"), pay.get("digest")
+        if not isinstance(text, str) or not isinstance(digest, str) or _unrewrite(text) == text:
+            continue
+        old = _unrewrite(text)
+        if digest == prompt_digest(old):
+            pass                              # digest kept, text rewritten: give the text back
+        elif digest in (sha256_text(text), prompt_digest(text)) and prompt_digest(old) in known:
+            back[digest] = prompt_digest(old)  # digest remapped: give both back
+        else:
+            continue
+        pay["text"], pay["digest"] = old, prompt_digest(old)
+        entry["digest"] = entry_digest(entry)
+        p.write_text(canonical_json(entry).decode("utf-8") + "\n", encoding="utf-8", newline="\n")
+        texts += 1
+    fixed = 0
+    for p in files:
+        if p.parent.name == "premise" or not back:
+            continue
+        raw = p.read_text(encoding="utf-8")
+        if not any(k in raw for k in back):
+            continue
+        entry = _map_strings(json.loads(raw), lambda s: back.get(s, s))
+        if isinstance(entry, dict) and "digest" in entry:
+            entry["digest"] = entry_digest(entry)
+        p.write_text(canonical_json(entry).decode("utf-8") + "\n", encoding="utf-8", newline="\n")
+        fixed += 1
+    _rename_migrated(root / ".iaso")
+    return [f"iaso: repaired {texts} owner messages and {fixed} entries naming them"]
 
 
 def _rename_migrated(new: Path) -> None:

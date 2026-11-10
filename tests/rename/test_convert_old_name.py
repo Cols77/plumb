@@ -250,3 +250,48 @@ def test_the_user_level_settings_are_carried_over_untouched(tmp_path: Path, monk
     assert (tmp_path / "iaso" / "jev").stat().st_mode & 0o777 == 0o600
     assert (tmp_path / "iaso" / "kept").read_text() == "mine"   # one that exists is kept
     assert all("secret" not in line for line in lines) and lines
+
+
+@pytest.mark.sr("SR-432")
+def test_repair_gives_owner_messages_and_their_digests_back(tmp_path: Path) -> None:
+    """A converter before the fix rewrote premise texts and remapped message digests in the
+    untracked local log; the repair restores both, checked against the session files."""
+    import json
+
+    from iaso.convert import repair_messages
+    from iaso.log import entry_digest
+    from iaso.normalize import sha256_text
+
+    repo = _repo(tmp_path)
+    said = f"please fix {OLD} today"
+    new = said.replace(OLD, "iaso")
+    log = repo / ".iaso" / "log"
+
+    def put(kind: str, name: str, payload: dict) -> Path:
+        entry = {"at": "2026-10-19T03:35:42Z", "kind": kind, "payload": payload}
+        entry["digest"] = entry_digest(entry)
+        path = log / kind / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(entry), encoding="utf-8")
+        return path
+
+    premise = put("premise", "20261019T033542.442887Z-01345d00.json",
+                  {"text": new, "digest": sha256_text(new)})  # the old converter remapped with sha256_text
+    gate = put("gate", "20261019T033206.458414Z-09383d0a.json",
+               {"digest": sha256_text(new), "state": "open"})
+    approval = put("approval", "20261019T033206.458414Z-0000aaaa.json",
+                   {"prompt_digest": sha256_text(new)})
+    before = approval.read_bytes()
+    session = repo / ".iaso" / "session" / "s1"
+    session.mkdir(parents=True)
+    from iaso.approvals import prompt_digest
+
+    (session / "gate").write_text(json.dumps({"message_digest": prompt_digest(said)}),
+                                  encoding="utf-8")
+    assert repair_messages(repo)
+    got = json.loads(premise.read_text())
+    assert got["payload"] == {"text": said, "digest": prompt_digest(said)}
+    assert got["digest"] == entry_digest(got)
+    opened = json.loads(gate.read_text())
+    assert opened["payload"]["digest"] == prompt_digest(said) and opened["digest"] == entry_digest(opened)
+    assert approval.read_bytes() == before
