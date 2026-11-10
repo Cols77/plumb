@@ -3,7 +3,7 @@
   "name": "int008-ok-sr088-change",
   "inputs": {
    "message": {
-    "digest": "sha256:4c8332127b7471c6ee42cb602614b7daff62c403ace655a5d9b8741eb27ae543",
+    "digest": "sha256:93d793e814adec1f26f52597117f37d15932dc9e045b4e6deb79bce46a732e20",
     "text": "INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features might have to remain internal to iaso."
    },
    "shown": [
