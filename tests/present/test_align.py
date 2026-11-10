@@ -1,4 +1,4 @@
-"""PS2: plumb align judges each edge, weakest first, and never changes one (R12.2, sp5 8,
+"""PS2: iaso align judges each edge, weakest first, and never changes one (R12.2, sp5 8,
 SR-067)."""
 
 from __future__ import annotations
@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from present_helpers import FEAT1, INT1, SR1, SR2, FakeBackend, write_all
 
-from plumb import cli
-from plumb.align import align, align_lines, collect
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import cli
+from iaso.align import align, align_lines, collect
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-246")
 
@@ -67,14 +67,14 @@ def test_judgments_never_change_edges(records: Path) -> None:
     """EX-2: a backend answering no for the SR-002 -> code edge lists it first; every link
     state and record file is unchanged."""
     before = _link_states(records)
-    files = {p: p.read_bytes() for p in (records / ".plumb").rglob("*.md")}
+    files = {p: p.read_bytes() for p in (records / ".iaso").rglob("*.md")}
     backend = FakeBackend(answers={"SR-002->src/app/calc.py": "no"})
     result = align(open_core(records), ["SR-002"], backend=backend, use_cache=False)
     assert (result.edges[0].source, result.edges[0].target) == ("SR-002", "src/app/calc.py")
     assert result.edges[0].verdict == "no"
     assert result.edges[0].question == "Does this code realize this requirement?"
     assert _link_states(records) == before
-    assert {p: p.read_bytes() for p in (records / ".plumb").rglob("*.md")} == files
+    assert {p: p.read_bytes() for p in (records / ".iaso").rglob("*.md")} == files
 
 
 def test_no_judge_reports_only_gaps_and_says_why(records: Path, capsys) -> None:
@@ -86,7 +86,7 @@ def test_no_judge_reports_only_gaps_and_says_why(records: Path, capsys) -> None:
     assert all(e["verdict"] == "unjudged" and e["score"] is None for e in data["edges"])
     assert cli.main(["align", "--root", str(records), "SR-002"]) == 0
     assert "judging unavailable: no judge" in capsys.readouterr().out
-    (records / ".plumb" / "config.yaml").write_text("judgment:\n  backend: disabled\n",
+    (records / ".iaso" / "config.yaml").write_text("judgment:\n  backend: disabled\n",
                                                     "utf-8")
     assert cli.main(["align", "--root", str(records), "the", "divide", "quotient"]) == 0
     out = capsys.readouterr().out

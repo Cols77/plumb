@@ -1,4 +1,4 @@
-"""SP6 6.1, 6.2: one file per entry under .plumb/log/<kind>/ (SR-073)."""
+"""SP6 6.1, 6.2: one file per entry under .iaso/log/<kind>/ (SR-073)."""
 
 from __future__ import annotations
 
@@ -9,25 +9,25 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
 
 @pytest.fixture
-def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PlumbPaths:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
-    p = PlumbPaths(tmp_path)
+def paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> IasoPaths:
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
+    p = IasoPaths(tmp_path)
     p.log_dir.mkdir(parents=True)
     return p
 
 
-def _files(paths: PlumbPaths) -> list[Path]:
+def _files(paths: IasoPaths) -> list[Path]:
     return sorted(paths.log_dir.glob("*/*.json"))
 
 
-def test_one_file_per_entry_under_kind(paths: PlumbPaths) -> None:
+def test_one_file_per_entry_under_kind(paths: IasoPaths) -> None:
     first = log.append(paths, "events", "approval", {"records": [{"id": "SR-001"}]})
     second = log.append(paths, "events", "prompt", {"digest": "x"})
     files = _files(paths)
@@ -42,7 +42,7 @@ def test_one_file_per_entry_under_kind(paths: PlumbPaths) -> None:
     assert not list(paths.log_dir.glob("*/.*"))  # no temporary file left behind
 
 
-def test_stream_of_kind_evidence_and_events(paths: PlumbPaths) -> None:
+def test_stream_of_kind_evidence_and_events(paths: IasoPaths) -> None:
     assert log.stream_of("test-run") == "evidence"
     assert log.stream_of("merge-evidence") == "evidence"
     for kind in ("approval", "revocation", "prompt", "repin", "judgment", "renumber",
@@ -62,9 +62,9 @@ def test_stream_of_kind_evidence_and_events(paths: PlumbPaths) -> None:
 _WRITER = """
 import sys, time
 from pathlib import Path
-from plumb import log
-from plumb.paths import PlumbPaths
-paths = PlumbPaths(Path(sys.argv[1]))
+from iaso import log
+from iaso.paths import IasoPaths
+paths = IasoPaths(Path(sys.argv[1]))
 start = float(sys.argv[2])
 while time.time() < start:
     pass
@@ -73,7 +73,7 @@ for i in range(10):
 """
 
 
-def test_same_second_writers_never_replace(paths: PlumbPaths) -> None:
+def test_same_second_writers_never_replace(paths: IasoPaths) -> None:
     """SR-073 EX-2: two writers in one worktree in the same second both keep their entry."""
     import time
 
@@ -88,14 +88,14 @@ def test_same_second_writers_never_replace(paths: PlumbPaths) -> None:
     assert log.verify_chain(paths, "events") == []
 
 
-def test_prev_is_stream_head(paths: PlumbPaths) -> None:
+def test_prev_is_stream_head(paths: IasoPaths) -> None:
     entries = [log.append(paths, "events", "repin", {"i": i}) for i in range(3)]
     head = json.loads(paths.log_head.read_text(encoding="utf-8"))
     assert head["events"] == {"digest": entries[-1].digest, "name": entries[-1].name}
     assert [e.prev for e in entries] == [None, entries[0].digest, entries[1].digest]
 
 
-def test_head_rebuilt_by_scan_when_deleted(paths: PlumbPaths) -> None:
+def test_head_rebuilt_by_scan_when_deleted(paths: IasoPaths) -> None:
     """SR-073 EX-4: with the head pointer deleted, the next prev is the latest entry."""
     log.append(paths, "events", "repin", {"i": 0})
     last = log.append(paths, "events", "repin", {"i": 1})
@@ -109,7 +109,7 @@ def test_head_rebuilt_by_scan_when_deleted(paths: PlumbPaths) -> None:
     assert log.append(paths, "events", "repin", {"i": 3}).prev == after.digest
 
 
-def test_head_starts_from_legacy_lines(paths: PlumbPaths) -> None:
+def test_head_starts_from_legacy_lines(paths: IasoPaths) -> None:
     """Before the migration, the first entry file chains to the last legacy line."""
     from logutil import legacy_entry, write_legacy
 
@@ -119,7 +119,7 @@ def test_head_starts_from_legacy_lines(paths: PlumbPaths) -> None:
     assert log.append(paths, "events", "repin", {"i": 2}).prev == second["digest"]
 
 
-def test_name_stamp_and_suffix_parse(paths: PlumbPaths) -> None:
+def test_name_stamp_and_suffix_parse(paths: IasoPaths) -> None:
     entry = log.append(paths, "events", "repin", {})
     file_name = entry.name.split("/", 1)[1]
     stamp, micros, suffix = log.parse_name(file_name)

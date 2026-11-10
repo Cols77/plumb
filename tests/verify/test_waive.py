@@ -1,4 +1,4 @@
-"""VS6: ``plumb tests waive``: owner only, a ``waiver`` event pinned to a diff digest."""
+"""VS6: ``iaso tests waive``: owner only, a ``waiver`` event pinned to a diff digest."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
+from iaso import cli
+from iaso.api import open_core
 
 DIGEST = "sha256:" + "ab" * 32
 
@@ -19,7 +19,7 @@ def _waivers(root: Path) -> list:
 @pytest.mark.sr("SR-254")
 def test_waiver_refused_under_marker(repo: Path, monkeypatch: pytest.MonkeyPatch,
                                      capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "1")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "1")
     code = cli.main(["tests", "waive", "--diff-digest", DIGEST, "--reason", "flaky infra",
                      "--root", str(repo)])
     assert code == 3
@@ -36,7 +36,7 @@ def test_waiver_event_pinned_to_diff_digest(repo: Path,
     events = _waivers(repo)
     assert len(events) == 1
     assert events[0].payload["diff_digest"] == DIGEST
-    from plumb import words
+    from iaso import words
 
     assert "reason" not in events[0].payload     # DEC-116: the owner's words stay local
     assert words.joined(open_core(repo), events[0])["reason"] == "known"

@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from merge_helpers import INT, SR2, commit, repin_all, write
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.boundary import exit_code, merge_report, render
-from plumb.capture.proof import set_evidence, set_plan
-from plumb.contracts import Target
+from iaso import cli
+from iaso.api import open_core
+from iaso.boundary import exit_code, merge_report, render
+from iaso.capture.proof import set_evidence, set_plan
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-253")
 
@@ -21,9 +21,9 @@ SR1 = "---\nid: SR-001\ntitle: Links pin both ends\nstatement: Both ends are pin
 
 @pytest.fixture
 def base(repo: Path) -> tuple[Path, str]:
-    write(repo, ".plumb/intents/INT-001.md", INT)
-    write(repo, ".plumb/requirements/SR-001.md", SR1)
-    write(repo, ".plumb/requirements/SR-002.md", SR2)
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR1)
+    write(repo, ".iaso/requirements/SR-002.md", SR2)
     write(repo, "src/mod.py", "x = 1\n")
     core = open_core(repo)
     core.add_link("SR-001", "derives_from", Target(record="INT-001"))
@@ -43,7 +43,7 @@ def test_never_shown_is_named_and_does_not_change_the_exit(base) -> None:
     text = "\n".join(render(report))
     assert "not shown working yet (information; a proof holds only work landing on the " \
            "default branch that delivers it):" in text
-    assert "SR-001 Links pin both ends: no proof planned (plumb show SR-001)" in text
+    assert "SR-001 Links pin both ends: no proof planned (iaso show SR-001)" in text
     # the same report without the section exits the same: it never holds
     from dataclasses import replace
 
@@ -55,7 +55,7 @@ def test_shown_working_is_not_named(base, capsys) -> None:
     write(root, "src/mod.py", "x = 2\n")
     repin_all(root)
     core = open_core(root)
-    set_plan(core, "SR-001", "run plumb show SR-001", "command")
+    set_plan(core, "SR-001", "run iaso show SR-001", "command")
     commit(root, "change mod\n\nSR: SR-001")
     report = merge_report(open_core(root), sha, run_full=False)
     assert [(r["id"], r["why"]) for r in report.not_shown] == [("SR-001", "not run")]

@@ -9,8 +9,8 @@ pytestmark = pytest.mark.sr("SR-269")
 
 @pytest.fixture
 def server(tmp_path):
-    from plumb.browser.server import make_server
-    from plumb.browser.service import BrowserService
+    from iaso.browser.server import make_server
+    from iaso.browser.service import BrowserService
 
     assets = tmp_path / "assets"
     assets.mkdir()

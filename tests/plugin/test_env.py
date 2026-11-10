@@ -1,5 +1,5 @@
-"""The bundled environment (SP7 4.2, DEC-023; SR-082 EX-2, EX-3): every hook runs plumb from the
-plugin's own environment, never the repository's .venv or a plumb on the PATH; the environment
+"""The bundled environment (SP7 4.2, DEC-023; SR-082 EX-2, EX-3): every hook runs iaso from the
+plugin's own environment, never the repository's .venv or a iaso on the PATH; the environment
 is set up once, safely when two sessions start together; git's hooks and the merge driver call
 the user-level launcher."""
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.present import owner_text
+from iaso.present import owner_text
 
 from .helpers import (
     EVENTS,
@@ -39,14 +39,14 @@ pytestmark = [needs_sh, pytest.mark.sr("SR-279")]
 
 
 def _poisoned_repo(root: Path, sentinel: Path) -> Path:
-    """An adopted repository whose own .venv holds a plumb that must never run."""
+    """An adopted repository whose own .venv holds a iaso that must never run."""
     adopted_repo(root)
     for rel in (".venv/Scripts/python.exe", ".venv/bin/python"):
         write_script(root / rel, f'echo "repo venv $*" >> "{slashes(sentinel)}"')
-    package = root / ".venv" / "Lib" / "site-packages" / "plumb"
+    package = root / ".venv" / "Lib" / "site-packages" / "iaso"
     package.mkdir(parents=True)
     (package / "__init__.py").write_text(
-        f"open({str(sentinel)!r}, 'a').write('repo plumb imported\\n')\n", encoding="utf-8")
+        f"open({str(sentinel)!r}, 'a').write('repo iaso imported\\n')\n", encoding="utf-8")
     return root
 
 
@@ -56,12 +56,12 @@ def test_hook_uses_bundled_env(tmp_path: Path, event: str) -> None:
     log = tmp_path / "bundled.log"
     root = _poisoned_repo(tmp_path / "repo", sentinel)
     home = ready_home(tmp_path / "home", recording_python(tmp_path / "env" / "python", log))
-    env = env_with([sentinel_bin(tmp_path / "poison", sentinel)], PLUMB_HOME=str(home),
+    env = env_with([sentinel_bin(tmp_path / "poison", sentinel)], IASO_HOME=str(home),
                    CLAUDE_PROJECT_DIR=str(root))
     result = run_hook(event, root, hook_data(event), env)
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
-    assert f"argv:-m plumb hook {event}" in calls
+    assert f"argv:-m iaso hook {event}" in calls
     assert any(line.startswith("root:") and line.endswith("/plugin") for line in calls)
     assert not sentinel.exists(), sentinel.read_text(encoding="utf-8")
 
@@ -85,14 +85,14 @@ def _fake_uv(folder: Path, log: Path, delay: int = 1) -> Path:
 
 def _bootstrap(env: dict[str, str]) -> subprocess.Popen[str]:
     assert SH is not None
-    return subprocess.Popen([SH, slashes(LAUNCHER), "--plumb-bootstrap"], env=env,
+    return subprocess.Popen([SH, slashes(LAUNCHER), "--iaso-bootstrap"], env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
 
 def test_bootstrap_lock(tmp_path: Path) -> None:
     log = tmp_path / "uv.log"
     home = tmp_path / "home"
-    env = env_with([_fake_uv(tmp_path / "fakebin", log)], PLUMB_HOME=str(home))
+    env = env_with([_fake_uv(tmp_path / "fakebin", log)], IASO_HOME=str(home))
     first, second = _bootstrap(env), _bootstrap(env)
     for process in (first, second):
         _, err = process.communicate(timeout=120)
@@ -104,7 +104,7 @@ def test_bootstrap_lock(tmp_path: Path) -> None:
     assert current["wheel_sha256"] == manifest()["sha256"]
     assert current["version"] == manifest()["version"]
     assert Path(current["python"]).is_file()
-    assert (home / "bin" / "plumb").is_file() and (home / "bin" / "plumb.cmd").is_file()
+    assert (home / "bin" / "iaso").is_file() and (home / "bin" / "iaso.cmd").is_file()
     assert not (home / "lock").exists()
     name = f"{manifest()['version']}-{manifest()['sha256'][:12]}"
     assert (home / "env" / name).is_dir() and not (home / "env" / f"{name}.tmp").exists()
@@ -119,7 +119,7 @@ def test_stale_lock_taken_over(tmp_path: Path) -> None:
     (home / "lock").mkdir(parents=True)
     old = time.time() - 20 * 60
     os.utime(home / "lock", (old, old))
-    env = env_with([_fake_uv(tmp_path / "fakebin", log, delay=0)], PLUMB_HOME=str(home))
+    env = env_with([_fake_uv(tmp_path / "fakebin", log, delay=0)], IASO_HOME=str(home))
     process = _bootstrap(env)
     _, err = process.communicate(timeout=60)
     assert process.returncode == 0, err
@@ -128,19 +128,19 @@ def test_stale_lock_taken_over(tmp_path: Path) -> None:
 
 
 def test_launcher_runs_the_bundled_python(tmp_path: Path) -> None:
-    """``bin/plumb`` (the agent's ``plumb``) builds the environment when needed, then runs
-    plumb with it, never a plumb on the PATH."""
+    """``bin/iaso`` (the agent's ``iaso``) builds the environment when needed, then runs
+    iaso with it, never a iaso on the PATH."""
     log = tmp_path / "uv.log"
     sentinel = tmp_path / "sentinel.txt"
     home = tmp_path / "home"
     env = env_with([_fake_uv(tmp_path / "fakebin", log, delay=0),
-                    sentinel_bin(tmp_path / "poison", sentinel, ("python", "python3", "plumb"))],
-                   PLUMB_HOME=str(home))
+                    sentinel_bin(tmp_path / "poison", sentinel, ("python", "python3", "iaso"))],
+                   IASO_HOME=str(home))
     assert SH is not None
     result = subprocess.run([SH, slashes(LAUNCHER), "status"], env=env, capture_output=True,
                             text=True, timeout=60, input="")
     assert result.returncode == 0, result.stderr
-    assert "argv:-m plumb status" in Path(f"{log}.python").read_text(encoding="utf-8")
+    assert "argv:-m iaso status" in Path(f"{log}.python").read_text(encoding="utf-8")
     assert not sentinel.exists()
 
 
@@ -150,8 +150,8 @@ def test_getting_ready_line(tmp_path: Path) -> None:
     root = adopted_repo(tmp_path / "repo")
     home = tmp_path / "home"
     env = env_with([_fake_uv(tmp_path / "fakebin", log, delay=0),
-                    sentinel_bin(tmp_path / "poison", sentinel, ("python", "python3", "plumb"))],
-                   PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+                    sentinel_bin(tmp_path / "poison", sentinel, ("python", "python3", "iaso"))],
+                   IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     # not ready: every hook but the session start exits at once, silently
     for event in ("prompt", "pre-tool", "stop"):
         result = run_hook(event, root, hook_data(event), env)
@@ -169,10 +169,10 @@ def test_getting_ready_line(tmp_path: Path) -> None:
 
 def test_missing_prerequisites_line(tmp_path: Path) -> None:
     root = adopted_repo(tmp_path / "repo")
-    env = env_with([], PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([], IASO_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
     # the plugin's own probe (uv, or a Python 3.12 or later under any name): SR-119 EX-3
-    probe = subprocess.run([SH, slashes(PLUGIN / "bin" / "plumb"), "--plumb-probe"],
-                           env={**env, "PLUMB_HOME": str(tmp_path / "home")}, capture_output=True,
+    probe = subprocess.run([SH, slashes(PLUGIN / "bin" / "iaso"), "--iaso-probe"],
+                           env={**env, "IASO_HOME": str(tmp_path / "home")}, capture_output=True,
                            stdin=subprocess.DEVNULL, timeout=60)
     if probe.returncode == 0:
         pytest.skip("this machine has uv or a Python 3.12 or later beside sh")
@@ -181,13 +181,13 @@ def test_missing_prerequisites_line(tmp_path: Path) -> None:
 
 
 def _plugin_env(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
-    monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(PLUGIN))
-    monkeypatch.setenv("PLUMB_HOME", str(home))
+    monkeypatch.setenv("IASO_PLUGIN_ROOT", str(PLUGIN))
+    monkeypatch.setenv("IASO_HOME", str(home))
 
 
 def test_git_hooks_use_user_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import launcher
-    from plumb.cli import main
+    from iaso import launcher
+    from iaso.cli import main
 
     home = tmp_path / "home"
     _plugin_env(monkeypatch, home)
@@ -198,18 +198,18 @@ def test_git_hooks_use_user_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyP
                  "pre-push"):
         text = (hooks / name).read_text(encoding="utf-8")
         assert f'exec "{launcher.user_launcher()}" ' in text, name
-        assert "-m plumb" not in text, name
+        assert "-m iaso" not in text, name
         assert f'[ -f "{launcher.user_launcher()}" ] ||' in text, name
 
 
 def test_driver_uses_user_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import launcher
-    from plumb.cli import main
+    from iaso import launcher
+    from iaso.cli import main
 
     _plugin_env(monkeypatch, tmp_path / "home")
     root = adopted_repo(tmp_path / "repo")
     assert main(["init", "--root", str(root)]) == 0
-    driver = git(root, "config", "--get", "merge.plumb-record.driver").stdout.strip()
+    driver = git(root, "config", "--get", "merge.iaso-record.driver").stdout.strip()
     assert driver.startswith(f'"{launcher.user_launcher()}" merge-driver')
 
 
@@ -217,10 +217,10 @@ def test_outside_the_plugin_hooks_keep_the_interpreter(tmp_path: Path) -> None:
     """The legacy CLI-only use keeps today's interpreter path (SR-084 EX-3)."""
     import sys
 
-    from plumb.boundary import prepush
+    from iaso.boundary import prepush
 
     assert prepush.hook_text(sys.executable).endswith(
-        f'exec "{slashes(sys.executable)}" -m plumb merge-check --hook pre-push\n')
+        f'exec "{slashes(sys.executable)}" -m iaso merge-check --hook pre-push\n')
 
 
 def _stale_home(home: Path, python: Path) -> None:
@@ -238,24 +238,24 @@ def test_reinstalled_plugin_keeps_checks_on_previous_copy(tmp_path: Path) -> Non
     root = adopted_repo(tmp_path / "repo")
     home = tmp_path / "home"
     _stale_home(home, recording_python(tmp_path / "env" / "python", log))
-    env = env_with(PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with(IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     result = run_hook("post-edit", root, hook_data("post-edit"), env)
     assert result.returncode == 0, result.stderr
-    assert "argv:-m plumb hook post-edit" in log.read_text(encoding="utf-8").splitlines()
+    assert "argv:-m iaso hook post-edit" in log.read_text(encoding="utf-8").splitlines()
 
 
 @pytest.mark.sr("SR-354")
 def test_check_that_cannot_run_writes_one_line_in_adopted_project_only(tmp_path: Path) -> None:
     """EX-2 and EX-3."""
     root = adopted_repo(tmp_path / "repo")
-    env = env_with(PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with(IASO_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(root))
     assert run_hook("prompt", root, hook_data("prompt"), env).returncode == 0
-    lines = (root / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
+    lines = (root / ".iaso" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1 and "prompt" in lines[0]
     bare = git_repo(tmp_path / "bare")
-    env = env_with(PLUMB_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(bare))
+    env = env_with(IASO_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(bare))
     run_hook("prompt", bare, hook_data("prompt"), env)
-    assert not (bare / ".plumb").exists()
+    assert not (bare / ".iaso").exists()
 
 
 @pytest.mark.sr("SR-354")
@@ -264,16 +264,16 @@ def test_hook_whose_code_cannot_load_writes_one_line_in_adopted_project_only(
     """EX-2 and EX-3 on the Python side: the question-answer check's module is gone from the
     copy (a reinstall changed it under the session); the owner's answer is not dropped
     silently: one line names the check in the adopted project, nothing in one not adopted."""
-    from plumb.hosts.claude_code import cli
+    from iaso.hosts.claude_code import cli
 
-    monkeypatch.setitem(cli.HOOK_MODULES, "question-answer", "plumb.hosts.claude_code.gone_qa")
+    monkeypatch.setitem(cli.HOOK_MODULES, "question-answer", "iaso.hosts.claude_code.gone_qa")
     monkeypatch.chdir(tmp_path)
     root = adopted_repo(tmp_path / "repo")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(root))
     assert cli.run("hook", ["question-answer"]) == 0
-    lines = (root / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
+    lines = (root / ".iaso" / "session" / "errors.log").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1 and "question-answer" in lines[0]
     bare = git_repo(tmp_path / "bare")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(bare))
     assert cli.run("hook", ["question-answer"]) == 0
-    assert not (bare / ".plumb").exists()
+    assert not (bare / ".iaso").exists()

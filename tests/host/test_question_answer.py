@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.hosts.claude_code import question_answer
+from iaso.api import open_core
+from iaso.hosts.claude_code import question_answer
 
 pytestmark = pytest.mark.sr("SR-212")
 
@@ -59,7 +59,7 @@ def test_a_dismissed_question_logs_nothing(repo: Path, hook_input,
 def test_a_stand_in_call_is_logged_like_an_askuserquestion_call(repo: Path, hook_input) -> None:
     """DEC-407: the stand-in's MCP result (structuredContent, or JSON in a text block) is read
     as AskUserQuestion's response."""
-    from plumb.hosts.claude_code import ask_gate
+    from iaso.hosts.claude_code import ask_gate
 
     data = {"questions": ASKED["questions"],
             "answers": {"Run the slow tests now or later?": "now"}}

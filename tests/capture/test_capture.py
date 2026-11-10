@@ -1,4 +1,4 @@
-"""CAPTURE C2: plumb capture writes a whole read-back in one call (sp2 5.1, SR-034)."""
+"""CAPTURE C2: iaso capture writes a whole read-back in one call (sp2 5.1, SR-034)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from capture_helpers import event_kinds, log_prompt, run, tree_bytes
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-235")
 
@@ -88,7 +88,7 @@ def test_quote_must_be_verbatim_in_prompt(calc: Path, capsys) -> None:
 
 def test_update_of_confirmed_record_says_unconfirmed(repo: Path, write_record,
                                                      capsys) -> None:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     write_record(repo, SR_009)
     approve(open_core(repo), ["SR-009"])
@@ -142,7 +142,7 @@ class _Judge:
         self.verdict = verdict
 
     def contradiction(self, prompt, record):
-        from plumb.contracts import Judgment
+        from iaso.contracts import Judgment
 
         return Judgment(action="contradiction", subject=record.id, verdict=self.verdict,
                         confidence=0.9, tier="act", backend="fake", fingerprint="f")
@@ -156,7 +156,7 @@ def _relay_doc(statement: str, **extra) -> dict:
 @pytest.mark.sr("SR-237")
 def test_capture_names_the_requirement_a_new_one_contradicts(calc: Path) -> None:
     """SR-165 EX-2: 'never relays the choice' next to 'relays the choice'."""
-    from plumb.capture.capture import capture as run
+    from iaso.capture.capture import capture as run
 
     core = open_core(calc)
     first = run(core, _relay_doc("The agent relays the choice the owner made"),
@@ -170,7 +170,7 @@ def test_capture_names_the_requirement_a_new_one_contradicts(calc: Path) -> None
 
 @pytest.mark.sr("SR-237")
 def test_capture_supersedes_adds_the_link_and_names_nothing_for_it(calc: Path) -> None:
-    from plumb.capture.capture import CaptureError, capture as run
+    from iaso.capture.capture import CaptureError, capture as run
 
     first = run(open_core(calc), _relay_doc("The agent relays the choice the owner made"))
     old = first.written[1]
@@ -191,7 +191,7 @@ def _cover_doc(statement: str) -> dict:
 
 
 def _live(core, kind: str) -> list[str]:
-    from plumb.query import superseded_ids
+    from iaso.query import superseded_ids
 
     gone = superseded_ids(core.index())
     return [r.id for r in core.index().values() if r.kind == kind and r.id not in gone]
@@ -200,7 +200,7 @@ def _live(core, kind: str) -> list[str]:
 @pytest.mark.sr("SR-383")
 def test_restated_requirement_supersedes_and_adds_no_near_duplicate(calc: Path) -> None:
     """SR-383 EX-1."""
-    from plumb.capture.capture import capture as run
+    from iaso.capture.capture import capture as run
 
     plan = "The agent shows the owner the plan"
     old = run(open_core(calc), _cover_doc(f"{plan} each turn")).written[1]
@@ -214,7 +214,7 @@ def test_restated_requirement_supersedes_and_adds_no_near_duplicate(calc: Path) 
 @pytest.mark.sr("SR-383")
 def test_restated_decision_is_edited_not_duplicated(calc: Path) -> None:
     """SR-383 EX-1 (decision)."""
-    from plumb.capture.capture import capture as run
+    from iaso.capture.capture import capture as run
 
     def doc(chosen: str) -> dict:
         return {"intent": {"quote": "q", "readback": "r"},
@@ -232,7 +232,7 @@ def test_restated_decision_is_edited_not_duplicated(calc: Path) -> None:
 @pytest.mark.sr("SR-383")
 def test_uncovered_topic_still_creates_a_record(calc: Path) -> None:
     """SR-383 EX-2."""
-    from plumb.capture.capture import capture as run
+    from iaso.capture.capture import capture as run
 
     run(open_core(calc), _cover_doc("The agent shows the owner the plan each turn"))
     run(open_core(calc), _cover_doc("Backups of the log run nightly"))

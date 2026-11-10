@@ -1,4 +1,4 @@
-"""CAPTURE CS1: plumb clarify gives the skill its depth and the questions that matter
+"""CAPTURE CS1: iaso clarify gives the skill its depth and the questions that matter
 (R11; sp2 9.2, SR-043)."""
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from capture_helpers import record_text, run
 
-from plumb.api import open_core
-from plumb.capture.clarify import clarify, next_question
-from plumb.judgment import FakeBackend
+from iaso.api import open_core
+from iaso.capture.clarify import clarify, next_question
+from iaso.judgment import FakeBackend
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -21,7 +21,7 @@ EX = [{"id": "EX-1", "given": "an approved requirement", "when": "its statement 
 
 @pytest.fixture
 def project(repo: Path, write_record) -> Path:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     write_record(repo, record_text("SR-004", "Approvals pin exact content",
                                    statement="An approval pins the record hash", examples=EX))
@@ -57,7 +57,7 @@ def test_trigger_makes_it_escalated(project: Path) -> None:
 
 
 def test_cli_writes_session_depth(project: Path, monkeypatch, capsys) -> None:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "sess-9")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "sess-9")
     questions = project / "q.json"
     questions.write_text(json.dumps([{"question": "Include invoices?",
                                       "options": [{"label": "yes", "will": ["invoices"]},
@@ -68,7 +68,7 @@ def test_cli_writes_session_depth(project: Path, monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert out.startswith("depth: incremental")
     assert "1. Include invoices? [yes / no] (recommended: no)" in out
-    saved = json.loads((project / ".plumb" / "session" / "sess-9" / "clarify.json")
+    saved = json.loads((project / ".iaso" / "session" / "sess-9" / "clarify.json")
                        .read_text(encoding="utf-8"))
     assert saved["depth"] == "incremental"
 

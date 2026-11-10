@@ -12,10 +12,10 @@ from typing import Any
 import pytest
 from core.test_stale_resolve import LINK, REFORMATTED, _edit, project  # noqa: F401
 
-from plumb import stale
-from plumb.api import open_core
-from plumb.contracts import DispatchError
-from plumb.understand import cmd_question, judge, summary, tidy, worker
+from iaso import stale
+from iaso.api import open_core
+from iaso.contracts import DispatchError
+from iaso.understand import cmd_question, judge, summary, tidy, worker
 from understand.test_judge_job import SESSION, decision_text, log_prompt, requirement_text
 
 SAYS = "A conflict may be answered through the agent in chat"
@@ -110,7 +110,7 @@ def test_a_question_of_a_branch_that_exists_is_listed(repo: Path, world) -> None
 
 @pytest.mark.sr("SR-216")
 def test_ex1_repin_logs_the_withdrawal_of_the_stale_question(project: Path) -> None:  # noqa: F811
-    from plumb import links
+    from iaso import links
 
     _edit(project, REFORMATTED)
     stale.ask_owner(open_core(project), SESSION, link=LINK, record="SR-001", topic="Adds",
@@ -132,7 +132,7 @@ def _merge_world(tmp_path: Path):
 
 @pytest.mark.sr("SR-216")
 def test_ex10_merging_a_branch_withdraws_its_questions_and_logs_them(tmp_path: Path) -> None:
-    from plumb.boundary.premerge import run_post_merge
+    from iaso.boundary.premerge import run_post_merge
     from understand.test_judge_job import SESSION as S
 
     root, run_git = _merge_world(tmp_path)
@@ -150,7 +150,7 @@ def test_ex10_merging_a_branch_withdraws_its_questions_and_logs_them(tmp_path: P
 @pytest.mark.sr("SR-216")
 def test_ex11_syncing_main_into_a_feature_branch_withdraws_nothing(tmp_path: Path) -> None:
     from mergedriver.mdhelpers import commit_all, run_git
-    from plumb.boundary.premerge import run_post_merge
+    from iaso.boundary.premerge import run_post_merge
 
     root, _ = _merge_world(tmp_path)
     run_git(root, "checkout", "-q", "main")
@@ -167,7 +167,7 @@ def test_ex11_syncing_main_into_a_feature_branch_withdraws_nothing(tmp_path: Pat
 @pytest.mark.sr("SR-216")
 def test_ex12_a_branch_not_yet_merged_keeps_its_questions(tmp_path: Path) -> None:
     from mergedriver.mdhelpers import commit_all, run_git
-    from plumb.boundary.premerge import run_post_merge
+    from iaso.boundary.premerge import run_post_merge
 
     root, _ = _merge_world(tmp_path)
     run_git(root, "checkout", "-q", "main")
@@ -375,7 +375,7 @@ def test_ex2_a_record_a_decision_contradicts_is_reworded_citing_it_and_reopen_un
 
 @pytest.mark.sr("SR-217")
 def test_ex4_no_judge_reached_is_said_once_and_settles_nothing(repo: Path, world) -> None:
-    from plumb.understand import files
+    from iaso.understand import files
 
     _ask(repo)
     notes = files.session_dir(repo, SESSION) / "agent_notes.json"

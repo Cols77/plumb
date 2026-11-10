@@ -1,4 +1,4 @@
-"""SP6 6.5: ``plumb log migrate`` keeps every digest, chain and evidence identity (SR-074)."""
+"""SP6 6.5: ``iaso log migrate`` keeps every digest, chain and evidence identity (SR-074)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 from logutil import entries, entry_files, legacy_entry, write_legacy
 
 from logs.gitrepo import add_worktree, commit_all, make_repo, run_git
-from plumb import cli, log
-from plumb.api import open_core
-from plumb.paths import PlumbPaths
+from iaso import cli, log
+from iaso.api import open_core
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
@@ -38,7 +38,7 @@ def _evidence(prev: str | None, run_id: str, node: str, at: str) -> dict:
 
 @pytest.fixture
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     return make_repo(tmp_path / "r")
 
 
@@ -55,7 +55,7 @@ def test_digests_and_prev_unchanged(root: Path, capsys: pytest.CaptureFixture[st
     data = json.loads(capsys.readouterr().out)
     assert data["lines"] == 32 and len(data["written"]) == 32 and data["remaining"] == 0
     assert sorted(data["truncated"]) == ["events.jsonl", "evidence.jsonl"]
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     assert paths.log_events.exists() and paths.log_events.stat().st_size == 0  # emptied
     assert len(entry_files(root)) == 32
     after = {s: [(e["digest"], e["prev"]) for e in entries(root, s)]
@@ -67,18 +67,18 @@ def test_digests_and_prev_unchanged(root: Path, capsys: pytest.CaptureFixture[st
         assert log.is_migrated_name(name.split("/", 1)[1])
     for stream in ("events", "evidence"):
         assert log.verify_chain(paths, stream) == []
-    assert not [f for f in __import__("plumb.validate", fromlist=["validate"])
+    assert not [f for f in __import__("iaso.validate", fromlist=["validate"])
                 .validate(open_core(root)) if f.severity == "error"]
 
 
 def test_second_run_writes_nothing(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """SR-074 EX-2."""
     write_legacy(root, "events", _chain(5))
-    assert log.migrate(PlumbPaths(root), dry_run=False).written
-    before = {n: (PlumbPaths(root).log_dir / n).stat().st_mtime_ns for n in entry_files(root)}
-    again = log.migrate(PlumbPaths(root), dry_run=False)
+    assert log.migrate(IasoPaths(root), dry_run=False).written
+    before = {n: (IasoPaths(root).log_dir / n).stat().st_mtime_ns for n in entry_files(root)}
+    again = log.migrate(IasoPaths(root), dry_run=False)
     assert again.written == () and again.lines == 0 and again.truncated == ()
-    after = {n: (PlumbPaths(root).log_dir / n).stat().st_mtime_ns for n in entry_files(root)}
+    after = {n: (IasoPaths(root).log_dir / n).stat().st_mtime_ns for n in entry_files(root)}
     assert after == before
 
 
@@ -86,10 +86,10 @@ def test_independent_migrations_merge_clean(root: Path, tmp_path: Path) -> None:
     write_legacy(root, "events", _chain(6))
     commit_all(root, "legacy log")
     other = add_worktree(root, tmp_path / "other", "feat-x")
-    assert log.migrate(PlumbPaths(root), dry_run=False).refused == ()
+    assert log.migrate(IasoPaths(root), dry_run=False).refused == ()
     open_core(root).log_append("events", "mod-hello", {"side": "main"})
     commit_all(root, "migrate on main")
-    assert log.migrate(PlumbPaths(other), dry_run=False).refused == ()
+    assert log.migrate(IasoPaths(other), dry_run=False).refused == ()
     open_core(other).log_append("events", "mod-hello", {"side": "feat"})
     commit_all(other, "migrate on feat")
     merged = run_git(root, "merge", "--no-edit", "feat-x", check=False)
@@ -97,7 +97,7 @@ def test_independent_migrations_merge_clean(root: Path, tmp_path: Path) -> None:
     names = entry_files(root)
     assert len(names) == 8 and len(set(names)) == 8  # six shared files, one per side
     assert len({e["digest"] for e in entries(root, "events")}) == 8
-    assert log.verify_chain(PlumbPaths(root), "events") == []
+    assert log.verify_chain(IasoPaths(root), "events") == []
 
 
 def test_pre_migration_branch_merges_then_migrates(root: Path, tmp_path: Path) -> None:
@@ -113,11 +113,11 @@ def test_pre_migration_branch_merges_then_migrates(root: Path, tmp_path: Path) -
     late[1] = legacy_entry("mod-hello", {"i": 11}, late[0]["digest"], at="2026-10-05T12:00:11Z")
     write_legacy(old, "events", late)  # the old code still appends to the JSONL
     commit_all(old, "old branch appends")
-    log.migrate(PlumbPaths(root), dry_run=False)
+    log.migrate(IasoPaths(root), dry_run=False)
     commit_all(root, "migrate")
     merged = run_git(root, "merge", "--no-edit", "old-branch", check=False)
     assert merged.returncode == 0, merged.stdout + merged.stderr
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     # git's union merge sees the emptied lines and the appended ones as one adjacent hunk
     # and keeps both sides: the old lines come back next to the new ones. Readers dedupe
     # them by digest against the migrated files, so every entry is read once.
@@ -131,14 +131,14 @@ def test_pre_migration_branch_merges_then_migrates(root: Path, tmp_path: Path) -
 
 def test_evidence_reuse_identical_before_after(root: Path) -> None:
     """SR-074 EX-4: the reuse index and every node's evidence are unchanged."""
-    from plumb.verify.evidence import load_index
+    from iaso.verify.evidence import load_index
 
     runs = [_evidence(None, "r1", "t.py::a", "2026-10-05T13:00:00Z")]
     runs.append(_evidence(runs[0]["digest"], "r2", "t.py::b", "2026-10-05T13:00:01Z"))
     runs.append(_evidence(runs[1]["digest"], "r3", "t.py::a", "2026-10-05T13:00:02Z"))
     write_legacy(root, "evidence", runs)
     before = load_index(open_core(root))
-    log.migrate(PlumbPaths(root), dry_run=False)
+    log.migrate(IasoPaths(root), dry_run=False)
     after = load_index(open_core(root))
     assert after["nodes"] == before["nodes"] and after["full"] == before["full"]
     assert after["applied"] == before["applied"]
@@ -146,14 +146,14 @@ def test_evidence_reuse_identical_before_after(root: Path) -> None:
 
 
 def test_approvals_and_confirmations_unchanged(root: Path) -> None:
-    from plumb import approvals
+    from iaso import approvals
 
-    (root / ".plumb" / "requirements" / "SR-001.md").write_text(SR, encoding="utf-8")
+    (root / ".iaso" / "requirements" / "SR-001.md").write_text(SR, encoding="utf-8")
     core = open_core(root)
     core.log_append("events", "prompt", {"digest": "sha256:p"})
     approvals.approve(open_core(root), ["SR-001"])
     # put the same entries back as legacy lines, as an unmigrated repository has them
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     raws = [json.loads((paths.log_dir / n).read_text(encoding="utf-8"))
             for n in entry_files(root)]
     raws.sort(key=lambda r: (r["prev"] is not None, r["at"]))
@@ -173,7 +173,7 @@ def test_bad_line_refuses_and_writes_nothing(root: Path,
     """SR-074 EX-5: a hand-edited legacy line refuses the run, named, and nothing is written."""
     chain = _chain(3)
     write_legacy(root, "events", chain)
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     text = paths.log_events.read_text(encoding="utf-8").replace('"i":1', '"i":7')
     paths.log_events.write_text(text, encoding="utf-8")
     before = paths.log_events.read_bytes()
@@ -189,13 +189,13 @@ def test_check_exits_1_while_legacy_lines_remain(root: Path,
     assert cli.main(["log", "migrate", "--check", "--root", str(root)]) == 1
     assert "2" in capsys.readouterr().out
     assert entry_files(root) == []
-    log.migrate(PlumbPaths(root), dry_run=False)
+    log.migrate(IasoPaths(root), dry_run=False)
     assert cli.main(["log", "migrate", "--check", "--root", str(root)]) == 0
 
 
 def test_dry_run_writes_nothing(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_legacy(root, "events", _chain(3))
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     before = paths.log_events.read_bytes()
     assert cli.main(["log", "migrate", "--dry-run", "--json", "--root", str(root)]) == 0
     data = json.loads(capsys.readouterr().out)
@@ -204,11 +204,11 @@ def test_dry_run_writes_nothing(root: Path, capsys: pytest.CaptureFixture[str]) 
 
 
 def test_init_creates_no_jsonl(tmp_path: Path) -> None:
-    from plumb.commands import init_repo
+    from iaso.commands import init_repo
 
     init_repo(tmp_path)
-    paths = PlumbPaths(tmp_path)
+    paths = IasoPaths(tmp_path)
     assert paths.log_dir.is_dir()
     assert not paths.log_events.exists() and not paths.log_evidence.exists()
-    attributes = (paths.plumb / ".gitattributes").read_text(encoding="utf-8")
+    attributes = (paths.iaso / ".gitattributes").read_text(encoding="utf-8")
     assert "log/*.jsonl merge=union" in attributes  # kept for the transition

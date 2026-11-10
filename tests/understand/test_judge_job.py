@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Job
+from iaso.api import open_core
+from iaso.contracts import Job
 from understand.fakes import FakeDispatcher, owner_level
 
 pytestmark = pytest.mark.sr("SR-239")
@@ -26,7 +26,7 @@ def log_prompt(repo: Path, text: str, *, session: str = SESSION,
                at: str = "2026-10-06T10:00:00Z") -> str:
     """Append ``text`` to the prompt log as the prompt hook does; returns its digest."""
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps({"digest": digest, "session": session, "at": at,
@@ -80,7 +80,7 @@ def decision_text(n: int, question: str, chosen: str, *, intent: int | None = No
 
 
 def approve(core: Any, record_id: str, by: str = "owner") -> None:
-    from plumb.approvals import approval_items
+    from iaso.approvals import approval_items
 
     core.log_append("events", "approval", {"records": approval_items(core, [record_id]),
                                            "by": by})
@@ -115,13 +115,13 @@ def verdict_answer(*items: tuple[str, str, float], **extra: Any) -> dict[str, An
 
 @pytest.fixture
 def judge_kind():
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     return judge
 
 
 def build_job(core: Any, ids: list[str], **context: Any) -> Job:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     job = judge.build(core, SESSION, records=ids, **context)
     assert job is not None
@@ -153,7 +153,7 @@ def world(repo: Path, write_record):
 
 
 def test_ex6_short_answer_premise_holds_the_question(repo: Path, write_record) -> None:
-    question = "Should plumb keep one log or two? A: one log. B: two logs."
+    question = "Should iaso keep one log or two? A: one log. B: two logs."
     digest = log_prompt(repo, "A")
     write_record(repo, intent_text(2, "A", "Keep one log", prompt=digest, question=question,
                                    will=("One log holds everything",)))
@@ -163,7 +163,7 @@ def test_ex6_short_answer_premise_holds_the_question(repo: Path, write_record) -
     assert premise["question"] == question
     assert [m["text"] for m in premise["messages"]] == ["A"]
     assert premise["messages"][0]["digest"] == digest
-    import plumb.understand as understand
+    import iaso.understand as understand
 
     system = (Path(understand.__file__).parent / "agents" / "judge.md").read_text(
         encoding="utf-8")
@@ -217,7 +217,7 @@ def test_related_are_confirmed_records_only(world: Path, write_record) -> None:
 
 
 def test_build_is_none_without_records(world: Path) -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     core = open_core(world)
     assert judge.build(core, SESSION, records=[]) is None
@@ -231,7 +231,7 @@ def test_same_records_same_job_id(world: Path) -> None:
 
 
 def _apply(core: Any, job: Job, answer: dict[str, Any]):
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     return judge.apply(core, job, answer)
 
@@ -289,7 +289,7 @@ def test_ex5_option_picked_decision_supported_is_not_settled_and_raises_no_quest
 def test_a_changed_record_is_not_settled(world: Path) -> None:
     core = open_core(world)
     job = build_job(core, ["SR-001"])
-    path = world / ".plumb" / "requirements" / "SR-001.md"
+    path = world / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("two seconds", "3 seconds"),
                     encoding="utf-8")
     applied = _apply(open_core(world), job, verdict_answer(("SR-001", "beyond", 0.9),
@@ -298,11 +298,11 @@ def test_a_changed_record_is_not_settled(world: Path) -> None:
 
 
 def test_recompute_rebuilds_from_the_logs(world: Path) -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     core = open_core(world)
     job = build_job(core, ["SR-001"])
-    path = world / ".plumb" / "requirements" / "SR-001.md"
+    path = world / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text(encoding="utf-8").replace("two seconds", "3 seconds"),
                     encoding="utf-8")
     fresh = judge.recompute(open_core(world), job)
@@ -314,7 +314,7 @@ def test_recompute_rebuilds_from_the_logs(world: Path) -> None:
 
 
 def test_describe_says_the_step_in_plain_words(world: Path) -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     job = build_job(open_core(world), ["INT-001", "SR-001"])
     assert judge.describe(job) == "judging 2 records"
@@ -322,7 +322,7 @@ def test_describe_says_the_step_in_plain_words(world: Path) -> None:
 
 
 def test_the_schema_is_a_checkable_answer_shape() -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     assert judge.schema["id"] == "judge.v1"
     item = judge.schema["properties"]["verdicts"]["items"]
@@ -342,7 +342,7 @@ def test_ex2_the_format_given_to_the_model_is_lenient() -> None:
     the instructions and the retry enforce the records and two to four options."""
     import json
 
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     given = json.loads((judge.HERE / "schemas" / "judge.json").read_text(encoding="utf-8"))
     item = given["properties"]["questions"]["items"]
@@ -363,14 +363,14 @@ SAID = "please add multiply next to add; it should handle a few cases"
 
 
 def _capture_six(repo: Path):
-    from plumb.capture.capture import capture
+    from iaso.capture.capture import capture
 
     digest = log_prompt(repo, SAID)
     return capture(open_core(repo), SIX, prompt_digest=digest)
 
 
 def _jobs(repo: Path) -> list[Job]:
-    from plumb.understand import files
+    from iaso.understand import files
 
     folder = files.jobs_dir(repo, SESSION)
     return [files.job_from_json(json.loads(p.read_text(encoding="utf-8")))
@@ -390,7 +390,7 @@ def test_ex9_capture_of_one_intent_and_six_requirements_queues_one_job_for_seven
 
 
 def test_the_same_capture_twice_queues_no_second_job(repo: Path, engine_standins) -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     result = _capture_six(repo)
     judge.queue_for_capture(open_core(repo), result, prompt_digest=log_prompt(repo, SAID))
@@ -400,7 +400,7 @@ def test_the_same_capture_twice_queues_no_second_job(repo: Path, engine_standins
 def test_an_updated_record_joins_the_job(repo: Path, engine_standins) -> None:
     from types import SimpleNamespace
 
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     result = _capture_six(repo)
     after = SimpleNamespace(written=(), updated=(result.written[2],))
@@ -411,7 +411,7 @@ def test_an_updated_record_joins_the_job(repo: Path, engine_standins) -> None:
 
 
 def test_the_worker_applies_the_verdicts_and_raises_no_question_card(repo: Path, engine_standins) -> None:
-    from plumb.understand import worker
+    from iaso.understand import worker
 
     result = _capture_six(repo)
     ids = list(result.written)
@@ -433,13 +433,13 @@ def test_the_worker_applies_the_verdicts_and_raises_no_question_card(repo: Path,
 
 
 def _case(name: str) -> dict[str, Any]:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     return next(c for c in evalrun.load_cases("judge") if c["name"] == name)
 
 
 def test_evalset_judge_cases_load_and_run_on_the_fake(repo: Path, capsys) -> None:
-    from plumb.understand import evalrun
+    from iaso.understand import evalrun
 
     cases = evalrun.load_cases("judge")
     assert [c["name"] for c in cases] == [
@@ -465,7 +465,7 @@ def _answers(*items: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_ex1_int016_beyond_one_line_per_record_and_token_budget() -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     case = _case("int016-first-readback-beyond")
     fake = FakeDispatcher({"judge": _answers({
@@ -485,7 +485,7 @@ def test_ex1_int016_beyond_one_line_per_record_and_token_budget() -> None:
 
 
 def test_ex2_int013_beyond_maintenance_mode() -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     case = _case("int013-first-readback-beyond")
     fake = FakeDispatcher({"judge": _answers({
@@ -497,7 +497,7 @@ def test_ex2_int013_beyond_maintenance_mode() -> None:
 
 
 def test_ex3_int006_answer_b_supported() -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     case = _case("int006-answer-b-supported")
     (entry,) = case["inputs"]["records"]
@@ -510,7 +510,7 @@ def test_ex3_int006_answer_b_supported() -> None:
 
 
 def test_the_other_supported_cases_match_only_a_supported_verdict() -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     for name, rid in (("int004-supported", "INT-004"), ("int007-answer-b-supported", "INT-007"),
                       ("int008-answer-a-supported", "INT-008")):

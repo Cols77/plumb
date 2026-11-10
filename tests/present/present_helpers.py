@@ -1,7 +1,7 @@
 """Shared helpers of the PRESENT tests (sp5): records, hook drivers and lane fakes.
 
 PRESENT's unit tests never import another lane's new modules (plan 3.5); these fakes stand in
-for VERIFY, the judgment backend and CAPTURE's ``plumb.capture.api``.
+for VERIFY, the judgment backend and CAPTURE's ``iaso.capture.api``.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from plumb.contracts import FullPending, Judgment, NodeEvidence, Selection
+from iaso.contracts import FullPending, Judgment, NodeEvidence, Selection
 
 SR1 = """---
 id: SR-001
@@ -94,7 +94,7 @@ class FakeVerify:
 
     def select(self, changed: Sequence[str], *, budget_s: float | None = None) -> Selection:
         changed = tuple(changed)
-        doc_only = bool(changed) and all(p.endswith(".md") and not p.startswith(".plumb/")
+        doc_only = bool(changed) and all(p.endswith(".md") and not p.startswith(".iaso/")
                                          for p in changed)
         nodes = () if doc_only else self.nodes
         return Selection(changed=changed, nodes=nodes,
@@ -146,7 +146,7 @@ class FakeBackend:
 
 def run_prompt(repo: Path, hook_input: Any, text: str, session: str = "s1", **kwargs: Any
                ) -> str:
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     kwargs.setdefault("verify", FakeVerify())
     kwargs.setdefault("backend", FakeBackend())
@@ -158,7 +158,7 @@ def run_prompt(repo: Path, hook_input: Any, text: str, session: str = "s1", **kw
 
 def run_stop(repo: Path, hook_input: Any, session: str = "s1", **kwargs: Any) -> dict:
     """The stop hook's answer as JSON (``{}`` when it printed nothing)."""
-    from plumb.hosts.claude_code import stop
+    from iaso.hosts.claude_code import stop
 
     kwargs.setdefault("verify", FakeVerify())
     kwargs.setdefault("unjudged", lambda core, ids: ())
@@ -171,21 +171,21 @@ def run_stop(repo: Path, hook_input: Any, session: str = "s1", **kwargs: Any) ->
 
 def touch(repo: Path, rel: str, session: str = "s1") -> None:
     """Record ``rel`` as edited this turn (what the post-edit hook does)."""
-    directory = repo / ".plumb" / "session" / session
+    directory = repo / ".iaso" / "session" / session
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / "touched.txt").open("a", encoding="utf-8") as handle:
         handle.write(rel + "\n")
 
 
 def fake_capture(monkeypatch: Any, **functions: Any) -> types.ModuleType:
-    """Install a fake ``plumb.capture.api`` exposing ``functions`` (CAPTURE is another lane).
+    """Install a fake ``iaso.capture.api`` exposing ``functions`` (CAPTURE is another lane).
     Only the api module is replaced: the rest of the real package (``spec``, ``triage``...)
     stays importable."""
-    import plumb.capture as package
+    import iaso.capture as package
 
-    api = types.ModuleType("plumb.capture.api")
+    api = types.ModuleType("iaso.capture.api")
     for name, function in functions.items():
         setattr(api, name, function)
     monkeypatch.setattr(package, "api", api, raising=False)
-    monkeypatch.setitem(sys.modules, "plumb.capture.api", api)
+    monkeypatch.setitem(sys.modules, "iaso.capture.api", api)
     return api

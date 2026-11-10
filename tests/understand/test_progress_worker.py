@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log
-from plumb.api import Core
-from plumb.contracts import Applied
-from plumb.present import owner_text
-from plumb.progress import Reporter, status_text
-from plumb.understand import dispatch, files, jobs, queue, worker
+from iaso import log
+from iaso.api import Core
+from iaso.contracts import Applied
+from iaso.present import owner_text
+from iaso.progress import Reporter, status_text
+from iaso.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeDispatcher, FakeKind, fake_kinds, owner_level
 
 pytestmark = pytest.mark.sr("SR-273", "SR-214")
@@ -40,13 +40,13 @@ def _run_in_thread(core: Core) -> threading.Thread:
 
 
 def _config(repo: Path, interval: float) -> None:
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         f"understand:\n  progress_interval_s: {interval}\n", encoding="utf-8")
 
 
 def test_ex10_status_text_says_reading_your_answer_while_running_and_agent_carries_on(
         repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     gate = threading.Event()
     fake.block = gate

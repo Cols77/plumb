@@ -9,8 +9,8 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from plumb.contracts import DispatchError, Job
-from plumb.understand.dispatch import hermes
+from iaso.contracts import DispatchError, Job
+from iaso.understand.dispatch import hermes
 
 pytestmark = pytest.mark.sr("SR-273")
 
@@ -92,7 +92,7 @@ def test_the_command_line_delegate_runs_one_shot_in_an_empty_directory(
 
     monkeypatch.setattr(hermes.subprocess, "run", fake_run)
     monkeypatch.setattr(hermes.shutil, "which", lambda name, path=None: "/bin/hermes")
-    cli = hermes.HermesCliDelegate(env={"PATH": "x", "PLUMB_WORKER": "secret"})
+    cli = hermes.HermesCliDelegate(env={"PATH": "x", "IASO_WORKER": "secret"})
     assert cli.delegate("the prompt", tools=(), model="haiku", timeout_s=9,
                         job_id="read-1") == '{"n": 1}\n'
     command = seen["command"]
@@ -100,7 +100,7 @@ def test_the_command_line_delegate_runs_one_shot_in_an_empty_directory(
     assert "--safe-mode" in command
     assert command[command.index("-t") + 1] == hermes.NARROWEST_TOOLSET
     assert "-m" not in command                      # "haiku" is not a Hermes model name
-    assert "PLUMB_WORKER" not in seen["env"] and seen["env"]["PLUMB_JOB"] == "read-1"
+    assert "IASO_WORKER" not in seen["env"] and seen["env"]["IASO_JOB"] == "read-1"
     assert seen["timeout"] == 9 and not str(seen["cwd"]).startswith(str(tmp_path))
 
 

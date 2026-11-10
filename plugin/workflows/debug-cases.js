@@ -1,7 +1,7 @@
 export const meta = {
   name: 'debug-cases',
-  description: "Fix plumb's open debug cases, one pipeline per case: fix, then verify, then one more round one level up if the case is not resolved",
-  whenToUse: "Run when a 'plumb:' line lists open debug cases. args: {cases: [{id, kind, target, detail}], worktree, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. Not for a case that needs an owner choice: those come back as questions.",
+  description: "Fix iaso's open debug cases, one pipeline per case: fix, then verify, then one more round one level up if the case is not resolved",
+  whenToUse: "Run when a 'iaso:' line lists open debug cases. args: {cases: [{id, kind, target, detail}], worktree, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. Not for a case that needs an owner choice: those come back as questions.",
   phases: [
     { title: 'Fix', detail: 'one agent per case repins, relinks or reruns' },
     { title: 'Verify', detail: 'a second agent reruns the case check' },
@@ -18,22 +18,22 @@ if (!cases.length || !worktree) {
 }
 
 const HEAVY = [
-  'Heavy jobs go one at a time across every session, under the one-heavy-job lock (plumb-heavy.lock).',
-  'plumb takes it itself for plumb tests run, plumb merge-check --run, plumb repin --after-tests, plumb align and plumb debug fix: run those plainly, never inside a lock of your own.',
-  'Any other heavy command (a pytest run) goes through it as: plumb heavy -- <command>',
+  'Heavy jobs go one at a time across every session, under the one-heavy-job lock (iaso-heavy.lock).',
+  'iaso takes it itself for iaso tests run, iaso merge-check --run, iaso repin --after-tests, iaso align and iaso debug fix: run those plainly, never inside a lock of your own.',
+  'Any other heavy command (a pytest run) goes through it as: iaso heavy -- <command>',
   'A command that waits says what it waits for: let it wait, in the background when it is long. Never create or remove the lock file yourself.',
   'Never run pytest with more than -n 2, and never the whole suite unless the case is about it.',
 ].join('\n')
 const WORKTREE = [
   'Work ONLY in the worktree ' + worktree + ': begin every shell command with cd ' + worktree + ' &&',
-  'and give edit tools absolute paths under it. Run plumb as PYTHONPATH=' + worktree + '/src plumb ...',
+  'and give edit tools absolute paths under it. Run iaso as PYTHONPATH=' + worktree + '/src iaso ...',
   'and tests with PYTHONPATH=' + worktree + '/src. Never edit the main checkout.',
 ].join('\n')
 const QUESTION = [
   'You ask the owner nothing. If a fix would change what a requirement means (a link whose meaning changed),',
   'stop on that case and return it as a question with options and what each option does.',
 ].join('\n')
-const STATE = 'You are one agent of the plumb workflow debug-cases, fixing one open debug case of plumb itself. Other agents work on other cases at the same time; touch only what your case needs.'
+const STATE = 'You are one agent of the iaso workflow debug-cases, fixing one open debug case of iaso itself. Other agents work on other cases at the same time; touch only what your case needs.'
 
 const RESULT = {
   type: 'object',
@@ -54,9 +54,9 @@ const caseText = (c) => 'Case ' + c.id + ' (' + c.kind + ') on ' + c.target + ':
 const fixPrompt = (c, earlier) => [
   STATE, '', WORKTREE, '', HEAVY, '', QUESTION, '',
   caseText(c), '',
-  'Fix it: repin after its tests pass (plumb repin --after-tests), relink when the code moved,',
+  'Fix it: repin after its tests pass (iaso repin --after-tests), relink when the code moved,',
   'rerun a test that failed (or fix the test or code it exposes), rerun a failed judge job.',
-  'When the case is resolved run plumb understand debug done ' + c.id + '.',
+  'When the case is resolved run iaso understand debug done ' + c.id + '.',
   earlier ? '\nThe earlier round did not resolve it. Its finding: ' + earlier + '\nDo not repeat what it tried.' : '',
   'Return resolved (true only if you ran done) and finding (what you did and what is left, plainly).',
 ].join('\n')
@@ -65,7 +65,7 @@ const verifyPrompt = (c, fix) => [
   STATE, 'You verify; you do not fix.', '', WORKTREE, '', HEAVY, '',
   caseText(c), '',
   'The fixing agent says: ' + fix.finding, '',
-  'Rerun the case check (plumb debug, or the failing step the case names) and say whether the case is resolved now, with why.',
+  'Rerun the case check (iaso debug, or the failing step the case names) and say whether the case is resolved now, with why.',
   'Return resolved and finding.',
 ].join('\n')
 

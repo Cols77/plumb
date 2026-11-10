@@ -1,5 +1,5 @@
 """SR-115 EX-3: auto-approve named in a sentence switches nothing; the words go to the reader
-as prose. The grammar of the typed /plumb auto-approve on|off."""
+as prose. The grammar of the typed /iaso auto-approve on|off."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from understand.test_read_job import (
     state,
 )
 
-from plumb.api import open_core
-from plumb.capture.autoapprove import auto_approve_state
-from plumb.understand import files, read, typed
+from iaso.api import open_core
+from iaso.capture.autoapprove import auto_approve_state
+from iaso.understand import files, read, typed
 
 pytestmark = pytest.mark.sr("SR-250")
 
@@ -41,7 +41,7 @@ def test_ex3_a_sentence_mentioning_it_changes_nothing(core, engine_standins) -> 
 
 
 def test_ex1_typed_command_does_not_reach_the_reader(core, engine_standins) -> None:
-    text = "/plumb auto-approve on"
+    text = "/iaso auto-approve on"
     digest = log_prompt(core, text)
     assert read.on_prompt(ctx_for(core), core, {"digest": digest, "text": text}) is None
     assert list(files.jobs_dir(core.root, SESSION).glob("*.json")) == []
@@ -50,16 +50,16 @@ def test_ex1_typed_command_does_not_reach_the_reader(core, engine_standins) -> N
 
 
 @pytest.mark.parametrize("text,state", [
-    ("/plumb auto-approve on", "on"), ("  /plumb auto-approve off \n", "off"),
-    ("/plumb auto-approve  on", "on")])
+    ("/iaso auto-approve on", "on"), ("  /iaso auto-approve off \n", "off"),
+    ("/iaso auto-approve  on", "on")])
 def test_grammar(text: str, state: str) -> None:
     parsed = typed.parse(text)
     assert (parsed.command, parsed.state) == ("auto-approve", state)
 
 
 @pytest.mark.parametrize("text", [
-    "/plumb auto-approve", "/plumb auto-approve maybe", "/plumb auto-approve on now",
-    "please /plumb auto-approve on", "/plumb auto-approve ON", "plumb auto-approve on",
-    "/plumb auto approve on"])
+    "/iaso auto-approve", "/iaso auto-approve maybe", "/iaso auto-approve on now",
+    "please /iaso auto-approve on", "/iaso auto-approve ON", "iaso auto-approve on",
+    "/iaso auto approve on"])
 def test_grammar_rejects(text: str) -> None:
     assert typed.parse(text) is None

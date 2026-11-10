@@ -12,9 +12,9 @@ import pytest
 from mod.helpers import DIGEST, KEY, run_mod
 from present.present_helpers import run_prompt
 
-from plumb import cli
-from plumb.hosts.claude_code import pretool
-from plumb.understand import gate, loops
+from iaso import cli
+from iaso.hosts.claude_code import pretool
+from iaso.understand import gate, loops
 
 from capture.capture_helpers import log_prompt
 from understand.test_loops import _loop, _passed, _worktree
@@ -56,7 +56,7 @@ def _message(root: Path) -> Any:
 
 
 def _inbox(root: Path, session: str = TARGET) -> Path:
-    return root / ".plumb" / "session" / session / "inbox.jsonl"
+    return root / ".iaso" / "session" / session / "inbox.jsonl"
 
 
 def test_ex1_typed_on_the_row_reaches_the_working_session_before_its_next_step_and_reads_delivered(
@@ -68,7 +68,7 @@ def test_ex1_typed_on_the_row_reaches_the_working_session_before_its_next_step_a
     held = pretool.decide(repo, TARGET, "Read", {"file_path": "a.py"}, {"session_id": TARGET})
     reason = held["hookSpecificOutput"]["permissionDecisionReason"]
     assert held["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert "message through plumb's loop list" in reason and "skip the colours slice" in reason
+    assert "message through iaso's loop list" in reason and "skip the colours slice" in reason
     assert pretool.decide(repo, TARGET, "Read", {"file_path": "a.py"}, {}) == {}
     assert _message(repo)["state"] == "delivered"
 
@@ -109,7 +109,7 @@ def test_ex5_a_loop_nobody_works_on_is_refused_and_named_reopenable(
     log_prompt(repo, "tell it to rebase", session=SENDER)
     assert _send(repo, ID, text="rebase") == 1
     err = capsys.readouterr().err
-    assert "no session works on this loop" in err and f"plumb loops reopen {ID}" in err
+    assert "no session works on this loop" in err and f"iaso loops reopen {ID}" in err
     assert not _inbox(repo, "gone").exists()
 
 
@@ -124,7 +124,7 @@ def test_a_loop_held_in_a_worktree_reaches_the_session_whose_hooks_run_in_main(
         repo: Path, tmp_path: Path) -> None:
     wt = _worktree(repo, tmp_path)
     _building(wt)
-    host = repo / ".plumb" / "session" / TARGET / "host.json"
+    host = repo / ".iaso" / "session" / TARGET / "host.json"
     host.parent.mkdir(parents=True, exist_ok=True)
     host.write_text("{}", "utf-8")
     log_prompt(repo, "tell the loop to rebase on main", session=SENDER)
@@ -153,19 +153,19 @@ def test_take_inbox_keeps_a_message_appended_during_the_take(
     assert [m["text"] for m in loops.take_inbox(repo, TARGET)] == ["two"]
 
 
-@pytest.mark.parametrize("prompt", ["<plumb-loop-message> plumb: the owner sent this session a "
+@pytest.mark.parametrize("prompt", ["<iaso-loop-message> iaso: the owner sent this session a "
                                     "message.",
-                                    "The plumb plugin sent a message: <plumb-loop-message> "
-                                    "plumb: the owner sent this session a message."])
+                                    "The iaso plugin sent a message: <iaso-loop-message> "
+                                    "iaso: the owner sent this session a message."])
 def test_a_message_prompt_starts_a_turn_and_delivers(
         repo: Path, hook_input: Any, prompt: str) -> None:
     loops.append_inbox(repo, TARGET, {"id": "1", "loop": ID, "text": "rebase on main",
                                       "sent_at": "a"})
     out = run_prompt(repo, hook_input, prompt, TARGET)
     assert out.count("rebase on main") == 1 and "relevant records" not in out
-    folder = repo / ".plumb" / "session"
+    folder = repo / ".iaso" / "session"
     log = [json.loads(line) for line in (folder / "prompts.jsonl").read_text("utf-8").splitlines()]
-    assert log[-1]["origin"] == "plumb"
+    assert log[-1]["origin"] == "iaso"
     turn = json.loads((folder / TARGET / "turn.json").read_text("utf-8"))
     assert turn["prompt_digest"] == log[-1]["digest"] and not gate.is_closed(repo, TARGET)
 

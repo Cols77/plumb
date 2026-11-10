@@ -21,14 +21,14 @@ from awareness.test_early_answer import _captured_with_card as captured_with_car
 from awareness.test_early_answer import _choose as choose
 from awareness.test_early_answer import _start_turn as start_turn
 from awareness.test_early_answer import _stop as stop_hook
-from plumb.api import open_core
-from plumb.hosts.claude_code import prompt
+from iaso.api import open_core
+from iaso.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-259")
 
 MAIN = "A relay pins only the records the owner's words affirm."
 FEAT_X = "A relay pins the stated group, named by its title."
-LINE = 'plumb: SR-005 "relay checks" here still says'
+LINE = 'iaso: SR-005 "relay checks" here still says'
 
 
 def _decision(root: Path) -> Any:
@@ -65,7 +65,7 @@ def _prompt(root: Path, hook_input: Any, words: str) -> str:
 
 
 def _status(root: Path) -> list[str]:
-    from plumb.awareness.lines import status_section
+    from iaso.awareness.lines import status_section
 
     return status_section(open_core(root))
 
@@ -108,13 +108,13 @@ def test_prompt_hook_names_it_on_every_turn(tmp_path: Path, hook_input: Any) -> 
 # retired: test_stop_hook_names_it. SR-012 (INT-008: at the end of a turn the owner sees only
 # cards; everything else is logged) removed the losing-lane line from the stop hook's owner
 # text. The lane still hears it: the prompt hook names it to the agent on every turn
-# (test_prompt_hook_names_it_on_every_turn) and plumb status names it (test_status_*).
+# (test_prompt_hook_names_it_on_every_turn) and iaso status names it (test_status_*).
 
 
 def test_no_answer_no_signal(tmp_path: Path) -> None:
     """Before the owner answers, nothing is superseded (the card asks instead)."""
     from awareness.scenario import change
-    from plumb.awareness.answer import superseded
+    from iaso.awareness.answer import superseded
 
     main, other = setup(tmp_path)
     change(other, FEAT_X)
@@ -160,7 +160,7 @@ def test_status_never_names_a_later_version(tmp_path: Path, hook_input: Any) -> 
 
 
 def test_brief_never_names_a_later_version(tmp_path: Path, hook_input: Any) -> None:
-    from plumb.awareness.lines import superseded_lines
+    from iaso.awareness.lines import superseded_lines
 
     _main, other = _answer_merged_then_changed(tmp_path, hook_input)
     assert superseded_lines(open_core(other)) == []
@@ -179,7 +179,7 @@ def test_stop_hook_never_names_a_later_version(tmp_path: Path, hook_input: Any) 
 
 def test_fresh_branch_from_main_after_a_later_change(tmp_path: Path,
                                                      hook_input: Any) -> None:
-    from plumb.awareness.answer import superseded
+    from iaso.awareness.answer import superseded
 
     fresh = _fresh_branch_after_a_later_change(tmp_path, hook_input)
     assert superseded(open_core(fresh)) == {}

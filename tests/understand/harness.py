@@ -2,8 +2,8 @@
 dispatcher (docs/plans/sp8-plan.md 3.2 item 9).
 
 The fake dispatcher is handed to the child processes as a script file named by
-``PLUMB_FAKE_DISPATCH`` (``{kind: answer}`` JSON); ENGINE's ``dispatch.configured`` honours it
-when the variable is set. Every hook runs as ``python -m plumb hook <name>`` with the host's
+``IASO_FAKE_DISPATCH`` (``{kind: answer}`` JSON); ENGINE's ``dispatch.configured`` honours it
+when the variable is set. Every hook runs as ``python -m iaso hook <name>`` with the host's
 JSON on stdin.
 """
 
@@ -22,7 +22,7 @@ from typing import Any
 def guard_off(root: Path) -> None:
     """SR-384: these tests drive the real hooks on a repository that sits on its default branch;
     the main-checkout guard has its own tests (tests/host/test_main_guard.py)."""
-    config = Path(root) / ".plumb" / "config.yaml"
+    config = Path(root) / ".iaso" / "config.yaml"
     text = config.read_text(encoding="utf-8") if config.exists() else ""
     if "guard_main" not in text:
         config.parent.mkdir(parents=True, exist_ok=True)
@@ -36,16 +36,16 @@ class Session:
         self.repo = Path(repo)
         guard_off(self.repo)
         self.session_id = session_id
-        self.script_path = self.repo / ".plumb" / "cache" / "fake_dispatch.json"
+        self.script_path = self.repo / ".iaso" / "cache" / "fake_dispatch.json"
         self.script_path.parent.mkdir(parents=True, exist_ok=True)
         self.script_path.write_text(json.dumps(dict(script or {})), encoding="utf-8")
         self.outputs: list[str] = []
 
-    # -- plumbing
+    # -- iasoing
     def env(self) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items()
-               if not k.startswith(("PLUMB_", "CLAUDE_"))}
-        env.update(PLUMB_FAKE_DISPATCH=str(self.script_path),
+               if not k.startswith(("IASO_", "CLAUDE_"))}
+        env.update(IASO_FAKE_DISPATCH=str(self.script_path),
                    CLAUDE_PROJECT_DIR=str(self.repo), PYTHONUTF8="1")
         return env
 
@@ -53,7 +53,7 @@ class Session:
         payload = {"session_id": self.session_id, "cwd": str(self.repo),
                    "transcript_path": "", **fields}
         done = subprocess.run(
-            [sys.executable, "-m", "plumb", "hook", name, "--root", str(self.repo)],
+            [sys.executable, "-m", "iaso", "hook", name, "--root", str(self.repo)],
             input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8",
             cwd=self.repo, env=self.env(), timeout=60)
         self.outputs.append(done.stdout)
@@ -81,7 +81,7 @@ class Session:
 
     # -- the worker and the status line
     def _names(self, folder: str) -> set[str]:
-        base = self.repo / ".plumb" / "session" / self.session_id / folder
+        base = self.repo / ".iaso" / "session" / self.session_id / folder
         return {p.stem for p in base.glob("*.json")} if base.is_dir() else set()
 
     def worker_idle(self, timeout_s: float = 20.0) -> bool:
@@ -95,7 +95,7 @@ class Session:
 
     def status_line(self) -> str:
         done = subprocess.run(
-            [sys.executable, "-m", "plumb", "statusline", "--root", str(self.repo)],
+            [sys.executable, "-m", "iaso", "statusline", "--root", str(self.repo)],
             input=json.dumps({"session_id": self.session_id, "cwd": str(self.repo)}),
             capture_output=True, text=True, encoding="utf-8", cwd=self.repo, env=self.env(),
             timeout=60)

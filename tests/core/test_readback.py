@@ -1,4 +1,4 @@
-"""The read-back rendering shared by the stop summary and ``plumb show`` (spec 6.4, R1)."""
+"""The read-back rendering shared by the stop summary and ``iaso show`` (spec 6.4, R1)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.readback import record_lines
+from iaso import cli
+from iaso.api import open_core
+from iaso.readback import record_lines
 
 pytestmark = pytest.mark.sr("SR-265")
 
@@ -92,7 +92,7 @@ def test_show_prints_full_content_and_confirmation(records: Path,
                                                    capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["show", "SR-002", "INT-001", "--root", str(records)]) == 0
     out = capsys.readouterr().out
-    assert "SR-002 (requirement, proposed) .plumb/requirements/SR-002.md" in out
+    assert "SR-002 (requirement, proposed) .iaso/requirements/SR-002.md" in out
     assert "SR-002/EX-2: given 1 and 0, when divide runs, then it returns 0" in out
     assert "INT-001/A-1 assumption: division by zero raises ValueError" in out
 

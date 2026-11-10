@@ -14,21 +14,21 @@ _PROBE = "ISOLATION_PROBE_ACTIVE"
 
 @pytest.mark.skipif(not os.environ.get(_PROBE), reason="run only by the outer test below")
 def test_probe_sees_none_of_the_outer_environment(tmp_path: Path) -> None:
-    leaked = [n for n in os.environ if n.startswith(("CLAUDE_", "PLUMB_AGENT", "TYPESAFE_",
+    leaked = [n for n in os.environ if n.startswith(("CLAUDE_", "IASO_AGENT", "TYPESAFE_",
                                                      "OPENROUTER_", "CODEX_"))]
     assert leaked == []
     assert Path(os.environ["USERPROFILE"]) == Path(os.environ["HOME"])
     assert os.environ["HOME"] != os.environ["ISOLATION_OUTER_HOME"]  # a temp dir
     assert Path.home() == Path(os.environ["HOME"])
-    assert os.environ["PLUMB_HOME"] == os.environ["HOME"]
+    assert os.environ["IASO_HOME"] == os.environ["HOME"]
 
 
 @pytest.mark.sr("SR-208")
 def test_variables_set_outside_are_not_seen_inside_a_test() -> None:
     outer_home = str(Path(__file__).resolve().parent)
     env = dict(os.environ, **{
-        _PROBE: "1", "CLAUDE_PROJECT_DIR": "x", "PLUMB_AGENT_SESSION": "s",
-        "PLUMB_SESSION_ID": "s", "TYPESAFE_API_KEY": "k", "OPENROUTER_API_KEY": "k",
+        _PROBE: "1", "CLAUDE_PROJECT_DIR": "x", "IASO_AGENT_SESSION": "s",
+        "IASO_SESSION_ID": "s", "TYPESAFE_API_KEY": "k", "OPENROUTER_API_KEY": "k",
         "CODEX_HOME": "x", "ISOLATION_OUTER_HOME": outer_home,
         "HOME": outer_home, "USERPROFILE": outer_home})
     result = subprocess.run(

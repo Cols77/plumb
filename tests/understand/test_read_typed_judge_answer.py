@@ -12,8 +12,8 @@ from understand.fakes import as_worker
 from understand.test_read_apply import write_applied
 from understand.test_read_job import SESSION, log_prompt, make_core, record_text
 
-from plumb.api import open_core
-from plumb.understand import jobs, judge, read
+from iaso.api import open_core
+from iaso.understand import jobs, judge, read
 
 pytestmark = pytest.mark.sr("SR-214")
 
@@ -58,7 +58,7 @@ def test_a_typed_answer_to_a_judge_question_closes_it_and_rejudges_its_record(co
     assert judge.open_questions(after, SESSION) == [], "never asked again as it was"
     queued = [j for j in jobs.queued(core.root, SESSION) if j.kind == judge.kind]
     assert [j.inputs["records"] for j in queued] == [["SR-002"]]
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     (said,) = premise.answer_entries(after, after.index()["SR-002"])
     assert said.payload["text"] == SAID and said.payload["question"] == ASKED

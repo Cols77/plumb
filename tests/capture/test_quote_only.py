@@ -1,5 +1,5 @@
 """SR-190: a judgment on a record whose premise is its quote alone says so, a calibration
-counts those items and plumb jev status prints the count; nothing is decided by it."""
+counts those items and iaso jev status prints the count; nothing is decided by it."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 from capture_helpers import JevStub, use_jev
 from jev_fixtures import owner_decisions
 
-from plumb.api import open_core
-from plumb.capture.calibrate import calibrate
-from plumb.capture.jevcmd import jev_status, status_lines
+from iaso.api import open_core
+from iaso.capture.calibrate import calibrate
+from iaso.capture.jevcmd import jev_status, status_lines
 
 pytestmark = pytest.mark.sr("SR-241")
 

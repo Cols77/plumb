@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import log
-from plumb.api import Core
-from plumb.contracts import Applied
-from plumb.understand import dispatch, files, jobs, queue, worker
+from iaso import log
+from iaso.api import Core
+from iaso.contracts import Applied
+from iaso.understand import dispatch, files, jobs, queue, worker
 from understand.fakes import FakeClaude, FakeDispatcher, FakeKind, fake_claude, fake_kinds
 
 pytestmark = pytest.mark.sr("SR-273", "SR-214")
@@ -94,29 +94,29 @@ def test_apply_outside_worker_refused(repo: Path, fake: FakeDispatcher,
     core = Core(repo)
     job = jobs.new_job("a", "s1", "a.v1", {"n": 1})
     module = kind.module()
-    monkeypatch.delenv("PLUMB_WORKER", raising=False)
+    monkeypatch.delenv("IASO_WORKER", raising=False)
     with pytest.raises(log.LogError):
         module.apply(core, job, {})                       # no token
-    monkeypatch.setenv("PLUMB_WORKER", "ee" * 16)
+    monkeypatch.setenv("IASO_WORKER", "ee" * 16)
     with pytest.raises(log.LogError):
         module.apply(core, job, {})                       # a wrong one
-    monkeypatch.delenv("PLUMB_WORKER")
+    monkeypatch.delenv("IASO_WORKER")
     queue.enqueue(core, job)
     assert worker.run_once(core, "s1") == [job.id]        # inside the worker
     assert jobs.result(repo, "s1", job.id).status == "ok"
     assert [e for e in log.read(core.paths, "events", ["approval"])
             if e.payload.get("by") == "owner-words"]
-    assert "PLUMB_WORKER" not in os.environ               # and the token does not linger
+    assert "IASO_WORKER" not in os.environ               # and the token does not linger
 
 
 def test_dispatcher_child_environment_has_no_worker_token(
         repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand.dispatch.claude_code import ClaudeCodeDispatcher
+    from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
     claude: FakeClaude = fake_claude(tmp_path / "bin", json.dumps(
         {"type": "result", "is_error": False, "structured_output": {"ok": True}}))
     monkeypatch.setattr(dispatch, "configured", lambda core: ClaudeCodeDispatcher(
-        model="haiku", timeout_s=30, env=claude.env({**os.environ, "PLUMB_WORKER": "x"})))
+        model="haiku", timeout_s=30, env=claude.env({**os.environ, "IASO_WORKER": "x"})))
     monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
     fake_kinds(monkeypatch, {"a": FakeKind("a")})
     core = Core(repo)
@@ -124,7 +124,7 @@ def test_dispatcher_child_environment_has_no_worker_token(
     queue.enqueue(core, job)
     worker.run_once(core, "s1")
     (call,) = claude.calls()
-    assert "PLUMB_WORKER" not in call["env"] and call["env"]["PLUMB_JOB"] == job.id
+    assert "IASO_WORKER" not in call["env"] and call["env"]["IASO_JOB"] == job.id
 
 
 def test_lock_holds_a_token(repo: Path, fake: FakeDispatcher,
@@ -133,7 +133,7 @@ def test_lock_holds_a_token(repo: Path, fake: FakeDispatcher,
 
     def apply_a(core, job, answer):
         lock = json.loads(files.lock_path(core.root, "s1").read_text(encoding="utf-8"))
-        seen.append((lock["token"], os.environ.get("PLUMB_WORKER", "")))
+        seen.append((lock["token"], os.environ.get("IASO_WORKER", "")))
         assert {"pid", "heartbeat", "token"} <= set(lock)
         return Applied(job=job.id)
 

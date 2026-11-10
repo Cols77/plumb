@@ -13,14 +13,14 @@ const BRASS = mod.match(/BRASS = '(#[0-9A-Fa-f]{6})'/)?.[1] ?? '';
 
 const token = (name: string) => css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1].trim().toLowerCase();
 
-describe('the room in plumb\'s colours', () => {
+describe('the room in iaso\'s colours', () => {
   it('SR-290 EX-2: headings and buttons use the same plum and brass as the band', () => {
-    expect(token('plumb')).toBe(PLUM.dark.toLowerCase());
-    expect(token('plumb-strong')).toBe(PLUM.light.toLowerCase());
+    expect(token('iaso')).toBe(PLUM.dark.toLowerCase());
+    expect(token('iaso-strong')).toBe(PLUM.light.toLowerCase());
     expect(token('brass')).toBe(BRASS.toLowerCase());
     // every accent of the room (headings, buttons, focus, selection) is plum; highlights brass
-    expect(token('accent')).toBe('var(--plumb)');
+    expect(token('accent')).toBe('var(--iaso)');
     expect(token('wait')).toBe('var(--brass)');
-    expect(css).toMatch(/button\.primary \{ background:var\(--plumb-strong\)/);
+    expect(css).toMatch(/button\.primary \{ background:var\(--iaso-strong\)/);
   });
 });

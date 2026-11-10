@@ -1,4 +1,4 @@
-"""VS4: ``plumb impact <ID|path>``: downstream records and covering tests with evidence."""
+"""VS4: ``iaso impact <ID|path>``: downstream records and covering tests with evidence."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, commit_all, make_project
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.verify import open_verify
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.verify import open_verify
 
 INT_TEXT = """---
 id: INT-001

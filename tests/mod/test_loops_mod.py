@@ -1,5 +1,5 @@
-"""SR-393: the loops the band counts and its pane lists. ``plumb mod loops`` answers what
-``plumb loops --json`` does, with the one change stamp's path, and writes nothing."""
+"""SR-393: the loops the band counts and its pane lists. ``iaso mod loops`` answers what
+``iaso loops --json`` does, with the one change stamp's path, and writes nothing."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from mod.helpers import run_mod
 
-from plumb import cli
-from plumb.understand import cmd_intent, loops
+from iaso import cli
+from iaso.understand import cmd_intent, loops
 
 pytestmark = pytest.mark.sr("SR-393")
 
@@ -31,7 +31,7 @@ def test_mod_loops_answers_the_listing(repo: Path, monkeypatch, capsys) -> None:
     cmd_intent.open_loop(repo, "sess", "sha256:" + "a" * 64)
     before = _files(repo)
     code, answer, _ = run_mod(monkeypatch, capsys, repo, "loops", stdin={})
-    assert code == 0 and answer["stamp"].endswith("plumb-loops.stamp")
+    assert code == 0 and answer["stamp"].endswith("iaso-loops.stamp")
     assert [r["kind"] for r in answer["rows"]] == ["intent"] and answer["idle"] == 1
     monkeypatch.setattr("sys.stdin", io.StringIO(""))
     cli.main(["loops", "--root", str(repo), "--json"])

@@ -1,7 +1,7 @@
 """Record texts and small git repositories for the MERGEDRIVER lane's tests (not a conftest).
 
 The phase-0 ``tests/gitrepo.py`` was not on ``main`` when this lane started; these helpers
-are the lane's own (sp6 plan 2) and never touch the plumb repository itself.
+are the lane's own (sp6 plan 2) and never touch the iaso repository itself.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def record(record_id: str = "SR-005", title: str = "relay checks", body: str = "
 
 
 def parse(text: str) -> tuple[dict[str, Any], str]:
-    from plumb.model import load_yaml, split_frontmatter
+    from iaso.model import load_yaml, split_frontmatter
 
     head, body = split_frontmatter(text)
     return load_yaml(head), body
@@ -70,8 +70,8 @@ def run_git(root: Path, *args: str, check: bool = True,
 
 
 def make_repo(path: Path) -> Path:
-    """A git repository adopted by plumb, with one commit on ``main``."""
-    from plumb.commands import init_repo
+    """A git repository adopted by iaso, with one commit on ``main``."""
+    from iaso.commands import init_repo
 
     path.mkdir(parents=True, exist_ok=True)
     run_git(path, "init", "-q", "-b", "main")
@@ -92,29 +92,29 @@ def commit_all(root: Path, message: str) -> str:
 
 def write_record(root: Path, text: str) -> Path:
     record_id = parse(text)[0]["id"]
-    path = root / ".plumb" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
+    path = root / ".iaso" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(text.encode("utf-8"))
     return path
 
 
 def install_driver(root: Path) -> None:
-    from plumb.mergedriver import install
+    from iaso.mergedriver import install
 
     install(root, launcher_for(sys.executable))
 
 
 def launcher_for(interpreter: str) -> str:
-    return f'"{interpreter.replace(chr(92), "/")}" -m plumb'
+    return f'"{interpreter.replace(chr(92), "/")}" -m iaso'
 
 
-def plumb(root: Path, *args: str, stdin: str | None = None,
+def iaso(root: Path, *args: str, stdin: str | None = None,
           env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    """Run ``python -m plumb`` in a subprocess (UTF-8, no agent marker)."""
-    base = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    """Run ``python -m iaso`` in a subprocess (UTF-8, no agent marker)."""
+    base = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     base["PYTHONUTF8"] = "1"
     base.update(env or {})
-    return subprocess.run([sys.executable, "-m", "plumb", *args], cwd=root, input=stdin,
+    return subprocess.run([sys.executable, "-m", "iaso", *args], cwd=root, input=stdin,
                           capture_output=True, text=True, encoding="utf-8", env=base)
 
 
@@ -129,7 +129,7 @@ def conflicted(root: Path, *, ours: str | None = None, theirs: str | None = None
                base: str | None = None, labels: tuple[str, str] = ("main", "feat-x")) -> str:
     """Write SR-005 holding an intent conflict (the driver's output) into ``root``; returns
     the IC. Defaults: the statement changed differently on both sides, theirs adds a link."""
-    from plumb.mergedriver import merge_texts
+    from iaso.mergedriver import merge_texts
 
     base = base or record(statement=BASE_STATEMENT, examples=[ex(1)])
     ours = ours or record(statement=OURS_STATEMENT, examples=[ex(1)])
@@ -146,7 +146,7 @@ def log_prompt(root: Path, text: str, *, at: str = "2026-10-07T10:00:00Z",
     import json
 
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = root / ".plumb" / "session" / "prompts.jsonl"
+    path = root / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     entry = {"digest": digest, "session": "test-session", "at": at, "text": text}
     if via is not None:
@@ -160,7 +160,7 @@ def write_stated_conflicts(root: Path, entries: list[dict], *,
                            at: str = "2026-10-07T09:59:00Z") -> None:
     import json
 
-    path = root / ".plumb" / "session" / "stated.json"
+    path = root / ".iaso" / "session" / "stated.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"at": at, "records": [], "conflicts": entries}),
                     encoding="utf-8")
@@ -168,15 +168,15 @@ def write_stated_conflicts(root: Path, entries: list[dict], *,
 
 def shown(root: Path) -> None:
     """The stop hook showed every open conflict card in the reply before the prompt."""
-    from plumb.api import open_core
-    from plumb.mergedriver import open_conflicts, stated_entries
+    from iaso.api import open_core
+    from iaso.mergedriver import open_conflicts, stated_entries
 
     core = open_core(root)
     write_stated_conflicts(root, stated_entries(core, [c.ic for c in open_conflicts(core)]))
 
 
 def events(root: Path, kind: str) -> list[dict]:
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     return [e.payload for e in open_core(root).log_read("events", [kind])]
 
@@ -191,7 +191,7 @@ def reads(monkeypatch: Any, root: Path, answer: str, evidence: str, change: str 
     script.write_text(json.dumps({"read": {"entries": [{
         "id": record_id, "hash": "", "answer": answer, "change": change,
         "evidence": evidence, "confidence": confidence}]}}), encoding="utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
 
 
 def unreachable(monkeypatch: Any, root: Path) -> None:
@@ -201,14 +201,14 @@ def unreachable(monkeypatch: Any, root: Path) -> None:
     script = root.parent / "reading.json"
     script.write_text(json.dumps({"read": {"error": "the model could not be reached"}}),
                       encoding="utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
 
 
 def reads_keep(monkeypatch: Any, root: Path, take: str, evidence: str) -> None:
     """A stubbed model reading of the owner's words as keeping one side of the open conflict
     (``ours`` or ``theirs``), with no change asked."""
-    from plumb.api import open_core
-    from plumb.mergedriver import open_conflicts
+    from iaso.api import open_core
+    from iaso.mergedriver import open_conflicts
 
     (conflict,) = open_conflicts(open_core(root))
     label = conflict.labels[0 if take == "ours" else 1]

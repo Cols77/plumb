@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from present_helpers import FEAT1, FEAT2, SR1, SR2, SR3, run_prompt, write_all
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.hosts.claude_code.hookio import Deadline, HookContext
-from plumb.present import delta
+from iaso import approvals
+from iaso.api import open_core
+from iaso.hosts.claude_code.hookio import Deadline, HookContext
+from iaso.present import delta
 
 pytestmark = pytest.mark.sr("SR-277")
 
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.sr("SR-277")
 def _without_the_understanding_layer(monkeypatch: pytest.MonkeyPatch) -> None:
     """These tests are about the records the hook injects. The understanding layer closes its
     gate on every owner message and says so (tests/understand covers that line)."""
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
 
@@ -68,7 +68,7 @@ def test_instructions_deduplicated(records: Path, hook_input) -> None:
     """EX-2: an untraced-change instruction already given is not repeated while the path
     stays untraced; nor is the compare line of a confirmed record."""
     approvals.approve(open_core(records), ["SR-001"])
-    note = records / ".plumb" / "session" / "s1" / "untraced.json"
+    note = records / ".iaso" / "session" / "s1" / "untraced.json"
     (records / "src" / "app").mkdir(parents=True)
     (records / "src" / "app" / "mul.py").write_text("def mul(a, b):\n    return a * b\n",
                                                    encoding="utf-8")
@@ -84,38 +84,38 @@ def test_instructions_deduplicated(records: Path, hook_input) -> None:
 
 
 def test_budget_cut_named_not_marked_seen(repo: Path, write_record) -> None:
-    """A line cut by the budget is named with plumb show and is not marked seen, so a later
+    """A line cut by the budget is named with iaso show and is not marked seen, so a later
     emission brings it."""
     lines = [delta.Line(f"SR-00{i} [proposed] " + "x" * 120, subject=f"record:SR-00{i}",
                         state="h|proposed", record=f"SR-00{i}", group="records")
              for i in range(1, 6)]
     ctx = _ctx(repo)
     out = delta.emit(ctx, lines, "prompt", budget_tokens=80,
-                     headers={"records": "plumb: relevant records"})
+                     headers={"records": "iaso: relevant records"})
     shown = [line for line in out if line.startswith("SR-")]
     assert 1 <= len(shown) < 5
     cut = [f"SR-00{i}" for i in range(len(shown) + 1, 6)]
-    assert out[-1].startswith("plumb: +") and all(i in out[-1] for i in cut)
-    assert "plumb show" in out[-1]
+    assert out[-1].startswith("iaso: +") and all(i in out[-1] for i in cut)
+    assert "iaso show" in out[-1]
     again = delta.emit(ctx, lines, "prompt", budget_tokens=10_000,
-                       headers={"records": "plumb: relevant records"})
+                       headers={"records": "iaso: relevant records"})
     assert [line[:6] for line in again if line.startswith("SR-")] == cut
 
 
 def test_nothing_new_emits_nothing(repo: Path) -> None:
     ctx = _ctx(repo)
-    lines = [delta.Line("plumb: hint once")]
-    assert delta.emit(ctx, lines, "stop") == ["plumb: hint once"]
+    lines = [delta.Line("iaso: hint once")]
+    assert delta.emit(ctx, lines, "stop") == ["iaso: hint once"]
     assert delta.emit(ctx, lines, "stop") == []
 
 
 def test_must_lines_are_never_cut_and_sessions_are_separate(repo: Path) -> None:
-    must = delta.Line("plumb: awaiting confirmation " + "y" * 900, must=True)
-    out = delta.emit(_ctx(repo), [must, delta.Line("plumb: optional")], "prompt",
+    must = delta.Line("iaso: awaiting confirmation " + "y" * 900, must=True)
+    out = delta.emit(_ctx(repo), [must, delta.Line("iaso: optional")], "prompt",
                      budget_tokens=10)
     assert out[0] == must.text
-    assert delta.emit(_ctx(repo, "s2"), [delta.Line("plumb: hint once")], "stop") == [
-        "plumb: hint once"]
+    assert delta.emit(_ctx(repo, "s2"), [delta.Line("iaso: hint once")], "stop") == [
+        "iaso: hint once"]
 
 
 def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_input,
@@ -125,7 +125,7 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
 
     from present_helpers import FakeVerify
 
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     calls: list[str] = []
     real = delta.Emitter.add
@@ -135,8 +135,8 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
         return real(self, lines, **kwargs)
 
     monkeypatch.setattr(delta.Emitter, "add", spy)
-    (records / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (records / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
+    (records / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (records / ".iaso" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     out = io.StringIO()
     payload = hook_input("SessionStart", session_id="s9", source="startup")
     session_start.main(stdin=io.StringIO(payload), stdout=out, root=records,
@@ -157,20 +157,20 @@ def test_session_start_and_stop_route_through_the_emitter(records: Path, hook_in
 
 def _tight(repo: Path, **budgets: int) -> None:
     text = "hooks:\n" + "".join(f"  {k}: {v}\n" for k, v in budgets.items())
-    (repo / ".plumb" / "config.yaml").write_text(text, encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text(text, encoding="utf-8")
 
 
 def _untraced(repo: Path, session: str = "s1") -> Path:
     (repo / "src" / "app").mkdir(parents=True, exist_ok=True)
     (repo / "src" / "app" / "mul.py").write_text("def mul(a, b):\n    return a * b\n",
                                                  encoding="utf-8")
-    return repo / ".plumb" / "session" / session / "untraced.json"
+    return repo / ".iaso" / "session" / session / "untraced.json"
 
 
 def test_oneshot_lines_are_never_cut(repo: Path) -> None:
     """The emitter keeps a ``oneshot`` line through the budget, like a ``must`` line."""
-    lines = [delta.Line("plumb: optional " + "x" * 200),
-             delta.Line("plumb: queued once " + "y" * 200, oneshot=True)]
+    lines = [delta.Line("iaso: optional " + "x" * 200),
+             delta.Line("iaso: queued once " + "y" * 200, oneshot=True)]
     out = delta.emit(_ctx(repo), lines, "prompt", budget_tokens=10)
     assert out == [line.text for line in lines]
 
@@ -194,14 +194,14 @@ def test_prompt_queued_escalations_survive_the_budget(records: Path, hook_input)
     """Entry point 2: every queued escalation reaches the agent (the queue offset moved
     past them on read), however tight the budget."""
     _tight(records, prompt_tokens=10)
-    queue = records / ".plumb" / "session" / "escalations.jsonl"
+    queue = records / ".iaso" / "session" / "escalations.jsonl"
     queue.parent.mkdir(parents=True, exist_ok=True)
     queue.write_text("".join(json.dumps({"subject": f"SR-00{i}",
-                                         "instruction": f"judge SR-00{i} with plumb fidelity"})
+                                         "instruction": f"judge SR-00{i} with iaso fidelity"})
                              + "\n" for i in (1, 2, 3)), encoding="utf-8")
     out = run_prompt(records, hook_input, "SR-001 SR-002 numbers")
     for i in (1, 2, 3):
-        assert f"plumb: escalation SR-00{i}: judge SR-00{i}" in out
+        assert f"iaso: escalation SR-00{i}: judge SR-00{i}" in out
 
 
 def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
@@ -216,7 +216,7 @@ def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
     note = _untraced(records)
     touch(records, "src/app/mul.py")
     out = run_stop(records, hook_input, verify=FakeVerify(nodes=("tests/test_x.py::t",)))
-    assert "plumb tests run" in out["reason"]
+    assert "iaso tests run" in out["reason"]
     assert "src/app/mul.py" in out["reason"]
     assert note.exists()
 
@@ -227,8 +227,8 @@ def test_blocked_stop_untraced_instruction_survives_the_budget(records: Path,
 def test_per_turn_line_is_once_per_turn_not_once_per_session(repo: Path) -> None:
     """The choke point: a ``per_turn`` line's key carries the emitter's turn, so the same
     text is dropped within a turn and emitted again in the next one."""
-    path = delta.seen_path(repo / ".plumb" / "session", "s1")
-    line = delta.Line("plumb: run the covering tests", subject="tests", must=True,
+    path = delta.seen_path(repo / ".iaso" / "session", "s1")
+    line = delta.Line("iaso: run the covering tests", subject="tests", must=True,
                       per_turn=True)
     first = delta.Emitter(path, "stop", None, turn="t1")
     assert first.add([line, line]) == [line.text]
@@ -249,5 +249,5 @@ def test_stop_blocks_every_turn_with_unrun_covering_tests(records: Path, hook_in
         touch(records, "src/app/calc.py")
         out = run_stop(records, hook_input, verify=verify)
         reasons.append(out.get("reason") if out.get("decision") == "block" else None)
-    assert all(r and "plumb tests run --paths src/app/calc.py" in r for r in reasons), reasons
+    assert all(r and "iaso tests run --paths src/app/calc.py" in r for r in reasons), reasons
 

@@ -1,7 +1,7 @@
 """The judge model returns questions about the owner's intent; no trial card (task 2 of the
 judge-approval plan). A record the fast track does not take is asked about through the question
 tool: the judge job writes ``judge_questions.json`` (only the worker writes it) and
-``clarify --wait`` answers ``ask`` with them. A question in plumb's words, or out of shape, is
+``clarify --wait`` answers ``ask`` with them. A question in iaso's words, or out of shape, is
 never shown: its records wait with the waiting line. Only a record the model finds
 contradicting or going beyond the owner's words is asked about (SR-372), so the questions here
 come with `beyond` verdicts. JEV and the model are stubs."""
@@ -17,8 +17,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import cmd_clarify, files, gate, judge, queue, summary, verdict
+from iaso.api import open_core
+from iaso.understand import cmd_clarify, files, gate, judge, queue, summary, verdict
 from understand.fakes import FakeDispatcher, owner_level
 from understand.test_judge_cascade import StubJev, configure, fast_track_on, world  # noqa: F401
 from understand.test_judge_job import (
@@ -139,7 +139,7 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
         world: Path, write_record) -> None:  # noqa: F811
     """SR-252 EX-6: no passing calibration, three supported records: no trial or read-back card
     from the judge, the turn's end or the request's check; they take the question route."""
-    from plumb.understand import clarify
+    from iaso.understand import clarify
 
     write_record(world, requirement_text(
         2, "Pages load in one second", "Home loads within one second", intent=1,
@@ -148,10 +148,10 @@ def test_ex6_supported_records_without_calibration_raise_no_trial_or_read_back_c
     applied = applied_on(world, ids, answer(*((i, "beyond") for i in ids),
                                             questions=[asking(*ids)]))
     assert summary._upkeep(open_core(world), SESSION, recalibrate=False) is None
-    digest = log_prompt(world, "/plumb clarify make the pages faster")
+    digest = log_prompt(world, "/iaso clarify make the pages faster")
     gate.close(world, SESSION, digest, clarify.GATE_REASON_CHECKING)
     job = clarify.build(open_core(world), SESSION, message={
-        "digest": digest, "text": "/plumb clarify make the pages faster"})
+        "digest": digest, "text": "/iaso clarify make the pages faster"})
     assert job is not None
     checked = clarify.apply(open_core(world), job, {"intent": "yes", "gaps": [], "readback": {
         "proposal": "Make pages faster"}})
@@ -167,8 +167,8 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
         world: Path) -> None:  # noqa: F811
     """SR-209 EX-5: low-risk records judged and asked about: the brief asks for no "ok" and
     shows no read-back card."""
-    from plumb.hosts.claude_code import session_start
-    from plumb.understand import clarify
+    from iaso.hosts.claude_code import session_start
+    from iaso.understand import clarify
 
     applied_on(world, ["INT-001", "SR-001"], answer(
         ("INT-001", "beyond"), ("SR-001", "beyond"),
@@ -183,7 +183,7 @@ def test_ex5_the_session_start_brief_offers_no_ok_and_no_read_back(
 
 
 @pytest.mark.sr("SR-267")
-def test_ex4_ids_and_digests_are_stripped_and_plumb_words_go_to_the_agent_to_reword(
+def test_ex4_ids_and_digests_are_stripped_and_iaso_words_go_to_the_agent_to_reword(
         world: Path) -> None:  # noqa: F811
     """SR-267 EX-4: a record id is put in the owner's terms and a digest dropped from every
     field shown; SR-362 EX-5: a question still saying "settled" or "trial" is kept, marked for
@@ -205,7 +205,7 @@ def test_ex4_ids_and_digests_are_stripped_and_plumb_words_go_to_the_agent_to_rew
             "SR-001", question=f"Was this {word} by your earlier answer?")]))
         (kept,) = written(world)
         assert kept["reword"] is True and word in kept["question"]
-    assert not any("plumb's own words" in line for line in notes(world))
+    assert not any("iaso's own words" in line for line in notes(world))
 
 
 @pytest.mark.sr("SR-267")
@@ -236,7 +236,7 @@ def test_ex7_a_question_out_of_schema_waits_with_the_waiting_line(
     applied = applied_on(world, ["SR-001"], answer(("SR-001", "beyond"), questions=[bare]))
     assert written(world) == []
     (line,) = notes(world)
-    assert line.startswith("plumb: the verdict is waiting") and "consequences" in line
+    assert line.startswith("iaso: the verdict is waiting") and "consequences" in line
     assert any(n.startswith("waiting: SR-001") for n in applied.notes)
 
 
@@ -276,7 +276,7 @@ def test_ex9_every_record_answered_nothing_waits_and_no_line(
 @pytest.mark.sr("SR-248")
 def test_three_records_sharing_one_gap_give_one_question_with_no_record_title(
         world: Path, write_record) -> None:  # noqa: F811
-    """One question settles the three records it covers; plumb keeps them apart from what is
+    """One question settles the three records it covers; iaso keeps them apart from what is
     shown, and no record's title is in the question."""
     write_record(world, requirement_text(
         2, "Pages load in one second", "Home loads within one second", intent=1,
@@ -296,7 +296,7 @@ def test_three_records_sharing_one_gap_give_one_question_with_no_record_title(
 
 def _queue(repo: Path, ids: list[str]) -> None:
     """A judge job queued and run by the background worker (SR-378: never by ``--wait``)."""
-    from plumb.understand import worker
+    from iaso.understand import worker
 
     core = open_core(repo)
     queue.enqueue(core, build_job(core, ids))
@@ -317,13 +317,13 @@ def test_wait_after_a_capture_with_no_clarify_job_answers_ask(
     assert outcome.state == "ask"
     assert outcome.lines == [cmd_clarify.ASK_QUESTIONS.format(n=1)]
     shown = outcome.as_json()["questions"]
-    # SR-362 EX-5: the key reword takes, and whether it is in plumb's words
+    # SR-362 EX-5: the key reword takes, and whether it is in iaso's words
     assert [set(q) for q in shown] == [{"key", "reword", "question", "header", "options",
                                         "multiSelect"}]
     assert shown[0]["options"][0]["label"].endswith("(Recommended)")
     assert not gate.is_closed(world, SESSION)
     # SR-362: the line tells the agent the command that rewords; nothing else
-    assert set(owner_level("\n".join(outcome.lines))) == {"plumb question"}
+    assert set(owner_level("\n".join(outcome.lines))) == {"iaso question"}
 
 
 @pytest.mark.sr("SR-248")
@@ -353,14 +353,14 @@ def test_wait_after_an_answer_collects_the_judge_job_queued_since(
 def test_open_questions_and_blocking_gaps_leave_the_gate_open(
         world: Path, engine_standins: Any) -> None:  # noqa: F811
     """P6: neither a judge question nor a blocking gap closes the gate (SR-223 EX-15)."""
-    from plumb.understand import clarify, worker
+    from iaso.understand import clarify, worker
 
     engine_standins.dispatcher.script = {"judge": answer(
         ("SR-001", "beyond"), questions=[asking("SR-001")])}
     _queue(world, ["SR-001"])
     assert cmd_clarify.wait(open_core(world), SESSION, timeout=10).state == "ask"
     assert not gate.is_closed(world, SESSION)
-    text = "/plumb clarify make the admin pages faster too"
+    text = "/iaso clarify make the admin pages faster too"
     digest = log_prompt(world, text)
     gate.close(world, SESSION, digest, clarify.GATE_REASON_CHECKING)
     engine_standins.dispatcher.script = {"clarify": {
@@ -555,7 +555,7 @@ def test_ex4_the_quote_is_the_owners_words_the_question_is_about_or_none(
         world: Path) -> None:  # noqa: F811
     (said,) = shaped_of(world, asking("SR-001"))
     assert 'You said on 6 Oct: "I want pages to load faster"' in said["question"]
-    off = {"words": "/plumb intent Keep plumb fit by itself.", "date": "6 Oct"}
+    off = {"words": "/iaso intent Keep iaso fit by itself.", "date": "6 Oct"}
     (question,) = shaped_of(world, asking("SR-001", request=off))
     assert "You said" not in question["question"]
 
@@ -564,14 +564,14 @@ def test_ex4_the_quote_is_the_owners_words_the_question_is_about_or_none(
 
 
 def _transcript(repo: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str) -> None:
-    from plumb.understand import recover
+    from iaso.understand import recover
 
     folder = tmp_path / "projects" / recover.project_dir_name(repo)
     folder.mkdir(parents=True)
     line = {"type": "user", "timestamp": "2026-10-04T09:12:00.000Z", "sessionId": "s1",
             "message": {"role": "user", "content": text}}
     (folder / "s1.jsonl").write_text(json.dumps(line), encoding="utf-8")
-    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "projects"))
+    monkeypatch.setenv("IASO_TRANSCRIPTS_DIR", str(tmp_path / "projects"))
 
 
 @pytest.mark.sr("SR-309")
@@ -590,7 +590,7 @@ def test_dec191_an_older_record_with_words_in_no_transcript_says_none_were_found
         world: Path, write_record, monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path) -> None:  # noqa: F811
     write_record(world, intent_text(2, "Cache the front page", "Cache the front page"))
-    monkeypatch.setenv("PLUMB_TRANSCRIPTS_DIR", str(tmp_path / "none"))
+    monkeypatch.setenv("IASO_TRANSCRIPTS_DIR", str(tmp_path / "none"))
     applied_on(world, ["INT-002"], answer(("INT-002", "beyond"), questions=[
         asking("INT-002", request={"words": "cache it", "date": "9 Oct"})]))
     (question,) = written(world)
@@ -619,7 +619,7 @@ def test_dec192_a_question_without_a_quote_reaches_the_owner(world: Path) -> Non
 @pytest.mark.sr("SR-299")
 def test_ex1_ex3_a_question_short_of_records_or_options_does_not_reject_the_answer(
         world: Path) -> None:  # noqa: F811
-    from plumb.understand import schema as schema_check
+    from iaso.understand import schema as schema_check
 
     bare = {k: v for k, v in asking("SR-001").items() if k != "records"}
     one = asking("SR-001", options=[{"label": "Only", "consequence": "Nothing else."}])

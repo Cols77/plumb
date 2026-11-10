@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hashing import hash_path
-from plumb.model import parse_record
+from iaso.hashing import hash_path
+from iaso.model import parse_record
 
 pytestmark = pytest.mark.sr("SR-230")
 
@@ -129,8 +129,8 @@ def _rewrite(path: Path, old: str, new: str) -> None:
 
 @pytest.mark.sr("SR-238")
 def test_symbol_end_ignores_edits_elsewhere(code: Path) -> None:
-    from plumb.contracts import Target
-    from plumb.hashing import hash_target
+    from iaso.contracts import Target
+    from iaso.hashing import hash_target
 
     end = Target(path="src/x.py", symbol="pkg.x:fn")
     method = Target(path="src/x.py", symbol="Box.open")
@@ -153,8 +153,8 @@ def test_symbol_end_ignores_edits_elsewhere(code: Path) -> None:
 
 @pytest.mark.sr("SR-238")
 def test_test_node_drops_parametrize_ids(code: Path) -> None:
-    from plumb.contracts import Target
-    from plumb.hashing import hash_target
+    from iaso.contracts import Target
+    from iaso.hashing import hash_target
 
     plain = hash_target(code, {}, Target(test="tests/test_x.py::test_add"))
     assert plain is not None
@@ -170,8 +170,8 @@ def test_test_node_drops_parametrize_ids(code: Path) -> None:
 
 @pytest.mark.sr("SR-238")
 def test_missing_symbol_dangles(code: Path) -> None:
-    from plumb.contracts import Target
-    from plumb.hashing import hash_target
+    from iaso.contracts import Target
+    from iaso.hashing import hash_target
 
     assert hash_target(code, {}, Target(path="src/x.py", symbol="gone")) is None
     assert hash_target(code, {}, Target(path="src/x.py", symbol="Box.shut")) is None

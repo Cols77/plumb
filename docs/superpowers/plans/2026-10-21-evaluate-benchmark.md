@@ -1,48 +1,48 @@
-# plumb evaluate (INT-105): a cheap benchmark of plumb run by a cheap model
+# iaso evaluate (INT-105): a cheap benchmark of iaso run by a cheap model
 
 Intent: INT-105. Requirements: SR-344 (the run), SR-345 (the scripted owner), SR-346 (the
 score), SR-347 (the issues file), SR-348 (evaluate, debug, merge, evaluate again), SR-349 (the
 two tasks). Decisions: DEC-303 to DEC-312. Proof (all six, kind command): one live run of
-`plumb evaluate simple --model haiku`, its printed score line, its run folder, and for SR-348 the
-round lines of `plumb evaluate simple --loop 2` (`plumb proof SR-34x --evidence`).
+`iaso evaluate simple --model haiku`, its printed score line, its run folder, and for SR-348 the
+round lines of `iaso evaluate simple --loop 2` (`iaso proof SR-34x --evidence`).
 
 Build on main in this checkout (the loop's session is 188a3d82). Tests run with at most `-n 2`
-under `.git/plumb-heavy.lock`. No new dependency: subprocess, json, re, shutil, tempfile.
+under `.git/iaso-heavy.lock`. No new dependency: subprocess, json, re, shutil, tempfile.
 
 ## What exists and is reused
 
-- `plumb.understand.dispatch.claude_code.ClaudeCodeDispatcher`: one `claude -p` call with a
-  plumb-shipped agent (`understand/agents/<kind>.md`), no tools, a JSON schema, in an empty temp
+- `iaso.understand.dispatch.claude_code.ClaudeCodeDispatcher`: one `claude -p` call with a
+  iaso-shipped agent (`understand/agents/<kind>.md`), no tools, a JSON schema, in an empty temp
   dir. The scripted owner is one more kind, `owner`.
-- `plumb.selfdebug.FixerDispatcher.command` shows the headless flags; `selfdebug.fix(core, case,
+- `iaso.selfdebug.FixerDispatcher.command` shows the headless flags; `selfdebug.fix(core, case,
   fixer=, runner=, judge=)` is the debug round (worktree + branch `debug/<slug>`); its `Outcome.state`
   is `fixed | owner | held | reported`.
-- `plumb.debug.open_case(root, id=, kind=, target=, detail=, log=)` writes one case file under
-  `.plumb/cache/debug/`, idempotent on id; `debug._case_path(root, id)`.
-- `plumb.commands.init_repo(root)` adopts a repository; `plumb.hosts.claude_code.install.install(root)`
-  writes plumb's hooks and skills into `<root>/.claude/settings.json` (the owner's choice, DEC-306).
-- `plumb.api.open_core(root)`: `core.index()` (records by id, `.kind`), `core.link_states()`
+- `iaso.debug.open_case(root, id=, kind=, target=, detail=, log=)` writes one case file under
+  `.iaso/cache/debug/`, idempotent on id; `debug._case_path(root, id)`.
+- `iaso.commands.init_repo(root)` adopts a repository; `iaso.hosts.claude_code.install.install(root)`
+  writes iaso's hooks and skills into `<root>/.claude/settings.json` (the owner's choice, DEC-306).
+- `iaso.api.open_core(root)`: `core.index()` (records by id, `.kind`), `core.link_states()`
   (`.state` in stale|dangling|...), `core.paths`.
-- Plumb's log: one JSON file per entry under `.plumb/log/<kind>/`; an intent gate is
+- Iaso's log: one JSON file per entry under `.iaso/log/<kind>/`; an intent gate is
   `core.log_append("events", "intent-gate", {...})`, a proof shown is a `proof` evidence on the SR
-  file (`plumb.capture.proof.not_shown(core, ids)` says which lack it).
-- CLI routing: `ROUTES` in `src/plumb/cli.py` (`"evaluate": "plumb.evaluate.cli"`), the help text
+  file (`iaso.capture.proof.not_shown(core, ids)` says which lack it).
+- CLI routing: `ROUTES` in `src/iaso/cli.py` (`"evaluate": "iaso.evaluate.cli"`), the help text
   in the same file (a `development:` line next to `understand`).
 
 ## Layout
 
 ```
-src/plumb/evaluate/__init__.py
-src/plumb/evaluate/cli.py          run(command, argv): plumb evaluate <task> [--model M] [--owner-model M] [--loop N] [--runs-dir D]
-src/plumb/evaluate/run.py          run_task(...) -> RunResult; the scratch repository; one turn per request
-src/plumb/evaluate/owner.py        ScriptedOwner: answers from the hidden brief, or says nothing is asked
-src/plumb/evaluate/score.py        checks(...) and trail(...) -> score dict; line(score) -> str
-src/plumb/evaluate/issues.py       collect(...) and open_cases(...)
-src/plumb/evaluate/loop.py         run_loop(...): evaluate, debug, merge, evaluate again
-src/plumb/evaluate/tasks.py        load(task) -> Task (agent brief, owner brief, requests, checks dir)
-src/plumb/evaluate/tasks/simple/{agent.md,owner.md,requests.json,checks/test_game.py}
-src/plumb/evaluate/tasks/complex/{agent.md,owner.md,requests.json,checks/test_expenses.py}
-src/plumb/understand/agents/owner.md
+src/iaso/evaluate/__init__.py
+src/iaso/evaluate/cli.py          run(command, argv): iaso evaluate <task> [--model M] [--owner-model M] [--loop N] [--runs-dir D]
+src/iaso/evaluate/run.py          run_task(...) -> RunResult; the scratch repository; one turn per request
+src/iaso/evaluate/owner.py        ScriptedOwner: answers from the hidden brief, or says nothing is asked
+src/iaso/evaluate/score.py        checks(...) and trail(...) -> score dict; line(score) -> str
+src/iaso/evaluate/issues.py       collect(...) and open_cases(...)
+src/iaso/evaluate/loop.py         run_loop(...): evaluate, debug, merge, evaluate again
+src/iaso/evaluate/tasks.py        load(task) -> Task (agent brief, owner brief, requests, checks dir)
+src/iaso/evaluate/tasks/simple/{agent.md,owner.md,requests.json,checks/test_game.py}
+src/iaso/evaluate/tasks/complex/{agent.md,owner.md,requests.json,checks/test_expenses.py}
+src/iaso/understand/agents/owner.md
 tests/evaluate/{conftest.py,test_run.py,test_owner.py,test_score.py,test_issues.py,test_loop.py,test_tasks.py}
 ```
 
@@ -95,19 +95,19 @@ def scratch_repo(parent: Path) -> Path
 def claude_turn(binary, scratch, message, *, model, session_id, system, timeout_s, env) -> dict
     # the subprocess call: [binary, "-p", "--model", model, "--output-format", "json", "--max-turns", str(TURN_CAP),
     #   "--permission-mode", "acceptEdits", "--setting-sources", "project", "--append-system-prompt", system,
-    #   *(["--resume", session_id] if session_id else [])], input=message, cwd=scratch, env without PLUMB_JOB/PLUMB_WORKER
+    #   *(["--resume", session_id] if session_id else [])], input=message, cwd=scratch, env without IASO_JOB/IASO_WORKER
     # returns {"text": result, "session_id": ..., "capped": num_turns >= TURN_CAP or the error names max turns, "error": str|""}
 def run_task(root: Path, task: Task, *, model: str, owner: ScriptedOwner, runs_dir: Path | None = None,
              claude=claude_turn, now=time.monotonic, binary: str | None = None) -> RunResult
     # binary None: shutil.which("claude"); not found: raise RuntimeError("the claude command was not found on this machine")
     #   before anything is made (cli prints it as one line, exit 1)
-    # run_dir = (runs_dir or root/.plumb/eval/runs) / f"{stamp}-{task.name}-{model}"
+    # run_dir = (runs_dir or root/.iaso/eval/runs) / f"{stamp}-{task.name}-{model}"
     # for n, request in enumerate(task.requests, 1): send it (source "script"); then up to OWNER_CAP times:
     #   verdict = owner.answer(task.owner_brief, request, reply); if not verdict["asks"]: break
     #   send verdict["answer"] (source "scripted-owner"); if the cap is reached and the last reply still asks: unanswered += 1
     # the time left (RUN_CAP_S - elapsed) is each call's timeout; at 0 the request is marked capped and the rest are skipped
     # after the last request: score = score.checks(scratch, task) | score.trail(scratch, transcript, issues)
-    #   issues = issues.collect(scratch, run_dir, root, run_id, task.name, model); shutil.copytree(scratch/.plumb, run_dir/plumb)
+    #   issues = issues.collect(scratch, run_dir, root, run_id, task.name, model); shutil.copytree(scratch/.iaso, run_dir/iaso)
     #   write score.json; print(score.line(score))
 
 # score.py
@@ -116,7 +116,7 @@ def checks(scratch: Path, task: Task, python: str = sys.executable) -> dict
     # parse "N passed", "N failed" from the summary and the "FAILED eval_checks/...::name" lines
     # -> {"checks_passed": int, "checks_total": int, "failed": [names]}
 def trail(scratch: Path, transcript: list[Turn], issues: list[dict], unanswered: int) -> dict
-    # records: count files under .plumb/{intents,requirements,decisions}; questions_asked = scripted-owner turns + unanswered,
+    # records: count files under .iaso/{intents,requirements,decisions}; questions_asked = scripted-owner turns + unanswered,
     # questions_answered = scripted-owner turns; gates = events log entries whose kind/event is "intent-gate";
     # proofs = requirements with evidence (open_core(scratch): the ones not in proof.not_shown); stale = link_states in stale/dangling;
     # issues = len(issues)
@@ -124,8 +124,8 @@ def line(task: str, model: str, score: dict) -> str
     # "simple haiku: checks 5/6, records 7, questions 2/2, gates 2, stale 0, issues 3"
 
 # issues.py
-ISSUES_FILE = ".plumb/eval-issues.jsonl"        # in the scratch repository, written by the agent
-ACCUMULATED = (".plumb", "eval", "issues.jsonl")  # in plumb's repository, tracked
+ISSUES_FILE = ".iaso/eval-issues.jsonl"        # in the scratch repository, written by the agent
+ACCUMULATED = (".iaso", "eval", "issues.jsonl")  # in iaso's repository, tracked
 def collect(scratch: Path, run_dir: Path, root: Path, run_id: str, task: str, model: str) -> list[dict]
     # read scratch/ISSUES_FILE (missing: []), keep the JSON lines (skip bad ones), write run_dir/issues.jsonl,
     # append each with {"run": run_id, "task": task, "model": model} to root/ACCUMULATED (unchanged when none)
@@ -149,17 +149,17 @@ def merge_branch(root: Path, branch: str) -> str
     # return the hook's last stderr line (what holds it); never --no-verify
 ```
 
-`.plumb/.gitignore` gains `eval/runs/`. `cli.py` gains the route and this help line under a new
-`development:` group: `evaluate     the benchmark: a cheap model works through a task with plumb
+`.iaso/.gitignore` gains `eval/runs/`. `cli.py` gains the route and this help line under a new
+`development:` group: `evaluate     the benchmark: a cheap model works through a task with iaso
 (simple|complex; --model, --loop)`.
 
 The agent brief (`tasks/<name>/agent.md`) states the file names and the input/output the owner
 will hold it to (the checks hold it to the same), and the issues rule, verbatim in both tasks:
 
-> Whenever plumb behaves wrongly (a refusal you cannot explain, an error, a command or hook line
-> that contradicts plumb's skills or its own words, a question you cannot answer), append one
-> JSON line to `.plumb/eval-issues.jsonl`: `{"when": ISO time, "command": the plumb command or
-> hook, "expected": what you expected, "got": what plumb said, "context": what you were doing}`.
+> Whenever iaso behaves wrongly (a refusal you cannot explain, an error, a command or hook line
+> that contradicts iaso's skills or its own words, a question you cannot answer), append one
+> JSON line to `.iaso/eval-issues.jsonl`: `{"when": ISO time, "command": the iaso command or
+> hook, "expected": what you expected, "got": what iaso said, "context": what you were doing}`.
 > Then go on with the work.
 
 ## The tasks (SR-349)
@@ -221,8 +221,8 @@ as `claude=`, the owner a `ScriptedOwner(dispatcher=<double>)`, `fix` and `merge
    EX-2 are run.py's (item 3).
 3. **run.py** (SR-344, SR-345 EX-2/EX-3). Tests `test_run.py` with `claude=` a double that returns
    scripted replies per message and records the argv-equivalent (model, session_id, message):
-   SR-344 EX-1 the scratch has `.plumb/` and `.claude/settings.json`, every request was sent once in
-   order, the run folder has transcript.jsonl, score.json, issues.jsonl and `plumb/`; EX-2 the double
+   SR-344 EX-1 the scratch has `.iaso/` and `.claude/settings.json`, every request was sent once in
+   order, the run folder has transcript.jsonl, score.json, issues.jsonl and `iaso/`; EX-2 the double
    saw model `sonnet` and the folder name ends `-sonnet`; EX-3 `binary=None` and `which` patched to
    None raises before any folder exists and the cli prints one line; EX-4 a double answering
    `capped: True` marks the agent turn `capped` and the next request is still sent. SR-345 EX-2 an
@@ -231,8 +231,8 @@ as `claude=`, the owner a `ScriptedOwner(dispatcher=<double>)`, `fix` and `merge
    score/issues are real (the checks dir may be an empty task double with no checks: 0/0).
 4. **score.py** (SR-346). Tests `test_score.py`: EX-1 a scratch with a `game.py` that wins but never
    draws (the reference minus the draw) scores 5 of 6 and names the draw check; EX-2 a scratch
-   `.plumb/log/events/` with two `intent-gate` entries written through `core.log_append` and one SR
-   with evidence (`plumb.capture.proof` API) gives `gates == 2`, `proofs == 1`; EX-3 `line()` renders
+   `.iaso/log/events/` with two `intent-gate` entries written through `core.log_append` and one SR
+   with evidence (`iaso.capture.proof` API) gives `gates == 2`, `proofs == 1`; EX-3 `line()` renders
    exactly `simple haiku: checks 5/6, records 7, questions 2/2, gates 2, stale 0, issues 3`.
 5. **issues.py** (SR-347, SR-348 EX-1/EX-2). Tests `test_issues.py`: SR-347 EX-1 is the agent's
    act (the brief's rule, asserted in item 1's EX-3 companion: the rule text is in both briefs); EX-2
@@ -248,15 +248,15 @@ as `claude=`, the owner a `ScriptedOwner(dispatcher=<double>)`, `fix` and `merge
    reason printed, nothing forced (the double records no `--no-verify`; `merge_branch` itself is
    tested once on a real tmp git repo with a feature branch: merged, and a conflicting branch: the
    reason returned and the tree clean after abort).
-7. **cli.py, the route, the help line, `.plumb/.gitignore`, package data.** Test: `plumb evaluate
-   nope` exits 2 with usage; `plumb evaluate simple` with `claude` absent prints the one line and
+7. **cli.py, the route, the help line, `.iaso/.gitignore`, package data.** Test: `iaso evaluate
+   nope` exits 2 with usage; `iaso evaluate simple` with `claude` absent prints the one line and
    exits 1 (covers SR-344 EX-3 end to end).
-8. **Link the records.** `plumb link SR-344 src/plumb/evaluate/run.py` and so on for each
+8. **Link the records.** `iaso link SR-344 src/iaso/evaluate/run.py` and so on for each
    requirement's files (implemented_by), and each test file as `verified_by` of its examples
-   (the `sr` marker plus `plumb tests map`); `plumb repin --after-tests` for anything stale.
-9. **Proof.** The live run (the owner's choice): `plumb evaluate simple --model haiku`, then
-   `plumb proof SR-344 --evidence .plumb/eval/runs/<id>/score.json --summary "..." --passed` and
-   the same evidence for SR-345, SR-346, SR-347, SR-349; `plumb evaluate simple --loop 2` for SR-348
+   (the `sr` marker plus `iaso tests map`); `iaso repin --after-tests` for anything stale.
+9. **Proof.** The live run (the owner's choice): `iaso evaluate simple --model haiku`, then
+   `iaso proof SR-344 --evidence .iaso/eval/runs/<id>/score.json --summary "..." --passed` and
+   the same evidence for SR-345, SR-346, SR-347, SR-349; `iaso evaluate simple --loop 2` for SR-348
    (its evidence: the round lines saved to the run folder as `loop.txt`).
 
 ## Risks named
@@ -266,5 +266,5 @@ as `claude=`, the owner a `ScriptedOwner(dispatcher=<double>)`, `fix` and `merge
 - A live run costs real model calls: Haiku for both roles, at most 25 turns per request and 20
   minutes; the loop adds Sonnet/Opus rounds in self-debug (the configured repin/diagnose models).
 - In headless mode the question tool is absent; questions reach the owner as text in the reply,
-  which is what the scripted owner reads. plumb's judge questions in the scratch repository's store
+  which is what the scripted owner reads. iaso's judge questions in the scratch repository's store
   are counted by the trail only when the agent relays them.

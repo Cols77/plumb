@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "capture"))
-from plumb.api import open_core  # noqa: E402
-from plumb.understand import judge, verdict  # noqa: E402
+from iaso.api import open_core  # noqa: E402
+from iaso.understand import judge, verdict  # noqa: E402
 from understand import test_judge_cascade  # noqa: E402
 from understand.fakes import FakeDispatcher, as_worker  # noqa: E402
 from understand.test_judge_cascade import (  # noqa: E402
@@ -124,7 +124,7 @@ def test_ex6_a_quote_only_premise_is_never_fast_tracked(
     quote-only, the judge model is asked."""
     said = "Keep the checkout plain, the shop is small."
     digest = "sha256:" + __import__("hashlib").sha256(said.encode("utf-8")).hexdigest()
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"digest": digest, "session": SESSION, "via": "turn",
                                 "at": "2026-10-06T10:00:00Z", "text": said}) + "\n",
@@ -202,7 +202,7 @@ def test_ex5_a_probability_equal_to_the_threshold_goes_to_the_model(
     model = model_for("INT-001")
     _, _, applied = judged(core, ["INT-001"], StubJev(0.93), model)
     assert approvals(applied) == [] and asked(model) == ["INT-001"]
-    from plumb.capture.autoapprove import recheck
+    from iaso.capture.autoapprove import recheck
 
     calibration = [e for e in core.events() if e.kind == "calibration"][-1]
     entry = type("E", (), {"payload": {
@@ -229,7 +229,7 @@ def test_ex4_config_yaml_on_without_the_owners_event_is_not_the_fast_track(
     model = model_for("INT-001")
     _, _, applied = judged(core, ["INT-001"], StubJev(0.97), model)
     assert approvals(applied) == [] and asked(model) == ["INT-001"]
-    from plumb.validate import validate
+    from iaso.validate import validate
 
     assert any(f.code == "auto-approve-mirror" and f.severity == "warning"
                for f in validate(open_core(world)))
@@ -243,7 +243,7 @@ def test_ex7_the_agent_editing_config_yaml_never_switches_the_fast_track_on(
     core = configure(world)
     fast_track_on(core, monkeypatch)
     core.log_append("events", "config", {"by": "owner", "auto_approve": {"enabled": False}})
-    config = world / ".plumb" / "config.yaml"
+    config = world / ".iaso" / "config.yaml"
     config.write_text(config.read_text(encoding="utf-8") + "auto_approve: {enabled: true}\n",
                       encoding="utf-8")
     core = open_core(world)
@@ -272,7 +272,7 @@ def owner_on(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch):
 def test_ex5_a_new_jev_version_keeps_the_fast_track_on_the_floor(owner_on: Any) -> None:
     """SR-250 EX-5 (DEC-143): JEV now resolves jev-1.14: the calibrated threshold no longer
     applies, the intent is approved on the 0.9 floor and the status still says on."""
-    from plumb.capture.autoapprove import auto_approve_state, state_line
+    from iaso.capture.autoapprove import auto_approve_state, state_line
 
     repo, stub = owner_on
     stub.model = "jev-1.14.0"
@@ -306,7 +306,7 @@ def test_ex3_the_judges_key_missing_holds_the_approval_with_one_line(
         world: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """SR-245 EX-3: the switch on, JEV's key missing: one line says the judge is unreachable,
     nothing is approved by rule; said once."""
-    from plumb.judgment import jev as jev_mod
+    from iaso.judgment import jev as jev_mod
 
     core = configure(world)
     fast_track_on(core, monkeypatch)
@@ -379,9 +379,9 @@ def test_an_auto_jev_or_pre_intent_entry_needs_the_workers_token(
         payload: dict[str, Any]) -> None:
     """An ``auto-jev`` approval or a ``pre-intent`` written without the worker token is
     refused; the worker writes it."""
-    from plumb.log import LogError
+    from iaso.log import LogError
 
-    monkeypatch.delenv("PLUMB_WORKER", raising=False)
+    monkeypatch.delenv("IASO_WORKER", raising=False)
     core = open_core(world)
     with pytest.raises(LogError, match="worker only"):
         core.log_append("events", kind, {**payload, "session": SESSION})

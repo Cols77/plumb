@@ -1,7 +1,7 @@
 """No approval command (task 8 of the judge-approval plan): ``approve``, ``confirm``,
 ``revoke``, ``relay``, ``triage --approve`` and ``spec approve`` are refused with exit 3 as no
 longer existing, whoever runs them and whatever stdin holds, and write nothing. A typed
-``/plumb approve`` is no command either: its words go to the reader as prose."""
+``/iaso approve`` is no command either: its words go to the reader as prose."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from capture.capture_helpers import agent_shell_setup, run
 from understand.fakes import engine_standins  # noqa: F401 - the fixture
 from understand.test_read_job import SESSION, ctx_for, log_prompt, make_core, record_text, state
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.understand import files, hooks
+from iaso import cli
+from iaso.api import open_core
+from iaso.understand import files, hooks
 
 DEC = ("---\nid: DEC-017\ntitle: Pick a store\nquestion: which store?\noptions:\n- id: A\n"
        "  text: sqlite\nchosen: A\nstatus: proposed\n---\nbody\n")
@@ -38,13 +38,13 @@ def states(root: Path) -> dict[str, str]:
 @pytest.mark.sr("SR-210")
 def test_ex1_the_agent_runs_approve_confirm_or_revoke_and_each_is_refused(
         core, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    """SR-210 EX-1: in the agent's session, plumb approve, confirm and revoke on a requirement
+    """SR-210 EX-1: in the agent's session, iaso approve, confirm and revoke on a requirement
     are refused with exit 3 as no longer existing, and nothing is written."""
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     before = states(core.root)
     for verb in ("approve", "confirm", "revoke"):
         assert run(core.root, verb, "SR-040") == 3, verb
-        assert f"plumb: {verb} no longer exists; nothing was recorded" in capsys.readouterr().err
+        assert f"iaso: {verb} no longer exists; nothing was recorded" in capsys.readouterr().err
     assert written(core.root) == [] and states(core.root) == before
 
 
@@ -65,10 +65,10 @@ def test_ex2_no_marker_no_terminal_and_y_piped_in_still_refused(
 @pytest.mark.sr("SR-210")
 def test_ex5_relay_is_refused_as_gone_with_no_help_line(
         core, capsys: pytest.CaptureFixture[str]) -> None:
-    """SR-210 EX-5: plumb relay is looked up and refused as no longer existing; no help
+    """SR-210 EX-5: iaso relay is looked up and refused as no longer existing; no help
     line names it, nor approve, confirm or revoke."""
     assert run(core.root, "relay", "SR-040", "--quote", "ok") == 3
-    assert "plumb: relay no longer exists" in capsys.readouterr().err
+    assert "iaso: relay no longer exists" in capsys.readouterr().err
     verbs = {line.split()[0] for line in cli.help_text().splitlines()
              if line.startswith("  ") and line.strip()}
     assert not {"relay", "approve", "confirm", "revoke"} & verbs
@@ -93,14 +93,14 @@ def test_ex3_a_bare_ok_with_no_question_open_changes_nothing_and_asks_nothing(
 
 @pytest.mark.sr("SR-209")
 @pytest.mark.usefixtures("engine_standins")
-def test_ex6_typed_plumb_approve_runs_no_approval_and_is_read_as_the_owners_words(
+def test_ex6_typed_iaso_approve_runs_no_approval_and_is_read_as_the_owners_words(
         core) -> None:
-    """SR-209 EX-6: the owner types "/plumb approve DEC-017"; the prompt hook runs no
+    """SR-209 EX-6: the owner types "/iaso approve DEC-017"; the prompt hook runs no
     approval, asks for no id, leaves every record's state unchanged and gives the words to
     the reader, to be read by meaning as the owner's answer."""
     state(core, ["DEC-017"])
     before = states(core.root)
-    text = "/plumb approve DEC-017"
+    text = "/iaso approve DEC-017"
     digest = log_prompt(core, text)
     lines = hooks.on_prompt(ctx_for(core), core, {"digest": digest, "text": text})
     assert states(core.root) == before

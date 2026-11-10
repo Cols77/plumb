@@ -16,12 +16,12 @@ from typing import Any
 import pytest
 
 from ids.gitrepo import clone, commit_all, make_repo, run_git
-from plumb import approvals, ids
-from plumb.api import open_core
-from plumb.boundary import merge_report
-from plumb.capture import proof
-from plumb.contracts import Target
-from plumb.hosts.claude_code import question_answer
+from iaso import approvals, ids
+from iaso.api import open_core
+from iaso.boundary import merge_report
+from iaso.capture import proof
+from iaso.contracts import Target
+from iaso.hosts.claude_code import question_answer
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -101,7 +101,7 @@ def _report(origin: Path):
 
 
 def test_carried_approval_covers_the_owning_ends(tmp_path: Path, hook_input: Any) -> None:
-    from plumb.merge import approved_ends
+    from iaso.merge import approved_ends
 
     origin = _renumbered(tmp_path, hook_input)
     core = open_core(origin)
@@ -124,7 +124,7 @@ def test_incoming_trailers_name_the_renumbered_record(tmp_path: Path, hook_input
 
 
 def test_carried_approval_confirms_the_escalated_set(tmp_path: Path, hook_input: Any) -> None:
-    from plumb.boundary.report import _set_confirmed
+    from iaso.boundary.report import _set_confirmed
 
     origin = _renumbered(tmp_path, hook_input, escalated=True)
     core = open_core(origin)

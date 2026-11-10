@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.verify.imports import closure, direct_imports, import_edges
+from iaso.verify.imports import closure, direct_imports, import_edges
 
 
 def _write(root: Path, rel: str, text: str = "") -> Path:

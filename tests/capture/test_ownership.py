@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from capture_helpers import record_text, tree_bytes
 
-from plumb.api import open_core
-from plumb.capture import api
-from plumb.capture.ownership import diff_serves, node_proposals, ownership_proposals
-from plumb.contracts import Target
-from plumb.judgment import FakeBackend
+from iaso.api import open_core
+from iaso.capture import api
+from iaso.capture.ownership import diff_serves, node_proposals, ownership_proposals
+from iaso.contracts import Target
+from iaso.judgment import FakeBackend
 
 pytestmark = pytest.mark.sr("SR-200")
 
@@ -46,15 +46,15 @@ OWNER = FakeBackend({("ownership", "src/app/mul.py"): ("SR-001: add returns the 
 
 def test_untraced_change_names_a_proposed_owner_and_writes_no_link(
         calc: Path, monkeypatch) -> None:
-    import plumb.judgment
+    import iaso.judgment
 
-    monkeypatch.setattr(plumb.judgment, "get_backend", lambda core, hook: OWNER)
+    monkeypatch.setattr(iaso.judgment, "get_backend", lambda core, hook: OWNER)
     before = tree_bytes(calc)
     proposals = ownership_proposals(open_core(calc), ["src/app/mul.py", "src/app/calc.py"])
     assert list(proposals) == ["src/app/mul.py"]  # calc.py is owned already
     proposal = proposals["src/app/mul.py"]
     assert proposal.proposed == "SR-001"
-    assert proposal.line == ("plumb: src/app/mul.py: SR-001 may own this (proposed); read it "
+    assert proposal.line == ("iaso: src/app/mul.py: SR-001 may own this (proposed); read it "
                              "back and link it, or record a new SR")
     assert tree_bytes(calc) == before
     assert api.ownership_proposals(open_core(calc), ["src/app/mul.py"])["src/app/mul.py"] \
@@ -81,9 +81,9 @@ def test_no_clear_lead_reports_no_judgments(calc: Path, write_record) -> None:
 def test_diff_not_serving_a_claimed_sr_warns(calc: Path) -> None:
     backend = FakeBackend({("ownership", "SR-004"): ("no", 0.95)})
     lines = diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"], backend=backend)
-    assert lines == ["plumb: warning: SR-004 may not be served by src/app/report.py"]
+    assert lines == ["iaso: warning: SR-004 may not be served by src/app/report.py"]
     [unavailable] = diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"])
-    assert unavailable.startswith("plumb: judging unavailable:")  # no judge, no rule
+    assert unavailable.startswith("iaso: judging unavailable:")  # no judge, no rule
     sure = FakeBackend({("ownership", "SR-004"): ("yes", 0.95)})
     assert diff_serves(open_core(calc), ["SR-004"], ["src/app/report.py"], backend=sure) == []
 
@@ -91,11 +91,11 @@ def test_diff_not_serving_a_claimed_sr_warns(calc: Path) -> None:
 def test_bare_test_file_gets_a_proposed_node(calc: Path, capsys) -> None:
     [proposal] = node_proposals(open_core(calc), ["SR-001"])
     assert proposal.proposed == "tests/test_calc.py::test_add_returns_sum"
-    from plumb.cli import main
+    from iaso.cli import main
 
     before = tree_bytes(calc)
     main(["drift", "--root", str(calc)])
     out = capsys.readouterr().out
-    assert ("plumb: hint: SR-001 EX-1 is verified by the whole file tests/test_calc.py; "
+    assert ("iaso: hint: SR-001 EX-1 is verified by the whole file tests/test_calc.py; "
             "proposed node tests/test_calc.py::test_add_returns_sum (not written)") in out
     assert tree_bytes(calc) == before

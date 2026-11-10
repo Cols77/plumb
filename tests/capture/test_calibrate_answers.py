@@ -20,8 +20,8 @@ from understand.test_cascade_fast_track import judged, write
 from understand.test_judge_cascade import StubJev, configure
 from understand.test_round_approval import ASK, model_says, owner_answers
 
-from plumb.api import open_core
-from plumb.capture.calibrate import calibrate, labelled_set
+from iaso.api import open_core
+from iaso.capture.calibrate import calibrate, labelled_set
 
 world = test_judge_cascade.world   # INT-001 and SR-001 from the owner's logged MESSAGE
 

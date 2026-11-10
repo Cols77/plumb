@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import guard
-from plumb.hosts.claude_code import pretool
+from iaso import guard
+from iaso.hosts.claude_code import pretool
 
 from .helpers import (
     PLUGIN,
@@ -27,18 +27,18 @@ from .helpers import (
 pytestmark = [pytest.mark.sr("SR-209")]
 
 LAUNCHERS = (
-    "plumb",
-    "plumb.exe",
-    "plumb.cmd",
-    "uv run plumb",
-    "uv run --no-sync plumb",
-    "python -m plumb",
-    "python3 -m plumb",
-    "C:/work/app/.venv/Scripts/python.exe -m plumb",
-    "/home/me/app/.venv/bin/python -m plumb",
-    '"C:/Program Files/Python312/python.exe" -m plumb',
-    "/home/me/.claude/plugins/plumb/bin/plumb",
-    "C:/Users/me/.plumb/bin/plumb",
+    "iaso",
+    "iaso.exe",
+    "iaso.cmd",
+    "uv run iaso",
+    "uv run --no-sync iaso",
+    "python -m iaso",
+    "python3 -m iaso",
+    "C:/work/app/.venv/Scripts/python.exe -m iaso",
+    "/home/me/app/.venv/bin/python -m iaso",
+    '"C:/Program Files/Python312/python.exe" -m iaso',
+    "/home/me/.claude/plugins/iaso/bin/iaso",
+    "C:/Users/me/.iaso/bin/iaso",
 )
 
 DENIED = (
@@ -76,7 +76,7 @@ ALLOWED = (
 @pytest.mark.parametrize("form", DENIED)
 def test_denied(launcher: str, form: str) -> None:
     reason = guard.denied("Bash", {"command": f"{launcher} {form}"})
-    assert reason and reason.startswith("plumb: refused:")
+    assert reason and reason.startswith("iaso: refused:")
 
 
 @pytest.mark.parametrize("launcher", LAUNCHERS)
@@ -86,51 +86,51 @@ def test_allowed(launcher: str, form: str) -> None:
 
 
 @pytest.mark.parametrize("command", [
-    "cd app && plumb approve SR-001",
-    "plumb status; plumb approve SR-001",
-    "true || plumb revoke SR-001",
-    "plumb status | plumb mod press --offer x",
-    "echo $(plumb approve SR-001)",
-    'echo "$(plumb revoke SR-001)"',
-    "echo `plumb approve SR-001`",
-    'bash -c "plumb approve SR-001"',
-    "sh -lc 'plumb approve SR-001'",
-    'powershell -Command "plumb approve SR-001"',
-    'eval "plumb approve SR-001"',
-    "env FOO=1 plumb approve SR-001",
-    "PYTHONPATH=src python -m plumb approve SR-001",
-    "exec plumb approve SR-001",
-    "(plumb approve SR-001)",
-    "plumb status\nplumb approve SR-001",
+    "cd app && iaso approve SR-001",
+    "iaso status; iaso approve SR-001",
+    "true || iaso revoke SR-001",
+    "iaso status | iaso mod press --offer x",
+    "echo $(iaso approve SR-001)",
+    'echo "$(iaso revoke SR-001)"',
+    "echo `iaso approve SR-001`",
+    'bash -c "iaso approve SR-001"',
+    "sh -lc 'iaso approve SR-001'",
+    'powershell -Command "iaso approve SR-001"',
+    'eval "iaso approve SR-001"',
+    "env FOO=1 iaso approve SR-001",
+    "PYTHONPATH=src python -m iaso approve SR-001",
+    "exec iaso approve SR-001",
+    "(iaso approve SR-001)",
+    "iaso status\niaso approve SR-001",
 ])
 def test_denied_inside_compound_commands(command: str) -> None:
     assert guard.denied("Bash", {"command": command})
 
 
 @pytest.mark.parametrize("command", [
-    'git commit -m "plumb approve SR-001 is the owner\'s alone"',
-    "git commit -F - <<'EOF'\nGuard plumb approve and plumb revoke\n\nSR: SR-112\nEOF",
-    "grep -rn 'plumb approve' src",
-    "echo plumb approve",
-    "plumb explain approve",
+    'git commit -m "iaso approve SR-001 is the owner\'s alone"',
+    "git commit -F - <<'EOF'\nGuard iaso approve and iaso revoke\n\nSR: SR-112\nEOF",
+    "grep -rn 'iaso approve' src",
+    "echo iaso approve",
+    "iaso explain approve",
 ])
-def test_words_about_plumb_are_not_commands(command: str) -> None:
+def test_words_about_iaso_are_not_commands(command: str) -> None:
     assert guard.denied("Bash", {"command": command}) is None
 
 
 def test_marker_named_anywhere() -> None:
-    for command in ("unset PLUMB_AGENT_SESSION", "env -u PLUMB_AGENT_SESSION plumb approve",
-                    "echo $PLUMB_AGENT_SESSION"):
+    for command in ("unset IASO_AGENT_SESSION", "env -u IASO_AGENT_SESSION iaso approve",
+                    "echo $IASO_AGENT_SESSION"):
         assert guard.denied("Bash", {"command": command}) == guard.MARKER_REASON
 
 
 @pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit", "NotebookEdit"])
 def test_edits_under_the_log(tool: str) -> None:
-    for path in (".plumb/log/events/2026/x.json", "C:\\r\\.plumb\\log\\prompts.jsonl",
-                 "/home/me/r/.plumb/log/approval/a.json"):
+    for path in (".iaso/log/events/2026/x.json", "C:\\r\\.iaso\\log\\prompts.jsonl",
+                 "/home/me/r/.iaso/log/approval/a.json"):
         key = "notebook_path" if tool == "NotebookEdit" else "file_path"
         assert guard.denied(tool, {key: path}) == guard.LOG_REASON
-    assert guard.denied(tool, {"file_path": ".plumb/requirements/SR-001.md"}) is None
+    assert guard.denied(tool, {"file_path": ".iaso/requirements/SR-001.md"}) is None
     assert guard.denied(tool, {"file_path": "src/log/x.py"}) is None
 
 
@@ -140,29 +140,29 @@ def test_pre_tool_hook_answers_deny(tmp_path: Path) -> None:
 
     out = io.StringIO()
     data = {"session_id": "s1", "tool_name": "Bash",
-            "tool_input": {"command": "plumb approve SR-001"}}
+            "tool_input": {"command": "iaso approve SR-001"}}
     assert pretool.main(root=tmp_path, stdin=io.StringIO(json.dumps(data)), stdout=out) == 0
     answer = json.loads(out.getvalue())["hookSpecificOutput"]
     assert answer["permissionDecision"] == "deny"
     assert "approve" in answer["permissionDecisionReason"]
     out = io.StringIO()
-    data["tool_input"] = {"command": "plumb status"}
+    data["tool_input"] = {"command": "iaso status"}
     pretool.main(root=tmp_path, stdin=io.StringIO(json.dumps(data)), stdout=out)
     assert out.getvalue() == ""
 
 
 @needs_sh
 def test_plugin_hook_denies_through_sh(tmp_path: Path) -> None:
-    """End to end: Claude Code runs the plugin's pre-tool hook, which runs the guard in plumb's
+    """End to end: Claude Code runs the plugin's pre-tool hook, which runs the guard in iaso's
     own environment."""
     root = adopted_repo(tmp_path / "repo")
     home = ready_home(tmp_path / "home", real_python(tmp_path / "env" / "python"))
-    env = env_with([], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     result = run_hook("pre-tool", root, hook_data(
-        "pre-tool", tool_input={"command": "uv run plumb mod press --offer x"}), env)
+        "pre-tool", tool_input={"command": "uv run iaso mod press --offer x"}), env)
     answer = json.loads(result.stdout)["hookSpecificOutput"]
     assert answer["permissionDecision"] == "deny"
-    result = run_hook("pre-tool", root, hook_data("pre-tool"), env)  # plumb status
+    result = run_hook("pre-tool", root, hook_data("pre-tool"), env)  # iaso status
     assert (result.returncode, result.stdout) == (0, "")
 
 
@@ -171,19 +171,19 @@ def test_gate_in_shell_without_python(tmp_path: Path) -> None:
     """SP8's gate stays the fast path: a closed gate refuses an edit in the shell alone."""
     sentinel = tmp_path / "sentinel.txt"
     root = adopted_repo(tmp_path / "repo")
-    gate = root / ".plumb" / "session" / "s1" / "gate"
+    gate = root / ".iaso" / "session" / "s1" / "gate"
     gate.parent.mkdir(parents=True)
     gate.write_text('{"state": "closed", "reason": "the reminders"}', encoding="utf-8")
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     result = run_hook("pre-tool", root, hook_data(
         "pre-tool", tool_name="Write", tool_input={"file_path": "src/app.py"}), env)
     answer = json.loads(result.stdout)["hookSpecificOutput"]
     assert answer["permissionDecision"] == "deny"
     assert "the reminders" in answer["permissionDecisionReason"]
     assert not sentinel.exists()
-    # an edit that names nothing of plumb's, with the gate open: no Python either
+    # an edit that names nothing of iaso's, with the gate open: no Python either
     gate.write_text('{"state": "open"}', encoding="utf-8")
     result = run_hook("pre-tool", root, hook_data(
         "pre-tool", tool_name="Write", tool_input={"file_path": "src/app.py"}), env)
@@ -196,12 +196,12 @@ def test_the_main_guard_starts_python_only_for_a_command_that_could_write(tmp_pa
     """SR-384, SR-279: on a primary checkout with the guard on, `ls` still starts no Python."""
     sentinel = tmp_path / "sentinel.txt"
     root = adopted_repo(tmp_path / "repo")
-    config = root / ".plumb" / "config.yaml"
+    config = root / ".iaso" / "config.yaml"
     config.write_text(config.read_text(encoding="utf-8").replace("guard_main: false",
                                                                  "guard_main: true"), "utf-8")
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     run_hook("pre-tool", root, hook_data("pre-tool", tool_input={"command": "ls"}), env)
     assert not sentinel.exists()
     run_hook("pre-tool", root, hook_data("pre-tool", tool_input={"command": "echo x > a"}), env)
@@ -214,12 +214,12 @@ def test_pretool_shell_route_goes_to_python_on_a_pending_inbox(tmp_path: Path) -
     """A Read, which starts no Python otherwise, reaches it while a message waits."""
     sentinel = tmp_path / "sentinel.txt"
     root = adopted_repo(tmp_path / "repo")
-    inbox = root / ".plumb" / "session" / "s1" / "inbox.jsonl"
+    inbox = root / ".iaso" / "session" / "s1" / "inbox.jsonl"
     inbox.parent.mkdir(parents=True)
     inbox.write_text('{"id": "1", "loop": "x", "text": "hi"}\n', encoding="utf-8")
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     run_hook("pre-tool", root, hook_data("pre-tool", tool_name="Read",
                                          tool_input={"file_path": "a.py"}), env)
     assert sentinel.exists()
@@ -232,10 +232,10 @@ def test_pretool_shell_route_skips_python_for_a_subagent_or_no_inbox(tmp_path: P
     root = adopted_repo(tmp_path / "repo")
     poison = sentinel_bin(tmp_path / "poison", sentinel)
     home = ready_home(tmp_path / "home", poison / "python")
-    env = env_with([poison], PLUMB_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
+    env = env_with([poison], IASO_HOME=str(home), CLAUDE_PROJECT_DIR=str(root))
     read = {"tool_name": "Read", "tool_input": {"file_path": "a.py"}}
     run_hook("pre-tool", root, hook_data("pre-tool", **read), env)
-    inbox = root / ".plumb" / "session" / "s1" / "inbox.jsonl"
+    inbox = root / ".iaso" / "session" / "s1" / "inbox.jsonl"
     inbox.parent.mkdir(parents=True)
     inbox.write_text('{"id": "1", "loop": "x", "text": "hi"}\n', encoding="utf-8")
     run_hook("pre-tool", root, hook_data("pre-tool", agent_id="a1", **read), env)
@@ -243,14 +243,14 @@ def test_pretool_shell_route_skips_python_for_a_subagent_or_no_inbox(tmp_path: P
 
 
 def test_install_rules_from_same_table() -> None:
-    from plumb.hosts.claude_code.install import (
+    from iaso.hosts.claude_code.install import (
         STANDARD_PREFIXES,
         Launcher,
         deny_rules,
-        is_plumb_deny,
+        is_iaso_deny,
     )
 
-    rules = deny_rules(Launcher("path", "plumb", "plumb"))
+    rules = deny_rules(Launcher("path", "iaso", "iaso"))
     forms = guard.legacy_forms()
     for row in guard.TABLE:
         if row.legacy:
@@ -260,7 +260,7 @@ def test_install_rules_from_same_table() -> None:
             assert f"Bash({prefix} {form}:*)" in rules
             # what the rule denies, the guard denies too
             assert guard.denied("Bash", {"command": f"{prefix} {form} x"}), form
-    assert all(is_plumb_deny(rule) for rule in rules)
+    assert all(is_iaso_deny(rule) for rule in rules)
 
 
 def test_mod_table_is_generated_from_the_table() -> None:

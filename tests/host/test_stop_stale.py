@@ -14,10 +14,10 @@ import pytest
 from fakes import FakeVerify
 
 from core.stale_asked import asked
-from plumb import stale
-from plumb.api import open_core
-from plumb.contracts import NodeEvidence, Target
-from plumb.hosts.claude_code import stop
+from iaso import stale
+from iaso.api import open_core
+from iaso.contracts import NodeEvidence, Target
+from iaso.hosts.claude_code import stop
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -60,8 +60,8 @@ def judge_reachable_tests_fail(monkeypatch) -> None:
     SR-174 below makes the judge unreachable."""
     from types import SimpleNamespace
 
-    from plumb import links
-    from plumb.understand import repin
+    from iaso import links
+    from iaso.understand import repin
 
     monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (False, "failed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
@@ -70,7 +70,7 @@ def judge_reachable_tests_fail(monkeypatch) -> None:
 
 def start_turn(repo: Path, session: str = "s1", turn_id: str = TURN) -> None:
     """What the prompt hook does at a turn start: the turn file and the stale baseline."""
-    path = repo / ".plumb" / "session" / session / "turn.json"
+    path = repo / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5, "turn_id": turn_id,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}), "utf-8")
@@ -81,7 +81,7 @@ def edit(repo: Path, rel: str, text: str, session: str = "s1") -> None:
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, "utf-8")
-    touched = repo / ".plumb" / "session" / session / "touched.txt"
+    touched = repo / ".iaso" / "session" / session / "touched.txt"
     with touched.open("a", encoding="utf-8") as handle:
         handle.write(rel + "\n")
 
@@ -119,7 +119,7 @@ def test_ex3_unresolved_link_holds_the_turn_and_names_it(project: Path, hook_inp
     reason = _block(run_stop(project, hook_input, verify=_verify()))
     assert reason is not None
     assert "SR-001's link to src/calc.py is stale and unresolved (SR-001#0)" in reason
-    assert "plumb repin --after-tests" in reason and "Held 1 of 3" in reason
+    assert "iaso repin --after-tests" in reason and "Held 1 of 3" in reason
 
 
 def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) -> None:
@@ -131,10 +131,10 @@ def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) 
     # cards only (SR-012): the note for the agent is not in the owner's text; the status line
     # counts the stale link once the background worker has refreshed the counts (SR-375)
     assert "already stale" not in _summary(out)
-    from plumb.understand.summary import after_stop
+    from iaso.understand.summary import after_stop
 
     after_stop(open_core(project), "s1")
-    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    status = json.loads((project / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert status["stale_links"] == 1
     start_turn(project, turn_id="turn-2")
     edit(project, "docs/notes.md", "even more notes\n")
@@ -144,7 +144,7 @@ def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) 
 
 
 def _prompt(repo: Path, hook_input, session: str = "s1") -> str:
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     out = io.StringIO()
     payload = hook_input("UserPromptSubmit", session_id=session, prompt="please tidy up")
@@ -174,7 +174,7 @@ def test_hold_ends_after_max_with_a_question(project: Path, hook_input) -> None:
         assert reason is not None and f"Held {n} of 3" in reason
     out = run_stop(project, hook_input, verify=_verify(), active=True)
     assert _block(out) is None
-    assert len(_summary(out).splitlines()) <= 1      # SR-265: one plumb line at most
+    assert len(_summary(out).splitlines()) <= 1      # SR-265: one iaso line at most
     (card,) = asked(project, "s1")
     assert card["link"] == "SR-001#0"
 
@@ -185,7 +185,7 @@ def test_active_flag_still_holds_for_stale_only(project: Path, hook_input) -> No
     unrun = FakeVerify(nodes=(NODE,))                 # covering tests lack evidence
     reason = _block(run_stop(project, hook_input, verify=unrun, active=True))
     assert reason is not None and "stale and unresolved" in reason
-    assert "plumb tests run" not in reason            # the once-only reasons stay once-only
+    assert "iaso tests run" not in reason            # the once-only reasons stay once-only
 
 
 def test_an_owner_question_counts_as_resolved_for_the_hold(project: Path, hook_input) -> None:
@@ -204,7 +204,7 @@ def test_an_owner_question_counts_as_resolved_for_the_hold(project: Path, hook_i
 
 def test_no_baseline_no_hold(project: Path, hook_input) -> None:
     start_turn(project)
-    (project / ".plumb" / "session" / "s1" / "stale_baseline.json").unlink()
+    (project / ".iaso" / "session" / "s1" / "stale_baseline.json").unlink()
     edit(project, "src/calc.py", CHANGED)
     assert _block(run_stop(project, hook_input, verify=_verify())) is None
 
@@ -214,8 +214,8 @@ _INTERNAL = re.compile(r"\b(jobs?|dispatchers?|hash(?:es)?|workers?)\b", re.IGNO
 
 
 def test_stale_question_text_passes_both_owner_text_scanners(project: Path) -> None:
-    from plumb.present import owner_text
-    from plumb.present.owner_text import bare_cli_verbs
+    from iaso.present import owner_text
+    from iaso.present.owner_text import bare_cli_verbs
 
     row = stale.Row("SR-001#0", "SR-001", "src/calc.py", "implemented_by", ("a", "b"),
                     ("a", "c"))
@@ -229,14 +229,14 @@ def test_stale_question_text_passes_both_owner_text_scanners(project: Path) -> N
 
 
 def test_prompt_hook_writes_the_turn_baseline(project: Path, hook_input) -> None:
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
     (project / "src" / "calc.py").write_text(CHANGED, "utf-8")      # stale at the turn start
     out = io.StringIO()
     payload = hook_input("UserPromptSubmit", session_id="s1", prompt="please tidy up")
     assert prompt.main(stdin=io.StringIO(payload), stdout=out, root=project) == 0
-    turn = json.loads((project / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))
-    baseline = json.loads((project / ".plumb" / "session" / "s1"
+    turn = json.loads((project / ".iaso" / "session" / "s1" / "turn.json").read_text("utf-8"))
+    baseline = json.loads((project / ".iaso" / "session" / "s1"
                            / "stale_baseline.json").read_text("utf-8"))
     assert baseline["turn"] == turn["turn_id"]
     assert list(baseline["links"]) == ["SR-001#0"]
@@ -245,8 +245,8 @@ def test_prompt_hook_writes_the_turn_baseline(project: Path, hook_input) -> None
 
 def test_rewording_the_requirement_alone_is_not_held(project: Path, hook_input) -> None:
     start_turn(project)
-    path = project / ".plumb" / "requirements" / "SR-001.md"
-    edit(project, ".plumb/requirements/SR-001.md",
+    path = project / ".iaso" / "requirements" / "SR-001.md"
+    edit(project, ".iaso/requirements/SR-001.md",
          path.read_text("utf-8").replace("add returns the sum.", "add returns the total."))
     assert _block(run_stop(project, hook_input, verify=_verify(), active=True)) is None
 
@@ -254,8 +254,8 @@ def test_rewording_the_requirement_alone_is_not_held(project: Path, hook_input) 
 @pytest.mark.sr("SR-245")
 def test_ex2_a_stale_check_waiting_for_the_judge_does_not_hold_the_turn(
         project: Path, hook_input, monkeypatch) -> None:
-    from plumb import links
-    from plumb.understand import repin
+    from iaso import links
+    from iaso.understand import repin
 
     monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (True, "passed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)

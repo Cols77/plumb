@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // The real Python server on isolated data; see tests/e2e/server.py.
-const python = process.env.PLUMB_PYTHON ?? 'python';
+const python = process.env.IASO_PYTHON ?? 'python';
 // The bundle copy a test rebuilds under an open tab (tests/e2e/studies.spec.ts); workers inherit it.
-process.env.PLUMB_E2E_SWAP ??= join(tmpdir(), 'plumb-e2e-swap');
+process.env.IASO_E2E_SWAP ??= join(tmpdir(), 'iaso-e2e-swap');
 export default defineConfig({
   testDir: 'tests/e2e',
   outputDir: 'test-results',
@@ -22,7 +22,7 @@ export default defineConfig({
     command: `"${python}" tests/e2e/server.py`,
     url: 'http://127.0.0.1:8765/',
     reuseExistingServer: false,
-    env: { PYTHONPATH: fileURLToPath(new URL('../src', import.meta.url)), PLUMB_E2E_SWAP: process.env.PLUMB_E2E_SWAP },
+    env: { PYTHONPATH: fileURLToPath(new URL('../src', import.meta.url)), IASO_E2E_SWAP: process.env.IASO_E2E_SWAP },
     timeout: 30000,
   },
 });

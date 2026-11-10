@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from fakes import FakeVerify, agent_notes
 
-from plumb.api import open_core
-from plumb.config import DEFAULT_HOOK_BUDGET_MS
-from plumb.contracts import FullPending, NodeEvidence
-from plumb.hosts.claude_code import stop
+from iaso.api import open_core
+from iaso.config import DEFAULT_HOOK_BUDGET_MS
+from iaso.contracts import FullPending, NodeEvidence
+from iaso.hosts.claude_code import stop
 
 pytestmark = pytest.mark.sr("SR-265")
 
@@ -48,7 +48,7 @@ def project(repo: Path, write_record) -> Path:
     (repo / "tests").mkdir(exist_ok=True)  # NODE and NODE2 exist, so their failures count
     (repo / "tests" / "test_a.py").write_text("def test_a(): pass\n\n\ndef test_b(): pass\n",
                                               "utf-8")
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     open_core(repo).add_link("SR-001", "implemented_by", Target(path="src/calc.py"))
     _git(repo, "add", "-A")
@@ -57,7 +57,7 @@ def project(repo: Path, write_record) -> Path:
 
 
 def start_turn(repo: Path, session: str = "s1", asked: dict | None = None) -> None:
-    path = repo / ".plumb" / "session" / session / "turn.json"
+    path = repo / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64,
@@ -68,7 +68,7 @@ def edit(repo: Path, rel: str, text: str, session: str = "s1") -> None:
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, "utf-8")
-    touched = repo / ".plumb" / "session" / session / "touched.txt"
+    touched = repo / ".iaso" / "session" / session / "touched.txt"
     with touched.open("a", encoding="utf-8") as handle:
         handle.write(rel + "\n")
 
@@ -104,7 +104,7 @@ def test_blocks_once_when_covering_tests_not_fresh(project: Path, hook_input) ->
     reason = _block(run_stop(project, hook_input, verify=verify))
     # the command names this turn's paths, so other uncommitted work cannot crowd the
     # turn's own covering tests out of the budget
-    assert reason == ("plumb: run 'plumb tests run --paths src/calc.py' (covering tests of "
+    assert reason == ("iaso: run 'iaso tests run --paths src/calc.py' (covering tests of "
                       "this turn, budget 60 s), then finish your reply.")
     assert verify.select_calls == [("src/calc.py",)]
 
@@ -115,7 +115,7 @@ def test_block_falls_back_to_changed_for_many_paths(project: Path, hook_input) -
         edit(project, f"src/m{i}.py", f"X = {i}\n")
     verify = FakeVerify(nodes=(NODE,))
     reason = _block(run_stop(project, hook_input, verify=verify))
-    assert reason.startswith("plumb: run 'plumb tests run --changed' (covering tests")
+    assert reason.startswith("iaso: run 'iaso tests run --changed' (covering tests")
 
 
 def test_block_quotes_paths_with_spaces(project: Path, hook_input) -> None:
@@ -123,11 +123,11 @@ def test_block_quotes_paths_with_spaces(project: Path, hook_input) -> None:
     edit(project, "src/my calc.py", "X = 1\n")
     verify = FakeVerify(nodes=(NODE,))
     reason = _block(run_stop(project, hook_input, verify=verify))
-    assert "plumb tests run --paths \"src/my calc.py\"" in reason
+    assert "iaso tests run --paths \"src/my calc.py\"" in reason
 
 
 def _status(repo: Path) -> dict:
-    return json.loads((repo / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    return json.loads((repo / ".iaso" / "session" / "status.json").read_text("utf-8"))
 
 
 def test_no_block_when_stop_hook_active(project: Path, hook_input) -> None:
@@ -150,7 +150,7 @@ def test_the_status_card_is_the_status_lines_not_the_owners_text(project: Path,
                         evidence_map={**fresh(NODE), **fresh(NODE2, state="fresh-fail")},
                         pending=FullPending(True, ("tests/conftest.py changed",)))
     for card in ("full", "compact"):
-        (project / ".plumb" / "config.yaml").write_text(f"present:\n  card: {card}\n", "utf-8")
+        (project / ".iaso" / "config.yaml").write_text(f"present:\n  card: {card}\n", "utf-8")
         start_turn(project)
         edit(project, "src/calc.py", "def add(a, b):\n    return a + b\n")
         assert _summary(run_stop(project, hook_input, verify=verify)) == ""
@@ -163,21 +163,21 @@ def test_a_stale_link_is_counted_in_the_status_line(project: Path, hook_input) -
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return a - b\n")
     summary = _summary(run_stop(project, hook_input, verify=FakeVerify()))
-    assert "stale:" not in summary and "plumb: touched" not in summary
-    from plumb.understand.summary import after_stop
+    assert "stale:" not in summary and "iaso: touched" not in summary
+    from iaso.understand.summary import after_stop
 
     after_stop(open_core(project), "s1")   # SR-375: the worker refreshes the record-wide counts
     assert _status(project)["stale_links"] == 1
 
 
 def _stated(repo: Path) -> dict[str, bool]:
-    data = json.loads((repo / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    data = json.loads((repo / ".iaso" / "session" / "stated.json").read_text("utf-8"))
     return {r["id"]: r["shown"] for r in data["records"]}
 
 
 def test_a_blocked_stop_shows_the_owner_nothing(project: Path, hook_input) -> None:
     start_turn(project)
-    edit(project, ".plumb/requirements/SR-002.md", SR1.replace("SR-001", "SR-002"))
+    edit(project, ".iaso/requirements/SR-002.md", SR1.replace("SR-001", "SR-002"))
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     assert _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,)))) is not None
     assert _stated(project) == {"SR-002": False}
@@ -189,11 +189,11 @@ def test_regression_blocks_with_owner_instruction(project: Path, hook_input) -> 
     verify = FakeVerify(nodes=(NODE,), evidence_map=fresh(
         NODE, state="fresh-fail", regression=True, last_run="run-2"))
     reason = _block(run_stop(project, hook_input, verify=verify))
-    assert reason == (f"plumb: regression: {NODE} passed in an earlier run and now fails "
+    assert reason == (f"iaso: regression: {NODE} passed in an earlier run and now fails "
                       "(last run run-2). Tell the owner, with a read-back, and ask how to "
                       "proceed.")
     # asked once per failing run: the next stop does not block again
-    start_turn(project, asked=json.loads((project / ".plumb" / "session" / "s1" /
+    start_turn(project, asked=json.loads((project / ".iaso" / "session" / "s1" /
                                           "turn.json").read_text("utf-8"))["asked"])
     out = run_stop(project, hook_input, verify=verify)
     assert _block(out) is None
@@ -238,10 +238,10 @@ def test_doc_only_turn_prints_at_most_one_line(project: Path, hook_input) -> Non
 def test_writes_stated_set(project: Path, hook_input) -> None:
     start_turn(project)
     text = SR1.replace("SR-001", "SR-002").replace("Adds numbers", "Subtracts")
-    edit(project, ".plumb/requirements/SR-002.md", text)
+    edit(project, ".iaso/requirements/SR-002.md", text)
     edit(project, "src/calc.py", "def add(a, b):\n    return b + a\n")
     run_stop(project, hook_input, verify=FakeVerify(), active=True)
-    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    stated = json.loads((project / ".iaso" / "session" / "stated.json").read_text("utf-8"))
     index = open_core(project).index()
     assert stated["records"] == [{"id": "SR-002", "hash": index["SR-002"].hash,
                                   "shown": False}]    # no card draws it any more
@@ -258,7 +258,7 @@ def test_no_change_turn_prints_nothing(project: Path, hook_input) -> None:
 def test_old_uncommitted_changes_are_not_this_turn(project: Path, hook_input) -> None:
     (project / "src" / "calc.py").write_text("def add(a, b):\n    return 0\n", "utf-8")
     time.sleep(0.05)
-    path = project / ".plumb" / "session" / "s1" / "turn.json"
+    path = project / ".iaso" / "session" / "s1" / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() + 1, "asked": {}}), "utf-8")
     assert run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,))) == ""
@@ -287,7 +287,7 @@ def test_writes_status_snapshot(project: Path, hook_input) -> None:
     verify = FakeVerify(nodes=(NODE,), evidence_map=fresh(
         NODE, state="fresh-fail", regression=True, last_run="r"))
     run_stop(project, hook_input, verify=verify)
-    data = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    data = json.loads((project / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert data["tests"] == "regression" and data["ask"] == 1
 
 
@@ -309,7 +309,7 @@ class _Clock:
 
 @pytest.fixture
 def clock(monkeypatch) -> _Clock:
-    from plumb.hosts.claude_code import hookio
+    from iaso.hosts.claude_code import hookio
 
     fake = _Clock()
     monkeypatch.setattr(hookio, "time", fake)
@@ -332,20 +332,20 @@ def test_results_finished_past_the_budget_are_used(project: Path, hook_input,
                                                    clock: _Clock) -> None:
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
-    edit(project, ".plumb/requirements/SR-001.md",
+    edit(project, ".iaso/requirements/SR-001.md",
          SR1.replace("add returns the sum.", "add returns the integer sum."))
     verify = _SlowVerify(nodes=(NODE, NODE2), evidence_map=fresh(
         NODE2, state="fresh-fail", regression=True, last_run="r9"))
     verify.clock = clock
     reason = _block(run_stop(project, hook_input, verify=verify))
     assert reason is not None
-    assert f"plumb: regression: {NODE2}" in reason   # SR-373: the one next action
-    assert "plumb tests run" not in reason
-    stated = json.loads((project / ".plumb" / "session" / "stated.json").read_text("utf-8"))
+    assert f"iaso: regression: {NODE2}" in reason   # SR-373: the one next action
+    assert "iaso tests run" not in reason
+    stated = json.loads((project / ".iaso" / "session" / "stated.json").read_text("utf-8"))
     assert "SR-001" in {r["id"] for r in stated["records"]}
-    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    status = json.loads((project / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert status["tests"] == "regression"
-    log = project / ".plumb" / "session" / "errors.log"
+    log = project / ".iaso" / "session" / "errors.log"
     assert not log.exists() or "budget exceeded" not in log.read_text("utf-8")
 
 
@@ -366,27 +366,27 @@ class _SlowCore:
 
 def test_a_step_starting_past_the_budget_is_skipped_and_reported(
         project: Path, hook_input, clock: _Clock, monkeypatch) -> None:
-    import plumb.api
+    import iaso.api
 
-    real_open = plumb.api.open_core
-    monkeypatch.setattr(plumb.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
+    real_open = iaso.api.open_core
+    monkeypatch.setattr(iaso.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
     verify = FakeVerify(nodes=(NODE,))
     out = run_stop(project, hook_input, verify=verify)
     assert verify.select_calls == []  # the covering-tests step would start past the deadline
     reason = _block(out)
-    assert reason is not None and "plumb tests run --paths src/calc.py" in reason
-    assert "plumb: check skipped (budget): covering tests" in agent_notes(project)
-    status = json.loads((project / ".plumb" / "session" / "status.json").read_text("utf-8"))
+    assert reason is not None and "iaso tests run --paths src/calc.py" in reason
+    assert "iaso: check skipped (budget): covering tests" in agent_notes(project)
+    status = json.loads((project / ".iaso" / "session" / "status.json").read_text("utf-8"))
     assert status["skipped"] == "covering tests"
     # the next turn: the cut selection still asks the agent for the
     # covering tests of the turn's code change (R5), then the summary names the skip
     start_turn(project, asked=json.loads(
-        (project / ".plumb" / "session" / "s1" / "turn.json").read_text("utf-8"))["asked"])
+        (project / ".iaso" / "session" / "s1" / "turn.json").read_text("utf-8"))["asked"])
     edit(project, "src/calc.py", "def add(a, b):\n    return int(b) + int(a)\n")
     reason = _block(run_stop(project, hook_input, verify=verify))
-    assert reason is not None and "plumb tests run --paths src/calc.py" in reason
+    assert reason is not None and "iaso tests run --paths src/calc.py" in reason
     summary = _summary(run_stop(project, hook_input, verify=verify, active=True))
     assert _status(project)["skipped"] == "covering tests"     # the status line names it
     assert "check skipped" not in summary
@@ -396,7 +396,7 @@ class _CutVerify(FakeVerify):
     """Covering selection cut by the budget while it runs (a loaded machine)."""
 
     def select(self, changed, *, budget_s=None):
-        from plumb.hosts.claude_code.hookio import BudgetExceeded
+        from iaso.hosts.claude_code.hookio import BudgetExceeded
 
         raise BudgetExceeded("covering tests")
 
@@ -404,10 +404,10 @@ class _CutVerify(FakeVerify):
 def test_skipped_covering_tests_are_named_in_the_status_line(project: Path, hook_input,
                                                              clock: _Clock,
                                                              monkeypatch) -> None:
-    import plumb.api
+    import iaso.api
 
-    real_open = plumb.api.open_core
-    monkeypatch.setattr(plumb.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
+    real_open = iaso.api.open_core
+    monkeypatch.setattr(iaso.api, "open_core", lambda root: _SlowCore(real_open(root), clock))
     start_turn(project)
     edit(project, "src/calc.py", "def add(a, b):\n    return int(a) + int(b)\n")
     out = run_stop(project, hook_input, active=True, verify=FakeVerify(nodes=(NODE,)))
@@ -440,7 +440,7 @@ def test_git_status_gets_most_of_the_remaining_budget() -> None:
 
 
 def _note(repo: Path, session: str = "s1") -> dict | None:
-    path = repo / ".plumb" / "session" / session / "untraced.json"
+    path = repo / ".iaso" / "session" / session / "untraced.json"
     return json.loads(path.read_text("utf-8")) if path.is_file() else None
 
 
@@ -463,7 +463,7 @@ def test_untraced_change_waits_behind_the_covering_tests(project: Path, hook_inp
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
     reason = _block(run_stop(project, hook_input, verify=FakeVerify(nodes=(NODE,))))
     assert reason.splitlines() == [
-        "plumb: run 'plumb tests run --paths src/mul.py' (covering tests of this turn, "
+        "iaso: run 'iaso tests run --paths src/mul.py' (covering tests of this turn, "
         "budget 60 s), then finish your reply."]
     assert _note(project)["paths"] == ["src/mul.py"]
 
@@ -495,15 +495,15 @@ def test_flat_layout_and_root_files_are_untraced_at_the_stop(project: Path,
 @pytest.mark.sr("SR-266")
 def test_warnings_are_queued_for_the_agent_and_the_owner_text_stays_cards(
         project: Path, hook_input, monkeypatch) -> None:
-    from plumb.awareness import turn as awareness
-    from plumb.present.delta import Line
+    from iaso.awareness import turn as awareness
+    from iaso.present.delta import Line
 
-    warning = "plumb: SR-001 'Adds numbers' is also being changed on branch feat-x"
+    warning = "iaso: SR-001 'Adds numbers' is also being changed on branch feat-x"
     monkeypatch.setattr(awareness, "at_stop", lambda *a, **k: [Line(warning)])
     start_turn(project)
     edit(project, "src/mul.py", "def mul(a, b):\n    return a * b\n")
     out = run_stop(project, hook_input, verify=FakeVerify())
     assert _block(out) is None and "feat-x" not in _summary(out)
     assert _note(project)["paths"] == ["src/mul.py"]          # untraced, queued
-    notes = project / ".plumb" / "session" / "s1" / "agent_notes.json"
+    notes = project / ".iaso" / "session" / "s1" / "agent_notes.json"
     assert json.loads(notes.read_text("utf-8")) == [warning]   # the warning, queued

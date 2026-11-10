@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from fakes import FakeBackend, FakeVerify
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.hosts.claude_code import prompt
-from plumb.understand import files, gate
+from iaso import approvals
+from iaso.api import open_core
+from iaso.hosts.claude_code import prompt
+from iaso.understand import files, gate
 
 pytestmark = pytest.mark.sr("SR-225")
 
@@ -70,12 +70,12 @@ def test_ex1_the_hook_flags_the_record_and_holds_nothing_itself(records: Path,
     assert "this may change SR-001" in out
     assert gate.closed_reason(records, SESSION) == "intent change: SR-001 EX-1"
     rows = [json.loads(line) for line in
-            (records / ".plumb" / "session" / "intent_flags.jsonl").read_text("utf-8").splitlines()]
+            (records / ".iaso" / "session" / "intent_flags.jsonl").read_text("utf-8").splitlines()]
     digest = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
     assert [(r["session"], r["prompt_digest"], r["subject"]) for r in rows] \
         == [(SESSION, digest, "SR-001")]
     core = open_core(records)
-    assert gate.release(core, SESSION, "typed")   # the typed /plumb go releases it
+    assert gate.release(core, SESSION, "typed")   # the typed /iaso go releases it
     assert gate.state(records, SESSION).state == "open"
 
 

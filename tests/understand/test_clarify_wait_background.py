@@ -1,4 +1,4 @@
-"""SR-378 EX-1: ``plumb clarify --wait`` on an ordinary message answers at once: the judge jobs
+"""SR-378 EX-1: ``iaso clarify --wait`` on an ordinary message answers at once: the judge jobs
 queued since the owner last spoke go to the detached worker, and no model call runs in the
 agent's own process."""
 
@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import cmd_clarify, jobs, queue, worker
+from iaso.api import open_core
+from iaso.understand import cmd_clarify, jobs, queue, worker
 from understand.test_judge_job import SESSION, build_job, world  # noqa: F401
 
 pytestmark = pytest.mark.sr("SR-378")

@@ -6,7 +6,7 @@ scope draft; no runtime changes or successful live proof are claimed.
 
 ## Capability inventory
 
-| Claude Plumb capability | Current Codex integration | Required work / boundary |
+| Claude Iaso capability | Current Codex integration | Required work / boundary |
 | --- | --- | --- |
 | Record grounding, capture, show, explain, review, impact, conflicts, test mapping, stale links and merge checks | Shared Python CLI is available; AGENTS fallback exists | Preserve shared semantics and prove execution in Codex |
 | SessionStart, UserPromptSubmit, Stop | Project installer registers these three hooks | Diagnose actual failed hooks; verify prompt delivery in this thread, budgets and bootstrap paths |
@@ -14,8 +14,8 @@ scope draft; no runtime changes or successful live proof are claimed.
 | Pre-tool clarification gate and command guard | Not installed by Codex adapter | Adapt tool names and argument schemas; prove refusal before mutation and document shell coverage |
 | Question answer capture | Claude AskUserQuestion PostToolUse handler exists; no Codex registration | Support synchronous answers; async tool return is not an owner answer; bind subsequent owner messages |
 | SubagentStop and SessionEnd | Not installed by Codex adapter | Add host adapters with child/parent attribution and bounded teardown |
-| Skills and plain-language /plumb entry point | Plugin skills are discoverable here, but project Codex installer installs no skills | Ship Codex-specific portable skills and references; remove Windows-only commands and Claude-only UI/workflow instructions |
-| Explicit intent loop | Installed skill promises CODEX_THREAD_ID; runtime resolver omits it; $plumb-intent invocation does not open a loop | Correct thread identity and explicit skill invocation recognition; prohibit borrowing another session's latest prompt |
+| Skills and plain-language /iaso entry point | Plugin skills are discoverable here, but project Codex installer installs no skills | Ship Codex-specific portable skills and references; remove Windows-only commands and Claude-only UI/workflow instructions |
+| Explicit intent loop | Installed skill promises CODEX_THREAD_ID; runtime resolver omits it; $iaso-intent invocation does not open a loop | Correct thread identity and explicit skill invocation recognition; prohibit borrowing another session's latest prompt |
 | Model clarification/judging | Auto dispatcher selects Claude or Hermes, not Codex | Add a Codex-capable model route with explicit unavailable outcomes and equivalent schemas; do not silently approve |
 | Debug cases, intent build and landing workflows | Shipped JS uses Claude workflow globals (agent, phase, log) and Claude model names | Provide host-appropriate orchestration preserving gates, worktrees, proof, failure and handover behavior |
 | Evaluation and independent proof checking | Evaluate run/owner/proofcheck invoke Claude | Introduce host-specific runners and live Codex acceptance coverage |
@@ -25,17 +25,17 @@ scope draft; no runtime changes or successful live proof are claimed.
 | Plugin distribution and private wheel bootstrap | Claude manifest, hooks and bootstrap are bundled; Codex can discover imported skills | Add tested Codex packaging/host routing; avoid duplicate project/plugin hooks and false Claude provenance |
 | Owner summary and notification | Stop plus notify configured; notify does not count as visible proof | Verify owner-visible summary and preserve unseen-summary semantics |
 
-Evidence: plugin/hooks/hooks.json, plugin/hooks/register.tsx, plugin/commands/plumb.md,
-plugin/workflows/*.js, plugin/skills/, src/plumb/hosts/codex/install.py,
-src/plumb/hosts/cli.py, src/plumb/hosts/neutral.py, src/plumb/stale.py,
-src/plumb/understand/clarify.py, src/plumb/understand/dispatch/__init__.py,
-src/plumb/evaluate/{run,owner,proofcheck}.py and docs/hosts.md.
+Evidence: plugin/hooks/hooks.json, plugin/hooks/register.tsx, plugin/commands/iaso.md,
+plugin/workflows/*.js, plugin/skills/, src/iaso/hosts/codex/install.py,
+src/iaso/hosts/cli.py, src/iaso/hosts/neutral.py, src/iaso/stale.py,
+src/iaso/understand/clarify.py, src/iaso/understand/dispatch/__init__.py,
+src/iaso/evaluate/{run,owner,proofcheck}.py and docs/hosts.md.
 
 ## Current host capabilities and mods
 
 The old docs/hosts.md table describes Codex 0.160.0. Current official documentation
 describes PreToolUse/PostToolUse (including apply_patch and nested code-mode tool
-calls), SubagentStop and SessionEnd. Thus missing Plumb registrations must not be
+calls), SubagentStop and SessionEnd. Thus missing Iaso registrations must not be
 described as unavailable host events. Wire contracts still require individual tests.
 
 - https://learn.chatgpt.com/docs/hooks
@@ -47,7 +47,7 @@ OpenAI documentation describes MCP Apps UI in ChatGPT, and ChatGPT extensions fo
 conversation panels/sidebar apps. It does not establish support for loading Claude-like
 UI modules in Codex CLI or this Codex surface. This is an evidence limit, not proof that
 all Codex surfaces can never support UI. A ChatGPT MCP panel would be a separate port,
-not a verified Codex mod. The existing record decision to remove Plumb's MCP server
+not a verified Codex mod. The existing record decision to remove Iaso's MCP server
 (SR-380) also needs review before proposing such a port.
 
 - https://developers.openai.com/plugins/build/chatgpt-ui
@@ -69,7 +69,7 @@ not a verified Codex mod. The existing record decision to remove Plumb's MCP ser
 4. After fallback, explicit-session clarify returned digest
    sha256:35d073dc4432945c8c99315766294ce45de346ab03f5b0a6426b3f473c550da5.
    intent open still returned loop: null. The parser recognizes slash commands,
-   not the owner's $plumb-intent skill invocation.
+   not the owner's $iaso-intent skill invocation.
 5. Installed local skills hardcode .venv/Scripts/python.exe, absent on this Linux host.
 6. Turn-start fallback produced roughly 230,000 tokens of repository-wide output,
    including unrelated landed work and debugging cases. Context bounding needs review.

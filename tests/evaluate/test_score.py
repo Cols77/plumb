@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.evaluate import score
-from plumb.evaluate.run import Turn
-from plumb.evaluate.tasks import Task
+from iaso.evaluate import score
+from iaso.evaluate.run import Turn
+from iaso.evaluate.tasks import Task
 
 pytestmark = pytest.mark.sr("SR-346")
 
@@ -58,8 +58,8 @@ def test_a_game_that_never_draws_misses_the_draw_check(tmp_path, reference_game)
 
 
 def test_the_trail_counts_gates_and_proofs(repo, write_record):
-    from plumb.api import open_core
-    from plumb.capture.proof import set_evidence
+    from iaso.api import open_core
+    from iaso.capture.proof import set_evidence
 
     for n in (1, 2):
         write_record(repo, f"---\nid: SR-{n:03d}\ntitle: Requirement {n}\nfeature: FEAT-001\n"

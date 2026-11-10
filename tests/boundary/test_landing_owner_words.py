@@ -9,8 +9,8 @@ import pytest
 
 from core.test_log_compaction import put
 from mergedriver.mdhelpers import commit_all, run_git
-from plumb.boundary import landing
-from plumb.log import OWNER_WORDS_KINDS
+from iaso.boundary import landing
+from iaso.log import OWNER_WORDS_KINDS
 from understand.fakes import engine_standins  # noqa: F401
 
 pytestmark = pytest.mark.sr("SR-321")
@@ -21,7 +21,7 @@ def _tracked(repo: Path) -> dict[str, str]:
     made: dict[str, str] = {}
     for kind in sorted(OWNER_WORDS_KINDS):
         put(repo, kind, {"text": f"my {kind} words"})
-        (path,) = (repo / ".plumb" / "log" / kind).glob("*.json")
+        (path,) = (repo / ".iaso" / "log" / kind).glob("*.json")
         run_git(repo, "add", "-f", str(path.relative_to(repo)))
         made[path.relative_to(repo).as_posix()] = path.read_text(encoding="utf-8")
     commit_all(repo, "old history")
@@ -43,6 +43,6 @@ def test_the_landing_restores_the_owners_words_a_merge_deleted(repo: Path) -> No
 
     for name, text in made.items():
         assert (repo / name).read_text(encoding="utf-8") == text
-    tracked = run_git(repo, "ls-files", ".plumb/log").stdout
+    tracked = run_git(repo, "ls-files", ".iaso/log").stdout
     assert not any(name in tracked for name in made)
     assert result["owner_words"] == len(made)

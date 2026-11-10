@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import contracts
-from plumb.contracts import (
+from iaso import contracts
+from iaso.contracts import (
     Applied,
     Choice,
     ClarifyAnswer,
@@ -31,7 +31,7 @@ from plumb.contracts import (
     ReadItem,
     StopParts,
 )
-from plumb.understand import files
+from iaso.understand import files
 
 pytestmark = pytest.mark.sr("SR-223", "SR-273", "SR-267")
 
@@ -83,7 +83,7 @@ def test_file_formats_round_trip() -> None:
 
 
 def test_committed_log_kinds_are_accepted(repo: Path) -> None:
-    from plumb.api import open_core
+    from iaso.api import open_core
 
     core = open_core(repo)
     payloads = {
@@ -109,10 +109,10 @@ def test_committed_log_kinds_are_accepted(repo: Path) -> None:
 @pytest.mark.sr("SR-209")
 def test_button_approval_is_accepted_by_the_log_and_refused_by_its_recheck(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import confirm
-    from plumb.api import open_core
+    from iaso import confirm
+    from iaso.api import open_core
 
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     core = open_core(repo)
     entry = core.log_append("events", "approval", {
         "by": "owner", "via": "button", "offer": "o", "card": "c", "question": "q",
@@ -140,7 +140,7 @@ def test_protocols_describe_the_dispatcher_and_the_kinds() -> None:
 
 @pytest.mark.parametrize("name", ["read", "judge", "clarify"])
 def test_every_kind_stub_follows_the_job_kind_protocol(name: str) -> None:
-    from plumb.understand.kinds import KINDS
+    from iaso.understand.kinds import KINDS
 
     module = KINDS[name]
     assert module.kind == name and "id" in module.schema
@@ -157,7 +157,7 @@ def test_every_kind_stub_follows_the_job_kind_protocol(name: str) -> None:
 
 
 def test_kinds_maps_the_kinds() -> None:
-    from plumb.understand.kinds import KINDS
+    from iaso.understand.kinds import KINDS
 
     assert sorted(KINDS) == ["clarify", "judge", "question", "read", "selfdebug",
                              "testchange", "tidy"]
@@ -168,7 +168,7 @@ def _params(func) -> list[str]:
 
 
 def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
-    from plumb.understand import (
+    from iaso.understand import (
         clarify,
         dispatch,
         gate,
@@ -205,7 +205,7 @@ def test_stub_signatures_and_behaviour(tmp_path: Path) -> None:
 
 def test_hooks_on_prompt_orders_read_then_clarify_and_never_raises(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import clarify, hooks, queue, read
+    from iaso.understand import clarify, hooks, queue, read
 
     calls: list[object] = []
     monkeypatch.setattr(read, "on_prompt", lambda ctx, core, entry: calls.append("read")
@@ -225,7 +225,7 @@ def test_hooks_on_prompt_orders_read_then_clarify_and_never_raises(
 
 
 def test_recheck_dispatches_by_value_and_refuses_hand_written_entries() -> None:
-    from plumb.understand import recheck
+    from iaso.understand import recheck
 
     def entry(by: str, kind: str = "approval"):
         return contracts.LogEntry("events", kind, "t", "none", {"by": by}, None, "sha256:x")
@@ -237,8 +237,8 @@ def test_recheck_dispatches_by_value_and_refuses_hand_written_entries() -> None:
 
 
 def test_confirm_entry_problem_calls_the_recheck_for_the_new_values() -> None:
-    from plumb import confirm
-    from plumb.log import entry_digest
+    from iaso import confirm
+    from iaso.log import entry_digest
 
     for by in ("owner-words", "undone"):
         raw = {"v": 1, "kind": "approval", "at": "t", "marker": "none",
@@ -249,44 +249,44 @@ def test_confirm_entry_problem_calls_the_recheck_for_the_new_values() -> None:
 
 
 def test_config_section_understand(tmp_path: Path) -> None:
-    from plumb.config import load_config
+    from iaso.config import load_config
 
     u = load_config(tmp_path).understand
     assert (u.dispatch, u.model, u.timeout_s, u.clarify_wait_s) == ("auto", "haiku", 120, 45)
     assert (u.reader_threshold_start, u.backlog_cards_per_turn) == (0.9, 3)
     assert (u.progress_min_s, u.progress_interval_s, u.max_consecutive_failures) == (2, 1, 3)
-    (tmp_path / ".plumb").mkdir()
-    (tmp_path / ".plumb" / "config.yaml").write_text(
+    (tmp_path / ".iaso").mkdir()
+    (tmp_path / ".iaso" / "config.yaml").write_text(
         "understand:\n  dispatch: hermes\n  timeout_s: 30\n", encoding="utf-8")
     u = load_config(tmp_path).understand
     assert (u.dispatch, u.timeout_s, u.model) == ("hermes", 30, "haiku")
 
 
 def test_routes_and_help_list_only_importable_verbs() -> None:
-    from plumb import cli
+    from iaso import cli
 
     for verb in ("understand", "clarify"):
-        assert cli.ROUTES[verb] == "plumb.understand.cli"
+        assert cli.ROUTES[verb] == "iaso.understand.cli"
     assert not {"settle", "undo", "go"} & set(cli.ROUTES)
     assert cli._available("clarify")
     assert "clarify" in cli.help_text()
     saved = dict(cli.ROUTES)
     try:
-        cli.ROUTES["clarify"] = "plumb.no_such_module"
+        cli.ROUTES["clarify"] = "iaso.no_such_module"
         assert "\n  clarify" not in cli.help_text()
     finally:
         cli.ROUTES.update(saved)
 
 
 def test_stub_commands_print_not_available_and_exit_2(capsys: pytest.CaptureFixture) -> None:
-    from plumb.understand import cli
+    from iaso.understand import cli
 
     assert cli.run("understand", []) == 2
     assert "not available in this build" in capsys.readouterr().err
 
 
 def test_pre_tool_hook_allows(repo: Path) -> None:
-    done = subprocess.run([sys.executable, "-m", "plumb", "hook", "pre-tool", "--root",
+    done = subprocess.run([sys.executable, "-m", "iaso", "hook", "pre-tool", "--root",
                            str(repo)], input="{}", capture_output=True, text=True, cwd=repo)
     assert done.returncode == 0 and done.stdout == ""
 
@@ -295,22 +295,22 @@ def test_hook_inside_a_job_prints_and_queues_nothing(repo: Path,
                                                       monkeypatch: pytest.MonkeyPatch) -> None:
     import io
 
-    from plumb.hosts.claude_code import prompt
+    from iaso.hosts.claude_code import prompt
 
-    monkeypatch.setenv("PLUMB_JOB", "read-0123456789abcdef")
+    monkeypatch.setenv("IASO_JOB", "read-0123456789abcdef")
     out = io.StringIO()
     payload = json.dumps({"session_id": "s1", "cwd": str(repo), "prompt": "add multiply"})
     assert prompt.main(stdin=io.StringIO(payload), stdout=out, root=repo) == 0
     assert out.getvalue() == ""
-    assert not (repo / ".plumb" / "session" / "prompts.jsonl").exists()
-    assert not (repo / ".plumb" / "session" / "s1" / "jobs").exists()
+    assert not (repo / ".iaso" / "session" / "prompts.jsonl").exists()
+    assert not (repo / ".iaso" / "session" / "s1" / "jobs").exists()
 
 
 def test_statusline_appends_the_running_step(repo: Path) -> None:
     import io
 
-    from plumb.hosts.claude_code import statusline
-    from plumb.progress import Reporter, status_text
+    from iaso.hosts.claude_code import statusline
+    from iaso.progress import Reporter, status_text
 
     assert status_text(repo, "s1") == ""
     Reporter(repo, "s1", "read").update("reading your answer", 1, 2)
@@ -326,8 +326,8 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import io
 
-    from plumb.hosts.claude_code import prompt
-    from plumb.understand import hooks
+    from iaso.hosts.claude_code import prompt
+    from iaso.understand import hooks
 
     seen: list[dict] = []
     monkeypatch.setattr(hooks, "on_prompt", lambda ctx, core, entry: seen.append(entry)
@@ -346,8 +346,8 @@ def test_prompt_hook_calls_the_understand_layer_in_order(
 
 def test_capture_calls_judge_after_writing(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.capture import capture as cap
-    from plumb.understand import judge
+    from iaso.capture import capture as cap
+    from iaso.understand import judge
 
     calls: list[str] = []
     monkeypatch.setattr(judge, "queue_for_capture",
@@ -363,7 +363,7 @@ def test_capture_calls_judge_after_writing(
 
 
 def test_owner_text_constants_exist() -> None:
-    from plumb.present import owner_text as t
+    from iaso.present import owner_text as t
 
     for name in ("STEP_READING", "STEP_CHECKING", "STEP_JUDGING", "STEP_JUDGING_BACKLOG"):
         assert isinstance(getattr(t, name), str) and getattr(t, name)
@@ -393,13 +393,13 @@ def test_fakes_and_harness_work(tmp_path: Path) -> None:
     with as_worker(tmp_path, "s1") as token:
         import os
 
-        assert os.environ["PLUMB_WORKER"] == token
-        lock = json.loads((tmp_path / ".plumb" / "session" / "s1" / "worker.lock")
+        assert os.environ["IASO_WORKER"] == token
+        lock = json.loads((tmp_path / ".iaso" / "session" / "s1" / "worker.lock")
                           .read_text(encoding="utf-8"))
         assert lock["token"] == token and {"pid", "heartbeat"} <= set(lock)
     import os
 
-    assert "PLUMB_WORKER" not in os.environ
+    assert "IASO_WORKER" not in os.environ
     claude = fake_claude(tmp_path / "bin", {"ok": True})
     done = subprocess.run(["claude", "-p", "hi"], input="stdin text", capture_output=True,
                           text=True, env=claude.env(), cwd=tmp_path, shell=sys.platform == "win32")
@@ -422,8 +422,8 @@ def test_harness_drives_the_real_hooks(repo: Path) -> None:
 
 
 def test_evalrun_fake_writes_an_eval_run_entry(repo: Path, capsys: pytest.CaptureFixture) -> None:
-    from plumb.api import open_core
-    from plumb.understand import evalrun
+    from iaso.api import open_core
+    from iaso.understand import evalrun
 
     assert evalrun.run("eval", ["--fake", "--root", str(repo)]) == 0
     assert "cases" in capsys.readouterr().out  # the cases of the evaluation set landed
@@ -438,7 +438,7 @@ def test_evalrun_fake_writes_an_eval_run_entry(repo: Path, capsys: pytest.Captur
 # ---- phase C2: the contract gaps (plan 3.2a) ----------------------------------------------
 
 def test_c2_stubs_have_final_signatures_and_are_marked() -> None:
-    from plumb.understand import queue, worker
+    from iaso.understand import queue, worker
 
     assert _params(worker.run_once) == ["core", "session", "job_id"]
     assert _params(worker.run_loop) == ["core", "session"]
@@ -462,14 +462,14 @@ C2_TEXT = ("CONFIRM_YOU_SAID", "TYPED_CONFIRMED", "BACKLOG_DONE")
 
 @pytest.mark.parametrize("name", C2_TEXT)
 def test_c2_owner_text_passes_the_owner_level_scan(name: str) -> None:
-    from plumb.present import owner_text
+    from iaso.present import owner_text
     from understand.fakes import owner_level
 
     assert owner_level(getattr(owner_text, name)) == []
 
 
 def test_owner_text_constants_have_their_fields() -> None:
-    from plumb.present import owner_text
+    from iaso.present import owner_text
 
     assert owner_text.CONFIRM_YOU_SAID.format(evidence="ok") == "you said: ok"
     assert owner_text.BACKLOG_DONE.format(judged=160, questions=3) == (
@@ -479,14 +479,14 @@ def test_owner_text_constants_have_their_fields() -> None:
 def test_owner_level_flags_commands_ids_and_internal_words() -> None:
     from understand.fakes import owner_level
 
-    assert owner_level("run plumb status") != []
+    assert owner_level("run iaso status") != []
     assert owner_level("SR-012 is settled") != []
     assert owner_level("the worker queued a job") != []
     assert owner_level("Settled from your words: the login") == []
 
 
 def test_reporter_done_can_carry_an_end_line(tmp_path: Path) -> None:
-    from plumb.progress import Reporter
+    from iaso.progress import Reporter
 
     reporter = Reporter(tmp_path, "s1", "judge")
     reporter.done()
@@ -503,8 +503,8 @@ def _job(kind: str, n: int, session: str = "s1", needs: str | None = None, creat
 
 def test_standins_run_a_queued_job_once_and_write_results_and_ledger(
         repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.api import Core
-    from plumb.understand import queue, worker
+    from iaso.api import Core
+    from iaso.understand import queue, worker
     from understand.fakes import FakeKind, fake_kinds
 
     seen: list[str] = []
@@ -528,8 +528,8 @@ def test_standins_run_a_queued_job_once_and_write_results_and_ledger(
 
 def test_standins_honour_needs_in_either_queue_order(
         repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.api import Core
-    from plumb.understand import queue, worker
+    from iaso.api import Core
+    from iaso.understand import queue, worker
     from understand.fakes import FakeKind, fake_kinds
 
     fake_kinds(monkeypatch, {"a": FakeKind("a"), "b": FakeKind("b")})
@@ -543,8 +543,8 @@ def test_standins_honour_needs_in_either_queue_order(
 
 def test_standins_failed_needs_makes_dependent_an_error_without_a_model_call(
         repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.api import Core
-    from plumb.understand import queue, worker
+    from iaso.api import Core
+    from iaso.understand import queue, worker
     from understand.fakes import FakeKind, fake_kinds
 
     fake_kinds(monkeypatch, {"a": FakeKind("a"), "b": FakeKind("b")})
@@ -563,8 +563,8 @@ def test_standins_failed_needs_makes_dependent_an_error_without_a_model_call(
 
 def test_standins_failure_counter_resets_on_an_ok_result(
         repo: Path, engine_standins, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.api import Core
-    from plumb.understand import queue, worker
+    from iaso.api import Core
+    from iaso.understand import queue, worker
     from understand.fakes import FakeKind, fake_kinds
 
     fake_kinds(monkeypatch, {"a": FakeKind("a")})
@@ -584,7 +584,7 @@ def test_standins_failure_counter_resets_on_an_ok_result(
 
 def test_standins_step_aside_when_a_name_is_no_longer_a_stub(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand import queue, worker
+    from iaso.understand import queue, worker
     from understand.fakes import install_engine_standins
 
     def real(core, session, job_id=None):
@@ -597,7 +597,7 @@ def test_standins_step_aside_when_a_name_is_no_longer_a_stub(
 
 
 def test_fake_kinds_installs_a_module_for_a_job_kind(monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.understand.kinds import KIND_MODULES, KINDS
+    from iaso.understand.kinds import KIND_MODULES, KINDS
     from understand.fakes import FakeKind, fake_kinds
 
     fake_kinds(monkeypatch, {"zz": FakeKind("zz")})

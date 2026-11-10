@@ -1,6 +1,6 @@
 # ruff: noqa: F811
 """SR-388: the self-fix of a debug case runs each round as three stages by three agent runs
-(diagnosis, fix, review), then plumb's own checks; a failed round hands its findings to the
+(diagnosis, fix, review), then iaso's own checks; a failed round hands its findings to the
 next; open cases are worked side by side with their test runs in turn. Stages and runner are
 scripted, git is real, no model is called."""
 
@@ -25,15 +25,15 @@ from debug.test_selffix import (  # noqa: F401 - fixtures
     fixes_add,
     fixes_nothing,
     no_real_models,
-    plumb_repo,
+    iaso_repo,
 )
 
-from plumb import debug, selfdebug, stale
-from plumb import heavy as heavy_mod
-from plumb.api import open_core
-from plumb.understand import jobs, queue, worker
-from plumb.understand import selfdebug as kind
-from plumb.understand.repin import Meaning
+from iaso import debug, selfdebug, stale
+from iaso import heavy as heavy_mod
+from iaso.api import open_core
+from iaso.understand import jobs, queue, worker
+from iaso.understand import selfdebug as kind
+from iaso.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-388")
 
@@ -58,13 +58,13 @@ def _commits(repo: Path) -> str:
 
 
 def test_ex1_the_case_names_three_stages_with_their_models_and_the_review_is_its_own_run(
-        plumb_repo: Path) -> None:
+        iaso_repo: Path) -> None:
     trail: list = []
     fixer = Fixer(trail, fixes_add)
     diag, review = Stage("diagnosis", [diagnosis()], trail), Stage("review", [OK], trail)
-    out, _ = _run(plumb_repo, fixer, diag, review)
+    out, _ = _run(iaso_repo, fixer, diag, review)
     assert out.state == "fixed", out.detail
-    models = _models(plumb_repo)
+    models = _models(iaso_repo)
     assert [m["stage"] for m in models] == [
         "evidence", "round 1 diagnosis", "round 1 fix", "round 1 review"]
     got = {m["stage"]: m for m in models}
@@ -81,25 +81,25 @@ def test_ex1_the_case_names_three_stages_with_their_models_and_the_review_is_its
 
 
 def test_ex1_a_diagnosis_that_changes_a_file_fails_the_round_and_is_undone(
-        plumb_repo: Path) -> None:
+        iaso_repo: Path) -> None:
     trail: list = []
     fixer = Fixer(trail, fixes_add)
 
     def writes(wt: Path) -> None:
-        (wt / "src" / "plumb" / "calc.py").write_text("def add(a, b):\n    return 0\n", "utf-8")
+        (wt / "src" / "iaso" / "calc.py").write_text("def add(a, b):\n    return 0\n", "utf-8")
 
     diag = Stage("diagnosis", [diagnosis()], trail, effect=writes)
     review = Stage("review", [OK], trail)
-    out, _ = _run(plumb_repo, fixer, diag, review, rounds=1)
+    out, _ = _run(iaso_repo, fixer, diag, review, rounds=1)
     assert out.state == "reported" and out.rounds[0].startswith("round 1:")
     assert fixer.models == [] and review.models == []         # nothing after a bad diagnosis
-    wt = plumb_repo / ".plumb" / "wt" / "debug-hook-stop-1"
-    assert "BUG" in (wt / "src" / "plumb" / "calc.py").read_text("utf-8")
-    assert _git(wt, "status", "--porcelain").strip() == "" and _commits(plumb_repo) == "0"
+    wt = iaso_repo / ".iaso" / "wt" / "debug-hook-stop-1"
+    assert "BUG" in (wt / "src" / "iaso" / "calc.py").read_text("utf-8")
+    assert _git(wt, "status", "--porcelain").strip() == "" and _commits(iaso_repo) == "0"
 
 
 def test_ex2_a_review_that_says_not_ok_fails_the_round_and_the_next_is_given_the_finding(
-        plumb_repo: Path) -> None:
+        iaso_repo: Path) -> None:
     trail: list = []
     fixer = Fixer(trail, fixes_add)
     runs_at: list[int] = []
@@ -112,8 +112,8 @@ def test_ex2_a_review_that_says_not_ok_fails_the_round_and_the_next_is_given_the
 
     diag = Diag("diagnosis", [diagnosis()], trail)
     review = Stage("review", [not_ok(FINDING), OK], trail)
-    core = open_core(plumb_repo)
-    case = next(c for c in debug.open_cases(plumb_repo) if c["id"] == CASE)
+    core = open_core(iaso_repo)
+    case = next(c for c in debug.open_cases(iaso_repo) if c["id"] == CASE)
     runner = Runner(fixer)
     out_runner.append(runner)
     out = selfdebug.fix(core, case, fixer=fixer, diagnoser=diag, reviewer=review,
@@ -129,37 +129,37 @@ def test_ex2_a_review_that_says_not_ok_fails_the_round_and_the_next_is_given_the
                      ("diagnosis", 2), ("fix", 2), ("review", 2)]
 
 
-def test_ex2_a_not_ok_review_commits_nothing(plumb_repo: Path) -> None:
+def test_ex2_a_not_ok_review_commits_nothing(iaso_repo: Path) -> None:
     trail: list = []
-    out, runner = _run(plumb_repo, Fixer(trail, fixes_add),
+    out, runner = _run(iaso_repo, Fixer(trail, fixes_add),
                        Stage("diagnosis", [diagnosis()], trail),
                        Stage("review", [not_ok(FINDING)], trail), rounds=1)
     assert out.state == "reported" and FINDING in out.detail
-    assert _commits(plumb_repo) == "0" and _state(plumb_repo) == "open"
+    assert _commits(iaso_repo) == "0" and _state(iaso_repo) == "open"
     assert runner.calls == []
 
 
 def test_ex4_three_rounds_failed_by_the_review_or_the_checks_end_as_a_report(
-        plumb_repo: Path) -> None:
+        iaso_repo: Path) -> None:
     trail: list = []
     fixer = Fixer(trail, fixes_add, fixes_nothing, fixes_add)
     diag = Stage("diagnosis", [diagnosis()], trail)
     review = Stage("review", [not_ok(FINDING), OK, not_ok("third finding")], trail)
-    out, _ = _run(plumb_repo, fixer, diag, review)
+    out, _ = _run(iaso_repo, fixer, diag, review)
     assert out.state == "reported" and len(out.rounds) == 3
     assert FINDING in out.rounds[0] and "third finding" in out.rounds[2]
     for stage in (diag, review):
         assert len(stage.models) == 3
     assert fixer.models == diag.models == review.models == ["sonnet", "opus", "fable"]
     assert len(diag.kws[2]["previous"]) == 2
-    (row,) = [c for c in debug.open_cases(plumb_repo) if c["id"] == CASE]
+    (row,) = [c for c in debug.open_cases(iaso_repo) if c["id"] == CASE]
     for n in (1, 2, 3):
         assert f"round {n}" in row["report"]
     assert "Nothing was committed" in row["report"]
     assert [m["stage"] for m in row["models"]][-3:] == [
         "round 3 diagnosis", "round 3 fix", "round 3 review"]
-    assert _commits(plumb_repo) == "0" and _state(plumb_repo) == "open"
-    wt = plumb_repo / ".plumb" / "wt" / "debug-hook-stop-1"
+    assert _commits(iaso_repo) == "0" and _state(iaso_repo) == "open"
+    wt = iaso_repo / ".iaso" / "wt" / "debug-hook-stop-1"
     assert _git(wt, "status", "--porcelain").strip()    # the last try stays in the worktree
 
 
@@ -170,7 +170,7 @@ def test_two_threads_calling_heavy_in_one_process_take_turns(
         repo: Path, monkeypatch: pytest.MonkeyPatch, inherited: bool) -> None:
     monkeypatch.setattr(heavy_mod, "HEAVY_WAIT_S", 0.01)
     monkeypatch.delenv(heavy_mod.HELD, raising=False)
-    if inherited:                       # a process started by `plumb heavy --`
+    if inherited:                       # a process started by `iaso heavy --`
         monkeypatch.setenv(heavy_mod.HELD, "1")
     state = {"in": 0, "peak": 0}
     mine = threading.Lock()
@@ -196,27 +196,27 @@ def test_two_threads_calling_heavy_in_one_process_take_turns(
         t.join(10)
     assert not any(t.is_alive() for t in threads)
     assert state["peak"] == 1
-    assert not (repo / ".git" / "plumb-heavy.lock").exists()
+    assert not (repo / ".git" / "iaso-heavy.lock").exists()
 
 
 def test_ex3_three_cases_limit_two_run_side_by_side_with_their_test_runs_in_turn(
-        plumb_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        iaso_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
 
     monkeypatch.setattr(heavy_mod, "HEAVY_WAIT_S", 0.01)
     monkeypatch.delenv(heavy_mod.HELD, raising=False)
-    monkeypatch.delenv("PLUMB_JOB", raising=False)
-    (plumb_repo / ".plumb" / "config.yaml").write_text(
+    monkeypatch.delenv("IASO_JOB", raising=False)
+    (iaso_repo / ".iaso" / "config.yaml").write_text(
         "understand:\n  parallel_calls: 2\n", encoding="utf-8")
     monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
     for n, word in ((2, "beta"), (3, "gamma")):    # unlike symptoms: one case each
-        debug.open_case(plumb_repo, id=f"hook-stop-{n}", kind="hook-error", target=f"stop-{word}",
+        debug.open_case(iaso_repo, id=f"hook-stop-{n}", kind="hook-error", target=f"stop-{word}",
                         detail=f"ValueError: add is wrong in {word} (SR-001)")
-    core = open_core(plumb_repo)
-    session = stale.current_session(plumb_repo)     # open_case queued the self-fix jobs there
-    if len(jobs.queued(plumb_repo, session)) < 3:   # the fixture's case was opened before
+    core = open_core(iaso_repo)
+    session = stale.current_session(iaso_repo)     # open_case queued the self-fix jobs there
+    if len(jobs.queued(iaso_repo, session)) < 3:   # the fixture's case was opened before
         queue.enqueue(core, kind.build(core, session, case=CASE))
-    assert sorted(j.inputs["case"] for j in jobs.queued(plumb_repo, session)) == [
+    assert sorted(j.inputs["case"] for j in jobs.queued(iaso_repo, session)) == [
         "hook-stop-1", "hook-stop-2", "hook-stop-3"]
 
     mine = threading.Lock()
@@ -234,7 +234,7 @@ def test_ex3_three_cases_limit_two_run_side_by_side_with_their_test_runs_in_turn
         def run(*, round, case, worktree, **kw):
             wts[case["id"]] = worktree
             names.append(name)
-            seen_env.append(os.environ.get("PLUMB_JOB"))
+            seen_env.append(os.environ.get("IASO_JOB"))
             count("out", "peak", 1)
             try:
                 time.sleep(0.2)
@@ -249,15 +249,15 @@ def test_ex3_three_cases_limit_two_run_side_by_side_with_their_test_runs_in_turn
         n = cid[-1]
         (wt / "tests").mkdir(exist_ok=True)
         (wt / "tests" / f"test_c{n}.py").write_text("def test_c():\n    pass\n", "utf-8")
-        (wt / "src" / "plumb" / f"c{n}.py").write_text("FIXED = True\n", "utf-8")
+        (wt / "src" / "iaso" / f"c{n}.py").write_text("FIXED = True\n", "utf-8")
 
     def runner(paths: list[str]) -> tuple[bool, str]:
         n = re.search(r"c(\d)\.py", paths[0]).group(1)
-        with heavy_mod.heavy(plumb_repo, f"test run {n}"):
+        with heavy_mod.heavy(iaso_repo, f"test run {n}"):
             count("run", "run_peak", 1)
             try:
                 time.sleep(0.1)
-                return (wts[f"hook-stop-{n}"] / "src" / "plumb" / f"c{n}.py").exists(), "ran"
+                return (wts[f"hook-stop-{n}"] / "src" / "iaso" / f"c{n}.py").exists(), "ran"
             finally:
                 count("run", "run_peak", -1)
 
@@ -274,15 +274,15 @@ def test_ex3_three_cases_limit_two_run_side_by_side_with_their_test_runs_in_turn
     monkeypatch.setattr(selfdebug, "fix", scripted)
     worker.run_once(core, session)
     assert sorted(names) == ["d"] * 3 + ["f"] * 3 + ["r"] * 3   # a settled case is not run again
-    assert sorted(c["state"] for c in debug.all_cases(plumb_repo)) == ["resolved"] * 3
+    assert sorted(c["state"] for c in debug.all_cases(iaso_repo)) == ["resolved"] * 3
     assert 1 < box["peak"] <= 2                  # two stage runs out at once, never three
     assert box["run_peak"] == 1                  # the test runs went one at a time
     assert len({p.resolve() for p in wts.values()}) == 3
     for cid, wt in wts.items():
-        assert wt.parent == plumb_repo / ".plumb" / "wt" and wt.name.startswith("debug-")
-        assert _git(plumb_repo, "rev-list", "--count", f"main..debug/{cid}").strip() == "1"
+        assert wt.parent == iaso_repo / ".iaso" / "wt" and wt.name.startswith("debug-")
+        assert _git(iaso_repo, "rev-list", "--count", f"main..debug/{cid}").strip() == "1"
     assert set(seen_env) == {"selfdebug"}        # the hook guard stayed set in both threads
-    assert os.environ.get("PLUMB_JOB") is None   # and was restored after the last one
+    assert os.environ.get("IASO_JOB") is None   # and was restored after the last one
     assert subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
-                          cwd=plumb_repo, capture_output=True, text=True
-                          ).stdout == " M .plumb/config.yaml\n"     # only this test's limit
+                          cwd=iaso_repo, capture_output=True, text=True
+                          ).stdout == " M .iaso/config.yaml\n"     # only this test's limit

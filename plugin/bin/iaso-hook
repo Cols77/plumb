@@ -1,0 +1,403 @@
+#!/bin/sh
+# iaso's command hooks under the Claude Code plugin (SP7 4.3; SR-082, SR-083, SR-084).
+# usage: iaso-hook <session-start|prompt|pre-tool|post-edit|edit-check|stop>, the hook's JSON
+# on stdin. The cheap checks run here, in sh, before any Python starts:
+#   1. no .iaso/ up to the git root: silent, apart from one line at a session's start in a
+#      git work tree the owner has not put on the "not here" list (IASO_HOME/ignored);
+#   2. a repository set up the old way (a hook "command" in its .claude/settings.json runs
+#      `iaso hook` or iaso's gate.sh): that install runs the hooks, so this exits at once and
+#      nothing runs twice. A deny rule naming `iaso hook` is not a hook (SR-121 EX-1), and when
+#      the old install registers no gate.sh, pre-tool still runs the gate here;
+#   3. pre-tool: the edit gate (gate.sh, SP8) for the edit tools, reading the session gate under
+#      the .iaso/ found by the walk (IASO_ROOT, SR-121 EX-2), then nothing more unless the
+#      tool's input names iaso or IASO_ (the guard, iaso.guard, is Python; the rest of the
+#      hook's JSON, its cwd and transcript path, is not looked at: SR-123 EX-2);
+#   4. iaso's own environment not ready: the session start asks bin/iaso's probe whether a
+#      Python can build it and, if so, begins setting it up in the background, detached, with
+#      one plain line; every other hook exits at once;
+#   5. otherwise `iaso hook <event>` in the plugin's own environment.
+# Every hook exits 0: a failing check never blocks the owner. The helpers set a variable
+# instead of printing: a command substitution costs a process on Windows, and this runs on
+# every hook of every session.
+event=$1
+nl='
+'
+
+slashes() {  # s = $1 with every backslash turned into a slash
+  s=$1
+  while :; do
+    case $s in
+      *\\*) s="${s%%\\*}/${s#*\\}" ;;
+      *) break ;;
+    esac
+  done
+}
+
+field() {  # v = the string value of key $2 in the JSON text $1 (flat, no escapes), or empty
+  v=${1#*\"$2\"}
+  if [ "$v" = "$1" ]; then
+    v=
+    return 0
+  fi
+  v=${v#*\"}
+  v=${v%%\"*}
+}
+
+read_file() {  # f = the text of file $1 (empty when it cannot be read)
+  f=
+  [ -r "$1" ] || return 0
+  while IFS= read -r l || [ -n "$l" ]; do f="$f$l$nl"; done < "$1"
+}
+
+read_input() {  # input = the hook's JSON on stdin (a loop, not $(cat): no process)
+  input=
+  while IFS= read -r line || [ -n "$line" ]; do input="$input$line"; done
+}
+
+legacy_hooks() {  # legacy = gate, hook or empty: what the "command" values of $f run
+  # Only a "command" value counts: a permission rule such as "Bash(iaso hook prompt:*)" runs
+  # nothing. Each value is read up to its closing quote, an escaped quote (\") kept inside.
+  legacy=
+  r=$f
+  while :; do
+    case $r in
+      *'"command"'*) ;;
+      *) return 0 ;;
+    esac
+    r=${r#*\"command\"}
+    case $r in  # a key, not the value of "type": "command"
+      :*|[' 	']:*|[' 	'][' 	']:*) ;;
+      *) continue ;;
+    esac
+    case $r in
+      *\"*) r=${r#*\"} ;;  # past the value's opening quote
+      *) return 0 ;;
+    esac
+    val=
+    while :; do
+      case $r in
+        *\"*) ;;
+        *) val=$val$r; r=; break ;;
+      esac
+      piece=${r%%\"*}
+      r=${r#*\"}
+      val=$val$piece
+      # an odd run of backslashes before the quote escapes it and the value goes on; an even
+      # run (a value ending in "C:\\dir\\") is escaped backslashes, and the quote closes it
+      t=$piece
+      n=0
+      while :; do
+        case $t in
+          *\\) t=${t%\\}; n=$((n + 1)) ;;
+          *) break ;;
+        esac
+      done
+      [ $((n % 2)) -eq 1 ] || break
+      val="$val\""
+    done
+    case $val in
+      *'iaso/gate.sh'*) legacy=gate; return 0 ;;
+      *'iaso hook '*|*'iaso.exe hook '*|*'iaso.cmd hook '*) legacy=hook ;;
+    esac
+  done
+}
+
+slashes "$0"
+case $s in
+  */*) here=${s%/*} ;;
+  *) here=. ;;
+esac
+case $here in
+  */bin) plugin_root=${here%/bin} ;;
+  *) plugin_root="$here/.." ;;
+esac
+slashes "${IASO_HOME:-${CLAUDE_PLUGIN_DATA:-$HOME/.iaso}}"
+home=$s
+
+# 1. the repository: walk up for .iaso/, stopping at the first git root
+slashes "${CLAUDE_PROJECT_DIR:-$PWD}"
+root=
+gitroot=
+d=$s
+while [ -n "$d" ]; do
+  # iaso's own home (~/.iaso: env/, current.json) is never a repository's records
+  if { [ -f "$d/.iaso/config.yaml" ] || [ -d "$d/.iaso/requirements" ]; } &&
+     [ ! -d "$d/.iaso/env" ] && [ ! -f "$d/.iaso/current.json" ]; then
+    root=$d
+    break
+  fi
+  if [ -e "$d/.git" ]; then
+    gitroot=$d
+    break
+  fi
+  parent=${d%/*}
+  [ "$parent" = "$d" ] && break
+  d=$parent
+done
+
+agent_env() {  # the agent's shell: the session marker and iaso on the PATH (SP7 4.3)
+  [ -n "$CLAUDE_ENV_FILE" ] || return 0
+  bin="$plugin_root/bin"
+  command -v cygpath >/dev/null 2>&1 && bin=$(cygpath -u "$bin")
+  read_file "$CLAUDE_ENV_FILE"
+  case $f in
+    *IASO_AGENT_SESSION*) ;;
+    *) printf '%s\n%s\n' 'export IASO_AGENT_SESSION=claude-code' \
+         "export PATH=\"$bin:\$PATH\"" >> "$CLAUDE_ENV_FILE" ;;
+  esac
+}
+
+if [ -z "$root" ]; then
+  [ "$event" = session-start ] || exit 0
+  [ -n "$gitroot" ] || exit 0
+  input=
+  while IFS= read -r line || [ -n "$line" ]; do input="$input$line"; done
+  field "$input" source
+  case $v in
+    startup|resume) ;;
+    *) exit 0 ;;
+  esac
+  if [ -f "$home/ignored" ]; then
+    # the folder as Windows names it too (Git's sh may show it as /tmp/...)
+    canon=$(cd "$gitroot" 2>/dev/null && { pwd -W 2>/dev/null || pwd; })
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [ "$line" = "$gitroot" ] || [ "$line" = "$canon" ]; then exit 0; fi
+    done < "$home/ignored"
+  fi
+  # `iaso init`, which /iaso init runs, must resolve in the agent's shell (SR-122 EX-2)
+  agent_env
+  printf '%s\n' '{"systemMessage": "/iaso:iaso init to adopt this repository"}'
+  exit 0
+fi
+
+# 2. the old per-repository install answers for itself
+read_file "$root/.claude/settings.json"
+legacy=
+case $f in
+  *'"command"'*) legacy_hooks ;;
+esac
+case $legacy in
+  gate) exit 0 ;;
+  hook)
+    # the old install runs iaso's Python hooks but registers no gate: the gate runs here
+    [ "$event" = pre-tool ] || exit 0
+    read_input
+    printf '%s\n' "$input" | IASO_ROOT=$root sh "$plugin_root/bin/gate.sh"
+    exit 0 ;;
+esac
+
+read_input
+export CLAUDE_PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$root}"
+
+[ "$event" = session-start ] && agent_env
+
+# 3. the edit gate first (shell only), then the guard only when the call names iaso
+if [ "$event" = pre-tool ]; then
+  field "$input" tool_name
+  tool=$v
+  # SR-395: a message waits for this session's main agent (a subagent's call carries agent_id
+  # and leaves it): the call goes to Python, which holds it once so the agent reads the message
+  pending=
+  case $input in
+    *'"agent_id"'*) ;;
+    *)
+      field "$input" session_id
+      [ -z "$v" ] || { read_file "$root/.iaso/session/$v/inbox.jsonl"; [ -z "$f" ] || pending=1; } ;;
+  esac
+  case $tool in
+    Edit|Write|MultiEdit|NotebookEdit)
+      # gate.sh reads IASO_ROOT/.iaso/session/<id>/gate: the folder the walk found, so a
+      # session started in a subfolder is still gated (SR-121 EX-2)
+      answer=$(printf '%s\n' "$input" | IASO_ROOT=$root sh "$plugin_root/bin/gate.sh")
+      if [ -n "$answer" ]; then
+        printf '%s\n' "$answer"
+        exit 0
+      fi ;;
+  esac
+  case $tool in  # the tools only a message is read for (the matcher names them)
+    Read|Grep|Glob|Agent|Task) [ -n "$pending" ] || exit 0 ;;
+  esac
+  # only the tool's input: the cwd and transcript path name the repository, which may well
+  # be called iaso, and must not start Python on every call (SR-123 EX-2)
+  case $input in
+    *'"tool_input"'*) ti=${input#*\"tool_input\"} ;;
+    *) ti= ;;
+  esac
+  # cut at the next top-level key Claude Code sends: the tool's input ends where one begins
+  for k in transcript_path cwd tool_use_id permission_mode hook_event_name session_id; do
+    ti=${ti%%\"$k\"*}
+  done
+  [ -z "$pending" ] && case $ti in
+    *iaso*|*IASO_*) ;;
+    *)
+      # SR-384: the main-checkout guard (Python) looks at an edit, or a shell command that could
+      # write, of a primary checkout; `ls` starts no Python (SR-279). A linked worktree (its .git
+      # is a file) or merge.guard_main: false skips it. A false match only costs the Python start.
+      [ -d "$root/.git" ] || exit 0
+      case $ti in
+        *'"command"'*)
+          case $ti in
+            *'>'*|*tee*|*sed*|*rm*|*mv*|*cp*|*touch*|*mkdir*|*chmod*|*ln*|*git*) ;;
+            *) exit 0 ;;
+          esac ;;
+      esac
+      read_file "$root/.iaso/config.yaml"
+      case $f in
+        *guard_main:*false*) exit 0 ;;
+      esac ;;
+  esac
+fi
+
+# 4. iaso's own repository runs its own code (SR-315): the checkout's source first on the
+#    path, with its .venv's interpreter, or, in a worktree without one, the main checkout's
+#    (named by the gitdir line of the worktree's .git file). When that code cannot start (no
+#    .venv, or the run fails), the packaged copy runs instead and the agent is told in one line.
+own=
+if [ -f "$root/src/iaso/__main__.py" ] && [ -f "$root/plugin/.claude-plugin/plugin.json" ]; then
+  main=$root
+  if [ -f "$root/.git" ]; then
+    read_file "$root/.git"
+    case $f in
+      gitdir:*/.git/worktrees/*)
+        slashes "${f#gitdir: }"
+        main=${s%%/.git/worktrees/*} ;;
+    esac
+  fi
+  # the platform's own layout first: a .venv carried over from the other OS cannot run
+  if [ "$OS" = Windows_NT ]; then layouts="Scripts/python.exe bin/python"
+  else layouts="bin/python Scripts/python.exe"; fi
+  for venv in "$root/.venv" "$main/.venv"; do
+    for layout in $layouts; do
+      candidate=$venv/$layout
+      if [ -f "$candidate" ]; then
+        # captured: a run that fails (the checkout cannot import) shows nothing of itself
+        if out=$(printf '%s\n' "$input" | PYTHONPATH="$root/src" IASO_HOME=$home \
+                 IASO_PLUGIN_ROOT=$plugin_root "$candidate" -m iaso hook "$event"); then
+          [ -n "$out" ] && printf '%s\n' "$out"
+          exit 0
+        fi
+        own=failed
+        break 2
+      fi
+    done
+  done
+  [ -n "$own" ] || own=missing
+fi
+
+join_note() {  # out = $out with $note at the start of the string value of key $1
+  head=${out%%\"$1\"*}
+  rest=${out#*\"$1\"}
+  pre=${rest%%\"*}
+  out="$head\"$1\"$pre\"$note\\n${rest#*\"}"
+}
+
+fallback_notice() {  # the packaged copy's output $out with the one line saying it ran instead
+  case $own in
+    missing) why="this checkout has no .venv" ;;
+    *) why="this checkout's code failed to start" ;;
+  esac
+  if [ -n "$ready" ]; then
+    note="iaso: $why, so this hook ran the plugin's packaged copy, not this code"
+  else
+    note="iaso: $why, and the plugin's packaged copy is not ready, so this hook did nothing"
+  fi
+  body=${out#\{}
+  case $out in
+    '{'*)
+      case $body in
+        *[!\ \}]*) ;;
+        *) out= ;;  # an empty object: answered as if nothing was printed
+      esac ;;
+  esac
+  case $out in
+    '') ;;
+    '{'*)
+      case $out in
+        *'"additionalContext"'*) join_note additionalContext ;;
+        *'"systemMessage"'*) join_note systemMessage ;;
+        *) out="{\"systemMessage\": \"$note\", $body" ;;
+      esac
+      printf '%s\n' "$out"
+      return 0 ;;
+    *)
+      printf '%s\n%s\n' "$out" "$note"
+      return 0 ;;
+  esac
+  case $event in
+    session-start) name=SessionStart ;;
+    prompt) name=UserPromptSubmit ;;
+    post-edit|edit-check) name=PostToolUse ;;
+    *) name= ;;
+  esac
+  if [ -n "$name" ]; then
+    printf '%s\n' "{\"hookSpecificOutput\": {\"hookEventName\": \"$name\", \"additionalContext\": \"$note\"}}"
+  else
+    printf '%s\n' "{\"systemMessage\": \"$note\"}"
+  fi
+}
+
+# 5. iaso's own environment
+read_file "$plugin_root/vendor/MANIFEST.json"
+field "$f" sha256
+want=$v
+python=
+prev=
+read_file "$home/current.json"
+field "$f" wheel_sha256
+if [ -n "$want" ] && [ "$v" = "$want" ]; then
+  field "$f" python
+  python=$v
+else
+  # reinstalled mid-session, the new copy not ready: the previous copy keeps the checks going
+  # (SR-354 EX-1); the session start still begins the new copy's setup below
+  field "$f" python
+  prev=$v
+  if [ "$event" != session-start ] && [ -n "$prev" ] && [ -f "$prev" ]; then
+    python=$prev
+  fi
+fi
+
+error_line() {  # one line in this adopted project's .iaso/session/errors.log (SR-354 EX-2)
+  mkdir -p "$root/.iaso/session" 2>/dev/null &&
+    printf '%s\n' "iaso hook $event: $1" >> "$root/.iaso/session/errors.log" 2>/dev/null
+  return 0
+}
+
+if [ -z "$python" ] || [ ! -f "$python" ]; then
+  [ "$event" = session-start ] || error_line "iaso's private copy is not ready, so this check did not run"
+  if [ -n "$own" ] && [ "$event" != session-start ]; then
+    out=
+    ready=
+    fallback_notice
+    exit 0
+  fi
+  [ "$event" = session-start ] || exit 0
+  # bin/iaso's own probe (uv, or a Python 3.12 or later under any of its names): the
+  # build and this line never disagree (SR-119 EX-3); it runs only here, once per session
+  if IASO_HOME=$home sh "$plugin_root/bin/iaso" --iaso-probe </dev/null >/dev/null 2>&1
+  then
+    # detached, so the setup outlives this hook when Claude Code ends the hook's processes
+    if command -v nohup >/dev/null 2>&1; then
+      IASO_HOME=$home nohup sh "$plugin_root/bin/iaso" --iaso-bootstrap \
+        </dev/null >/dev/null 2>&1 &
+    else
+      IASO_HOME=$home sh "$plugin_root/bin/iaso" --iaso-bootstrap </dev/null >/dev/null 2>&1 &
+    fi
+    printf '%s\n' '{"systemMessage": "iaso is getting ready for its first run; it will follow this session from your next message"}'
+  else
+    printf '%s\n' "{\"systemMessage\": \"iaso needs Python 3.12 on this machine; say 'install what iaso needs' and I will set it up\"}"
+  fi
+  exit 0
+fi
+
+# 6. the hook itself
+if [ -n "$own" ]; then
+  out=$(printf '%s\n' "$input" | IASO_HOME=$home IASO_PLUGIN_ROOT=$plugin_root \
+        "$python" -m iaso hook "$event")
+  ready=1
+  fallback_notice
+  exit 0
+fi
+printf '%s\n' "$input" | IASO_HOME=$home IASO_PLUGIN_ROOT=$plugin_root \
+  "$python" -m iaso hook "$event" || error_line "the check failed (exit $?)"
+exit 0

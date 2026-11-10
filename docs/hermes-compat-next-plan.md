@@ -16,18 +16,18 @@ Type: implementation, then separate read-only review. This is the first executab
 
 Allowed paths:
 
-- `src/plumb/hosts/hermes/install.py`
-- `src/plumb/hosts/hermes/templates/plugin.py`
+- `src/iaso/hosts/hermes/install.py`
+- `src/iaso/hosts/hermes/templates/plugin.py`
 - `tests/hosts/test_hermes.py`
 - `tests/hosts/hermes_probe/`
 - `docs/hosts.md`
 
-Prohibited paths: installed Hermes source/config, real profile homes, `.env`/credentials, `src/plumb/approvals.py`, unrelated adapters, MCP installer, and desktop SDK files.
+Prohibited paths: installed Hermes source/config, real profile homes, `.env`/credentials, `src/iaso/approvals.py`, unrelated adapters, MCP installer, and desktop SDK files.
 
 Work completed in this slice:
 
 1. Installer-generated plugin-owned `skills/` files reuse the canonical Claude templates with the same launcher substitution; no duplicate canonical production source is maintained.
-2. `ctx.register_skill` receives bare `plumb` and `plumb-clarify` names. Hermes resolves these as `plumb:plumb` and `plumb:plumb-clarify`; there is no flat available-skills claim.
+2. `ctx.register_skill` receives bare `iaso` and `iaso-clarify` names. Hermes resolves these as `iaso:iaso` and `iaso:iaso-clarify`; there is no flat available-skills claim.
 3. Offline tests cover install, idempotent launcher update, owned path-to-uv byte parity, missing/foreign preservation, dry-run, owned-only uninstall, digest-guarded registration, and a temporary-home pinned PluginManager/`skill_view` subprocess.
 4. Keep all validation offline and synthetic; Plugin Doctor remains registration-only evidence.
 
@@ -41,15 +41,15 @@ or owner certification.
 Acceptance commands:
 
 ```text
-export PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
-C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts/test_hermes.py -o addopts= -q --tb=short
-C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts -o addopts= -q --tb=short
-hermes plugins doctor src/plumb/hosts/hermes/templates --ci
+export PYTHONPATH=C:/coding/iaso-wt/hermes-compat/src
+C:/coding/iaso/.venv/Scripts/python.exe -m pytest tests/hosts/test_hermes.py -o addopts= -q --tb=short
+C:/coding/iaso/.venv/Scripts/python.exe -m pytest tests/hosts -o addopts= -q --tb=short
+hermes plugins doctor src/iaso/hosts/hermes/templates --ci
 ```
 
 These commands use Git Bash syntax on Windows; use the equivalent environment assignment in another shell.
 
-The worker must print `plumb.__file__` before tests, record exact counts, and commit only the allowlisted paths. The separate reviewer must verify byte parity and the no-global-skill claim.
+The worker must print `iaso.__file__` before tests, record exact counts, and commit only the allowlisted paths. The separate reviewer must verify byte parity and the no-global-skill claim.
 
 ### Card B4: latency ordering correction
 
@@ -57,8 +57,8 @@ Type: implementation, then separate read-only review. It depends on no B2 files 
 
 Allowed paths:
 
-- `src/plumb/hosts/claude_code/hookio.py`
-- `src/plumb/hosts/claude_code/stop.py`
+- `src/iaso/hosts/claude_code/hookio.py`
+- `src/iaso/hosts/claude_code/stop.py`
 - `tests/host/test_latency.py`
 - `docs/followups.md` only if the accepted cause needs durable explanation
 
@@ -73,9 +73,9 @@ RED/GREEN work:
 Acceptance commands:
 
 ```text
-export PYTHONPATH=C:/coding/plumb-wt/hermes-compat/src
-C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/host/test_latency.py -o addopts= -q --tb=short
-C:/coding/plumb/.venv/Scripts/python.exe -m pytest tests/hosts tests/host -o addopts= -q --tb=short
+export PYTHONPATH=C:/coding/iaso-wt/hermes-compat/src
+C:/coding/iaso/.venv/Scripts/python.exe -m pytest tests/host/test_latency.py -o addopts= -q --tb=short
+C:/coding/iaso/.venv/Scripts/python.exe -m pytest tests/hosts tests/host -o addopts= -q --tb=short
 ```
 
 Do not call the full suite green unless it completes with a final summary. The independent reviewer must inspect the watchdog/read-back ordering and confirm no approval or output-contract changes.
@@ -111,7 +111,7 @@ Exercise offline temporary paths for `write_file`, both patch modes, multiple fi
 
 Type: separate design and review card, not a Python adapter change.
 
-Inspect the official JavaScript desktop-plugin SDK and its status-bar/session APIs. Define whether Plumb needs a native desktop plugin, a gateway event consumer, or no additional UX. Preserve the Python hook limitations: first-nonempty transform wins, post-LLM is not a delivery receipt, and gateway injection requires a session key plus explicit grant.
+Inspect the official JavaScript desktop-plugin SDK and its status-bar/session APIs. Define whether Iaso needs a native desktop plugin, a gateway event consumer, or no additional UX. Preserve the Python hook limitations: first-nonempty transform wins, post-LLM is not a delivery receipt, and gateway injection requires a session key plus explicit grant.
 
 Acceptance is a written surface contract and offline fixture plan. Any live desktop enablement or transport test needs explicit authorization and a separate gate.
 

@@ -1,4 +1,4 @@
-"""SR-171: the request check runs only for a typed /plumb clarify <words>."""
+"""SR-171: the request check runs only for a typed /iaso clarify <words>."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pytest
 from capture.capture_helpers import log_prompt
 from understand.test_read_job import open_question
 
-from plumb.api import open_core
-from plumb.understand import files, gate, hooks
+from iaso.api import open_core
+from iaso.understand import files, gate, hooks
 
 pytestmark = pytest.mark.sr("SR-222")
 
@@ -35,7 +35,7 @@ def test_ex1_an_ordinary_message_with_no_question_runs_nothing(repo: Path, engin
 
 
 def test_ex2_the_command_checks_the_words_and_holds_edits(repo: Path, engine_standins: Any) -> None:
-    _say(repo, "/plumb clarify " + WORDS)
+    _say(repo, "/iaso clarify " + WORDS)
     assert [j for j in _jobs(repo) if j.startswith("clarify-")] and gate.is_closed(repo, SESSION)
 
 
@@ -51,7 +51,7 @@ def test_ex3_a_waiting_question_has_the_message_read_and_no_check(
 
 
 def test_ex4_the_prompt_tells_the_check_not_to_steer_and_to_use_the_last_message() -> None:
-    from plumb.understand import clarify
+    from iaso.understand import clarify
 
     prompt = (Path(clarify.__file__).parent / "agents" / "clarify.md").read_text(encoding="utf-8")
     for words in ("how to carry out work already asked for", "raise no gap",

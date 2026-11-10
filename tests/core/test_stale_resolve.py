@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 
 from core.stale_asked import asked
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.contracts import Target
-from plumb.understand.repin import Meaning
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.contracts import Target
+from iaso.understand.repin import Meaning
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -148,7 +148,7 @@ def test_pin_on_an_uncommitted_version_is_found_and_repinned(project: Path) -> N
 def test_unlocatable_earlier_version_refused_without_the_blob_map(project: Path) -> None:
     (project / "src" / "later.py").write_text(DEF_F, "utf-8")
     open_core(project).add_link("SR-001", "implemented_by", Target(path="src/later.py"))
-    (project / ".git" / "plumb" / "pin_blobs.json").unlink()
+    (project / ".git" / "iaso" / "pin_blobs.json").unlink()
     (project / "src" / "later.py").write_text(DEF_F_SPACED, "utf-8")
     result = links.repin_after_tests(open_core(project), "SR-001#1", runner=Runner(),
                                      judge=Judge(True))
@@ -158,7 +158,7 @@ def test_unlocatable_earlier_version_refused_without_the_blob_map(project: Path)
 def test_a_requirement_reworded_is_judged_against_its_wording_now(project: Path) -> None:
     """A test run alone cannot settle a reworded requirement: the judge reads the end against
     the wording now, shown the earlier wording, and a kept meaning repins (SR-198 EX-12)."""
-    path = project / ".plumb" / "requirements" / "SR-001.md"
+    path = project / ".iaso" / "requirements" / "SR-001.md"
     path.write_text(path.read_text("utf-8").replace("add returns the sum.",
                                                     "add returns the total."), "utf-8")
     judge = _backend("cosmetic")
@@ -236,7 +236,7 @@ def test_dry_run_asks_the_model_only(project: Path) -> None:
 
 
 def test_model_judge_sends_the_diff_and_reads_the_verdict() -> None:
-    from plumb.understand.repin import ModelMeaningJudge
+    from iaso.understand.repin import ModelMeaningJudge
 
     class Dispatcher:
         name, model = "claude-code", "sonnet"
@@ -266,7 +266,7 @@ def test_model_judge_sends_the_diff_and_reads_the_verdict() -> None:
 
 def test_a_run_stopped_at_the_time_limit_says_so(project: Path, monkeypatch) -> None:
     """A run that names no failed test says why it did not pass, not 'failed: '."""
-    from plumb.verify import api as verify_api
+    from iaso.verify import api as verify_api
 
     report = verify_api.RunReport(run_id="r1", timed_out=True) \
         if hasattr(verify_api, "RunReport") else None
@@ -277,7 +277,7 @@ def test_a_run_stopped_at_the_time_limit_says_so(project: Path, monkeypatch) -> 
         def run(self, changed, budget_s=None):
             return report
 
-    monkeypatch.setattr("plumb.verify.open_verify", lambda core: Lane())
+    monkeypatch.setattr("iaso.verify.open_verify", lambda core: Lane())
     ok, detail = links.default_runner(open_core(project))(["src/a.py"])
     assert not ok and detail == "stopped at the time limit"
 

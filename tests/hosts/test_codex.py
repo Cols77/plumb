@@ -18,9 +18,9 @@ from hosts_helpers import (
     snapshot,
 )
 
-from plumb.cli import main
-from plumb.hosts.codex import install as codex
-from plumb.hosts.common import IS_WINDOWS, NO_MARKER_LINE, InstallError, shell_command
+from iaso.cli import main
+from iaso.hosts.codex import install as codex
+from iaso.hosts.common import IS_WINDOWS, NO_MARKER_LINE, InstallError, shell_command
 
 pytestmark = pytest.mark.sr("SR-283")
 
@@ -51,7 +51,7 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
     assert snapshot(project) == first
     agents = (project / "AGENTS.md").read_text("utf-8")
     assert agents.startswith("# Owner's notes\n\nKeep it simple.\n")
-    assert agents.count("<!-- plumb:begin -->") == 1 and "turn start" in agents
+    assert agents.count("<!-- iaso:begin -->") == 1 and "turn start" in agents
     hooks = json.loads((project / ".codex" / "hooks.json").read_text("utf-8"))["hooks"]
     assert FOREIGN_HOOK in hooks["Stop"][0]["hooks"]
     for event in ("SessionStart", "UserPromptSubmit", "Stop"):
@@ -60,7 +60,7 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
         assert len(ours) == 1 and "--format claude" in ours[0]
     config = _config(project)
     assert config["mcp_servers"]["other"]["command"] == "other"
-    assert config["shell_environment_policy"]["set"]["PLUMB_AGENT_SESSION"] == "codex"
+    assert config["shell_environment_policy"]["set"]["IASO_AGENT_SESSION"] == "codex"
     assert "notify" not in config        # Codex ignores it in a project's config
     for event in ("SessionStart", "UserPromptSubmit", "Stop"):
         ours = [h["command"] for g in hooks[event] for h in g["hooks"] if "--host" in h["command"]]
@@ -70,14 +70,14 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
 def test_hook_program_is_absolute(project: Path) -> None:
     """The app-server daemon runs hooks with systemd's PATH: a bare uv exits 127."""
     found = {"uv": "/home/me/.local/bin/uv"}
-    assert codex.host_argv(project, ["uv", "run", "--no-sync", "plumb"], which=found.get) == [
-        "/home/me/.local/bin/uv", "run", "--no-sync", "plumb"]
-    assert codex.host_argv(project, [".venv/bin/python", "-m", "plumb"])[0] == (
+    assert codex.host_argv(project, ["uv", "run", "--no-sync", "iaso"], which=found.get) == [
+        "/home/me/.local/bin/uv", "run", "--no-sync", "iaso"]
+    assert codex.host_argv(project, [".venv/bin/python", "-m", "iaso"])[0] == (
         project.resolve() / ".venv/bin/python").as_posix()
-    assert codex.host_argv(project, ["/opt/plumb"]) == ["/opt/plumb"]
+    assert codex.host_argv(project, ["/opt/iaso"]) == ["/opt/iaso"]
 
 
-def test_uninstall_removes_only_plumb(project: Path) -> None:
+def test_uninstall_removes_only_iaso(project: Path) -> None:
     before = snapshot(project)
     codex.install(project)
     codex.uninstall(project)
@@ -108,7 +108,7 @@ def test_status_names_missing_marker(project: Path, monkeypatch, capsys) -> None
         FOREIGN_TOML + '[shell_environment_policy]\ninherit = "core"\n', "utf-8")
     report = codex.install(project)
     assert any("session marker not set" in line for line in report.lines)
-    assert "PLUMB_AGENT_SESSION" not in (project / ".codex" / "config.toml").read_text("utf-8")
+    assert "IASO_AGENT_SESSION" not in (project / ".codex" / "config.toml").read_text("utf-8")
     monkeypatch.chdir(project)
     assert main(["hosts", "status", "codex"]) == 0
     out = capsys.readouterr().out
@@ -118,8 +118,8 @@ def test_status_names_missing_marker(project: Path, monkeypatch, capsys) -> None
 
 def test_an_old_notify_line_is_removed(project: Path) -> None:
     (project / ".codex" / "config.toml").write_text(
-        '# >>> plumb (plumb hosts install codex) >>>\nnotify = ["uv", "run", "plumb"]\n'
-        '# <<< plumb <<<\n' + FOREIGN_TOML, "utf-8")
+        '# >>> iaso (iaso hosts install codex) >>>\nnotify = ["uv", "run", "iaso"]\n'
+        '# <<< iaso <<<\n' + FOREIGN_TOML, "utf-8")
     codex.install(project)
     assert "notify" not in _config(project)
 
@@ -155,7 +155,7 @@ def test_hook_commands_run_in_the_platform_shell(project: Path) -> None:
     for name, event in codex.EVENTS:  # one renderer: the commands differ by event only
         assert ours[name] == start.replace(" session-start ", f" {event} ")
     assert "'" not in start
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     for shell in _platform_shells(start):
         result = subprocess.run(shell, cwd=project, input="{}", capture_output=True,
                                 text=True, encoding="utf-8", env=env, timeout=120)
@@ -163,11 +163,11 @@ def test_hook_commands_run_in_the_platform_shell(project: Path) -> None:
         # SR-374: an empty project has nothing to say at session start (no counts)
         assert not result.stdout.strip() or "hookSpecificOutput" in result.stdout, (
             shell, result.stdout, result.stderr)
-        assert not (project / ".plumb" / "session" / "errors.log").exists()
+        assert not (project / ".iaso" / "session" / "errors.log").exists()
 
 
 def test_windows_hook_command_refuses_what_cmd_and_powershell_cannot_both_run() -> None:
-    assert shell_command([".venv/Scripts/python.exe", "-m", "plumb"], windows=True) == \
-        ".venv\\Scripts\\python.exe -m plumb"
+    assert shell_command([".venv/Scripts/python.exe", "-m", "iaso"], windows=True) == \
+        ".venv\\Scripts\\python.exe -m iaso"
     with pytest.raises(InstallError, match="cmd and PowerShell"):
-        shell_command(["C:/Program Files/py/python.exe", "-m", "plumb"], windows=True)
+        shell_command(["C:/Program Files/py/python.exe", "-m", "iaso"], windows=True)

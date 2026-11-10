@@ -12,11 +12,11 @@ from typing import Any
 import pytest
 
 from mergedriver.mdhelpers import ex, record, run_git
-from plumb import log
-from plumb.api import open_core
-from plumb.boundary import landing
-from plumb.normalize import canonical_json
-from plumb.validate import validate
+from iaso import log
+from iaso.api import open_core
+from iaso.boundary import landing
+from iaso.normalize import canonical_json
+from iaso.validate import validate
 
 pytestmark = pytest.mark.sr("SR-287")
 
@@ -31,7 +31,7 @@ def put(root: Path, kind: str, payload: dict[str, Any], *, at: str = OLD,
                              "payload": payload, "prev": prev}
     entry["digest"] = log.entry_digest(entry)
     stamp = at.replace("-", "").replace(":", "").rstrip("Z")
-    folder = root / ".plumb" / "log" / kind
+    folder = root / ".iaso" / "log" / kind
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{stamp}.{next(_N):06d}Z-{entry['digest'][7:15]}.json").write_bytes(
         canonical_json(entry) + b"\n")
@@ -52,11 +52,11 @@ def compact(root: Path, since: str = LATER) -> list[str]:
 
 
 def live(root: Path, kind: str) -> list[str]:
-    return sorted(p.name for p in (root / ".plumb" / "log" / kind).glob("*.json"))
+    return sorted(p.name for p in (root / ".iaso" / "log" / kind).glob("*.json"))
 
 
 def segment(root: Path, kind: str) -> list[dict[str, Any]]:
-    path = root / ".plumb" / "log" / kind / log.SEGMENT
+    path = root / ".iaso" / "log" / kind / log.SEGMENT
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_bytes().splitlines() if line.strip()]
@@ -95,7 +95,7 @@ def test_ex3_an_edited_segment_entry_is_reported(repo: Path, write_record) -> No
     superseding(repo, write_record)
     put(repo, "judgment", {"subject": "SR-001", "verdict": "yes"})
     compact(repo)
-    path = repo / ".plumb" / "log" / "judgment" / log.SEGMENT
+    path = repo / ".iaso" / "log" / "judgment" / log.SEGMENT
     path.write_bytes(path.read_bytes().replace(b'"yes"', b'"no"'))
     problems = log.verify_chain(open_core(repo).paths, "events")
     assert len(problems) == 1
@@ -107,7 +107,7 @@ def test_ex4_a_hook_reads_live_entry_files_only(repo: Path, write_record,
                                                 monkeypatch: pytest.MonkeyPatch) -> None:
     import io
 
-    from plumb.hosts.claude_code.hookio import run_hook
+    from iaso.hosts.claude_code.hookio import run_hook
 
     superseding(repo, write_record)
     put(repo, "judgment", {"subject": "SR-001"})
@@ -136,7 +136,7 @@ def _run(node: str, run_id: str, outcome: str = "passed") -> dict[str, Any]:
 
 def test_ex5_evidence_that_keeps_a_test_fresh_stays_live(repo: Path) -> None:
     _file(repo, "tests/test_a.py")
-    from plumb.verify.evidence import load_index
+    from iaso.verify.evidence import load_index
 
     put(repo, "test-run", _run("tests/test_a.py::test_a", "r1"))
     compact(repo)
@@ -185,9 +185,9 @@ def test_ex8_compacting_again_changes_nothing(repo: Path, write_record) -> None:
     put(repo, "judgment", {"subject": "SR-001"})
     put(repo, "judgment", {"subject": "SR-002"}, at="2026-10-25T10:00:00Z")
     assert compact(repo)
-    before = (repo / ".plumb" / "log" / "judgment" / log.SEGMENT).read_bytes()
+    before = (repo / ".iaso" / "log" / "judgment" / log.SEGMENT).read_bytes()
     assert compact(repo) == []
-    assert (repo / ".plumb" / "log" / "judgment" / log.SEGMENT).read_bytes() == before
+    assert (repo / ".iaso" / "log" / "judgment" / log.SEGMENT).read_bytes() == before
     assert len(live(repo, "judgment")) == 1
 
 
@@ -225,7 +225,7 @@ def test_ex11_a_current_approval_and_the_prompt_it_rests_on_stay_live(
 def test_ex12_an_approval_of_a_superseded_record_moves_and_explain_still_names_it(
         repo: Path, write_record) -> None:
     from logutil import legacy_relay
-    from plumb.explain import record_chain
+    from iaso.explain import record_chain
 
     write_record(repo, record("SR-001", "old rule", statement="s", examples=[ex(1)]))
     legacy_relay(repo, ["SR-001"], "sha256:" + "b" * 64, "yes, that")
@@ -244,7 +244,7 @@ def test_ex12_an_approval_of_a_superseded_record_moves_and_explain_still_names_i
 
 def test_ex13_calibration_counts_the_same_labelled_set_before_and_after(
         repo: Path, write_record) -> None:
-    from plumb.capture.calibrate import labelled_set
+    from iaso.capture.calibrate import labelled_set
 
     superseding(repo, write_record)
     for record_id, n in (("SR-001", 1), ("SR-001", 2), ("SR-002", 3)):

@@ -1,5 +1,5 @@
 """SR-384: in an adopted repository's main checkout the pre-tool hook refuses an agent's writes
-(edit tools, writing shell commands, git commit outside a merge, plumb's record writers) and
+(edit tools, writing shell commands, git commit outside a merge, iaso's record writers) and
 tells it to work on a branch in a worktree; worktrees, reads, ignored files and paths outside
 the repository stay open, and the end-of-turn hook holds no stale link there."""
 
@@ -20,14 +20,14 @@ from host.test_stop_stale import (  # noqa: F401 - fixtures
     start_turn,
 )
 
-from plumb.hosts.claude_code import pretool
+from iaso.hosts.claude_code import pretool
 
 pytestmark = [pytest.mark.sr("SR-384"), pytest.mark.main_guard]
 
 
 @pytest.fixture
 def main(repo: Path) -> Path:
-    (repo / ".gitignore").write_text("scratch/\n.plumb/wt/\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("scratch/\n.iaso/wt/\n", encoding="utf-8")
     (repo / "src").mkdir()
     (repo / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
     git(repo, "add", "-A")
@@ -79,13 +79,13 @@ def test_ex2_a_commit_in_a_worktree_is_not_refused(main: Path, worktree: Path) -
     assert bash(main, f"cd {worktree} && git commit -qm x") == {}
 
 
-def test_ex3_a_redirect_git_add_or_plumb_capture_is_refused(main: Path) -> None:
+def test_ex3_a_redirect_git_add_or_iaso_capture_is_refused(main: Path) -> None:
     assert refused(bash(main, "echo y > src/app.py"))
     assert refused(bash(main, "echo y >> src/app.py"))
     assert refused(bash(main, "printf y | tee src/app.py"))
     assert refused(bash(main, "git add -A"))
-    assert refused(bash(main, "uv run --no-sync plumb capture --stdin"))
-    assert refused(bash(main, "plumb link SR-001 implemented_by src/app.py"))
+    assert refused(bash(main, "uv run --no-sync iaso capture --stdin"))
+    assert refused(bash(main, "iaso link SR-001 implemented_by src/app.py"))
     assert refused(bash(main, "sed -i s/1/2/ src/app.py"))
     assert refused(bash(main, "rm src/app.py"))
     assert refused(bash(main, "touch src/new.py"))
@@ -107,18 +107,18 @@ def test_ex4_git_commit_is_refused_unless_a_merge_is_in_progress(main: Path) -> 
 def test_ex5_reads_tests_merges_and_scratch_files_go_ahead(main: Path, tmp_path: Path) -> None:
     (main / "scratch").mkdir()
     for command in ("cat src/app.py", "git status", "git log -1", "git diff",
-                    "uv run --no-sync plumb status", "uv run --no-sync plumb tests run",
+                    "uv run --no-sync iaso status", "uv run --no-sync iaso tests run",
                     "git merge feature", "git merge --abort", "git checkout -- src/app.py",
                     "git worktree list", "git branch -a", "grep -n x src/app.py 2>/dev/null",
                     "rm -rf scratch/x", f"echo y > {tmp_path}/out.txt",
                     "echo y > scratch/out.txt", "echo y > /dev/null 2>&1", "mkdir -p /tmp/zz-sr384",
-                    "plumb show SR-001"):
+                    "iaso show SR-001"):
         assert bash(main, command) == {}, command
     edit_call = {"file_path": str(main / "scratch" / "a.txt"), "content": "y"}
     assert call(main, "Write", **edit_call) == {}
     outside = {"file_path": str(tmp_path / "elsewhere.txt"), "content": "y"}
     assert call(main, "Write", **outside) == {}
-    nested = main / ".plumb" / "wt" / "x"
+    nested = main / ".iaso" / "wt" / "x"
     nested.mkdir(parents=True)
     git(main, "worktree", "add", "-q", "-b", "nested", str(nested))
     inside = {"file_path": str(nested / "src" / "app.py"), "content": "y"}
@@ -130,7 +130,7 @@ def test_a_redirect_to_tmp_is_allowed(main: Path) -> None:
 
 
 def test_ex6_guard_main_false_turns_the_guard_off(main: Path) -> None:
-    config = main / ".plumb" / "config.yaml"
+    config = main / ".iaso" / "config.yaml"
     config.write_text(config.read_text(encoding="utf-8") + "\nmerge:\n  guard_main: false\n",
                       encoding="utf-8")
     edit_call = {"file_path": str(main / "src" / "app.py"), "old_string": "1", "new_string": "2"}
@@ -139,7 +139,7 @@ def test_ex6_guard_main_false_turns_the_guard_off(main: Path) -> None:
 
 
 def test_ex7_the_owner_by_hand_never_meets_the_guard(main: Path) -> None:
-    """The owner's terminal runs no hook, and plumb installs no git hook for this guard."""
+    """The owner's terminal runs no hook, and iaso installs no git hook for this guard."""
     (main / "src" / "app.py").write_text("x = 3\n", encoding="utf-8")
     git(main, "commit", "-qam", "owner edit")
     hooks = subprocess.run(["git", "-C", str(main), "rev-parse", "--git-path", "hooks"],
@@ -149,7 +149,7 @@ def test_ex7_the_owner_by_hand_never_meets_the_guard(main: Path) -> None:
 
 
 def test_the_guard_never_fails_a_call(main: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import main_guard
+    from iaso import main_guard
 
     def boom(*args: object) -> None:
         raise RuntimeError("x")
@@ -172,11 +172,11 @@ def test_ex8_the_stop_hook_does_not_hold_for_a_stale_link_in_mains_checkout(
 def test_a_session_in_a_worktree_cannot_write_into_mains_checkout(repo: Path, tmp_path: Path) -> None:
     """The file's checkout decides, not where the session sits."""
     from conftest import git
-    from plumb import main_guard
+    from iaso import main_guard
 
     wt = tmp_path / "wt"
     git(repo, "worktree", "add", "-q", "-b", "work", str(wt))
-    (wt / ".plumb").mkdir(exist_ok=True)
+    (wt / ".iaso").mkdir(exist_ok=True)
     data = {"cwd": str(wt)}
     assert main_guard.refusal(wt, "Write", {"file_path": str(repo / "app.py")}, data)
     assert not main_guard.refusal(wt, "Write", {"file_path": str(wt / "app.py")}, data)

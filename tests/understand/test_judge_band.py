@@ -1,6 +1,6 @@
 """SR-359: a judge that cannot settle a record is noted for the band's red line, naming the
 judge and the exact cause (from a cause code), until it answers again; a judge that answered but
-whose question plumb set aside is noted apart and never called unreachable. JEV and the model
+whose question iaso set aside is noted apart and never called unreachable. JEV and the model
 are stubs."""
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from plumb.judgment import cause_code
+from iaso.judgment import cause_code
 from understand.fakes import FakeDispatcher
 from understand.test_judge_cascade import StubJev, configure, world  # noqa: F401
 from understand.test_judge_job import build_job
@@ -21,12 +21,12 @@ pytestmark = pytest.mark.sr("SR-359")
 
 
 def judges(repo: Path) -> dict[str, Any]:
-    path = repo / ".plumb" / "session" / "judges.json"
+    path = repo / ".iaso" / "session" / "judges.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
 def cascade(core: Any, dispatcher: Any = None, **kw: Any) -> Any:
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     try:
         return verdict.cascade(core, build_job(core, ["INT-001"]), system="judge", schema={},
@@ -48,7 +48,7 @@ def test_ex1_no_jev_key_the_band_names_the_judge_and_the_key(
 
 def test_ex1_each_cause_has_its_code() -> None:
     assert [cause_code(c) for c in (
-        "judgment.backend is not set in .plumb/config.yaml", "no JEV key (X is not in the env",
+        "judgment.backend is not set in .iaso/config.yaml", "no JEV key (X is not in the env",
         "timeout", "no answer within 120 seconds", "OpenRouter could not be reached (x)",
         "HTTP 500", "HTTP 429", "the answer was not JSON", "HTTP 429: key limit exceeded",
         "a monkey answered")] == [
@@ -66,7 +66,7 @@ def test_ex1_the_model_judge_cannot_be_reached_its_line_names_it_and_why(
 
 def test_ex1_records_too_large_are_not_an_unreachable_judge(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
-    from plumb.understand import verdict
+    from iaso.understand import verdict
 
     monkeypatch.setattr(verdict, "INPUT_MAX", 10)
     cascade(configure(world), FakeDispatcher(), jev=None)
@@ -114,8 +114,8 @@ def test_ex3_a_recovered_judge_stops_showing_red_when_nothing_calls_it(
     red; a model that failed a job (not a missing command) keeps its line until one answers."""
     from capture.capture_helpers import JevStub, use_jev
 
-    from plumb.api import open_core
-    from plumb.judgment import JUDGE_RECHECK_S, judge_down, recheck_judges
+    from iaso.api import open_core
+    from iaso.judgment import JUDGE_RECHECK_S, judge_down, recheck_judges
 
     stub = JevStub()
     try:
@@ -142,7 +142,7 @@ def test_ex3_a_recovered_judge_stops_showing_red_when_nothing_calls_it(
 
 def test_ex3_a_judge_still_down_keeps_its_line_with_the_fresh_cause(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
-    from plumb.judgment import JUDGE_RECHECK_S, judge_down, recheck_judges
+    from iaso.judgment import JUDGE_RECHECK_S, judge_down, recheck_judges
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     core = configure(world, "  jev:\n    credential_env: OPENROUTER_API_KEY\n")
@@ -158,9 +158,9 @@ def test_ex3_the_status_refresh_rechecks_the_judges(
         world: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
     from capture.capture_helpers import JevStub, use_jev
 
-    from plumb.api import open_core
-    from plumb.hosts.claude_code.snapshot import refresh_counts
-    from plumb.judgment import judge_down
+    from iaso.api import open_core
+    from iaso.hosts.claude_code.snapshot import refresh_counts
+    from iaso.judgment import judge_down
 
     stub = JevStub()
     try:

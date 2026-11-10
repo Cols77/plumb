@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
+from iaso.api import open_core
+from iaso.verify import open_verify
 
 
 @pytest.mark.sr("SR-374")

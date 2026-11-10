@@ -3,7 +3,7 @@
     python tests/plugin/mod/stand.py          # assemble the stand and run `claude plugin test`
     python tests/plugin/mod/stand.py --keep   # the same, and print where the stand is
 
-The tests of plumb's mod (``*.test.tsx``, ``harness.ts``, ``fixtures.ts``) live here, beside
+The tests of iaso's mod (``*.test.tsx``, ``harness.ts``, ``fixtures.ts``) live here, beside
 the Python tests, so a marketplace install of ``plugin/`` never carries them. ``claude plugin
 test <dir>`` runs the tests under a mod's own folder and refuses imports from outside it, so this
 assembles a stand in a temporary folder: the mod as it ships (``plugin/.claude-plugin``,
@@ -52,9 +52,9 @@ def assemble(root: Path) -> Path:
 def run(claude: str = "claude", keep: bool = False) -> subprocess.CompletedProcess[str]:
     """Run the mod's tests in a fresh stand; the run's output is captured (stdout and stderr in
     one), so a caller can say which cases failed and why."""
-    tmp = Path(tempfile.mkdtemp(prefix="plumb-mod-stand-"))
+    tmp = Path(tempfile.mkdtemp(prefix="iaso-mod-stand-"))
     try:
-        stand = assemble(tmp / "plumb")
+        stand = assemble(tmp / "iaso")
         if keep:
             print(f"stand: {stand}")
         return subprocess.run([claude, "plugin", "test", str(stand)], check=False, text=True,

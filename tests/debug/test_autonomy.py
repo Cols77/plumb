@@ -1,4 +1,4 @@
-"""SR-343 (DEC-316..DEC-319): plumb's own defects found at a landing go to the background
+"""SR-343 (DEC-316..DEC-319): iaso's own defects found at a landing go to the background
 self-debug job; a committed, reviewed self-fix is named ready to land; the session that hit the
 defect is told once the fix is in main; anyone flags a wrong result with one command. Git is
 real; the landing's judge backlog is stubbed."""
@@ -12,23 +12,23 @@ import pytest
 
 from boundary.test_landing import debug_cases, docs, land_branch
 from mergedriver.mdhelpers import commit_all, run_git
-from plumb import debug
-from plumb.boundary import landing
-from plumb.understand import files
+from iaso import debug
+from iaso.boundary import landing
+from iaso.understand import files
 
 pytestmark = pytest.mark.sr("SR-343")
 
 
 @pytest.fixture
 def own(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """plumb's own repository shape, a session that detects, and no judge backlog."""
-    from plumb.understand import backlog
+    """iaso's own repository shape, a session that detects, and no judge backlog."""
+    from iaso.understand import backlog
 
-    (repo / "pyproject.toml").write_text('[project]\nname = "plumb"\n', "utf-8")
-    (repo / "src" / "plumb").mkdir(parents=True)
-    (repo / "src" / "plumb" / "__init__.py").write_text("", "utf-8")
-    commit_all(repo, "plumb-shaped")
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    (repo / "pyproject.toml").write_text('[project]\nname = "iaso"\n', "utf-8")
+    (repo / "src" / "iaso").mkdir(parents=True)
+    (repo / "src" / "iaso" / "__init__.py").write_text("", "utf-8")
+    commit_all(repo, "iaso-shaped")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     monkeypatch.setattr(backlog, "queue_waiting", lambda core, session, **kw: backlog.Started())
     return repo
 
@@ -65,7 +65,7 @@ def _fixed_branch(root: Path, case: str = "hook-stop-1") -> str:
     """A self-fix as ``selfdebug.fix`` leaves it: a committed branch, the case resolved."""
     debug.open_case(root, id=case, kind="hook-error", target="stop", detail="ValueError: x")
     run_git(root, "checkout", "-q", "-b", "debug/hook-stop-1")
-    docs(root, "src/plumb/fixed.py")
+    docs(root, "src/iaso/fixed.py")
     commit_all(root, "fix")
     run_git(root, "checkout", "-q", "main")
     debug._update(root, [case], branch="debug/hook-stop-1")
@@ -95,7 +95,7 @@ def test_dec318_once_the_fix_is_in_main_the_detecting_session_is_told_what_to_re
 
 
 def test_dec319_anyone_flags_a_wrong_result_with_one_command(own: Path, capsys) -> None:
-    words = ["plumb", "status", "counts", "a", "confirmed", "record", "as", "proposed"]
+    words = ["iaso", "status", "counts", "a", "confirmed", "record", "as", "proposed"]
     assert debug.run("debug", ["--root", str(own), "report", *words]) == 0
     (row,) = debug.open_cases(own)
     assert row["kind"] == "report" and row["detail"] == " ".join(words)
@@ -107,8 +107,8 @@ def test_dec319_anyone_flags_a_wrong_result_with_one_command(own: Path, capsys) 
 def test_dec317_dec318_the_lines_reach_the_agent_at_its_next_prompt(repo: Path) -> None:
     from hosts.hosts_helpers import QuietVerify
 
-    from plumb.contracts import TurnEvent
-    from plumb.hosts.neutral import handle_event
+    from iaso.contracts import TurnEvent
+    from iaso.hosts.neutral import handle_event
 
     debug.open_case(repo, id="a", kind="report", target="flagged", detail="wrong count",
                     session="s1")

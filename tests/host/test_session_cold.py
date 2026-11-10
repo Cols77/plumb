@@ -1,4 +1,4 @@
-"""SR-014: session start inside its budget on plumb's own records, cold and warm, and the
+"""SR-014: session start inside its budget on iaso's own records, cold and warm, and the
 work it leaves out of the hook when the state is cold."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from loadbound import assert_within
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -26,7 +26,7 @@ STEPS = ("imports", "core_open", "index", "brief", "tests_summary", "snapshot", 
 _HARNESS = """
 import io, json, sys, time
 start = time.monotonic()
-from plumb.hosts.claude_code import session_start
+from iaso.hosts.claude_code import session_start
 out = io.StringIO()
 session_start.main(stdin=io.StringIO(sys.argv[2]), stdout=out, root=sys.argv[1],
                    watchdog=False, start=start)
@@ -43,16 +43,16 @@ def _git(root: Path, *args: str) -> str:
 @pytest.fixture(scope="module")
 def own_copy(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A clone of this repository's committed state with the test map built once."""
-    root = tmp_path_factory.mktemp("cold") / "plumb"
+    root = tmp_path_factory.mktemp("cold") / "iaso"
     try:
         _git(REPO, "rev-parse", "--git-dir")
         _git(root.parent, "clone", "-q", "--local", "-c", "core.autocrlf=false", str(REPO),
              str(root))
     except (OSError, subprocess.CalledProcessError):
         pytest.skip("not a git checkout")
-    if not (root / ".plumb" / "requirements").is_dir():
-        pytest.skip("no plumb records in this checkout")
-    from plumb.verify.testmap import build_map
+    if not (root / ".iaso" / "requirements").is_dir():
+        pytest.skip("no iaso records in this checkout")
+    from iaso.verify.testmap import build_map
 
     build_map(open_core(root))
     return root
@@ -71,14 +71,14 @@ def _call(root: Path, env: dict[str, str] | None = None) -> tuple[str, float]:
 
 
 def _wipe_cache(root: Path) -> None:
-    shutil.rmtree(root / ".plumb" / "cache", ignore_errors=True)
+    shutil.rmtree(root / ".iaso" / "cache", ignore_errors=True)
 
 
 _COLD: dict[str, tuple[float, str]] = {}
 
 
 def _cold_best(own_copy: Path) -> tuple[float, str]:
-    """The best of four cold runs (``.plumb/cache`` wiped before each) and its output."""
+    """The best of four cold runs (``.iaso/cache`` wiped before each) and its output."""
     key = str(own_copy)
     if key not in _COLD:
         runs = []
@@ -110,15 +110,15 @@ def test_cold_has_no_check_skipped_line(own_copy: Path) -> None:
 
 @pytest.mark.load_bound
 def test_warm_start_inside_target(own_copy: Path) -> None:
-    """Best of four warm runs at most 900 ms, on plumb's own records."""
+    """Best of four warm runs at most 900 ms, on iaso's own records."""
     _call(own_copy)  # fills the caches
     best = min(_call(own_copy)[1] for _ in range(4))
     assert_within(best, WARM_TARGET_MS, "warm session start (ms)")
 
 
 def test_timing_file_names_every_step(own_copy: Path) -> None:
-    _call(own_copy, {"PLUMB_HOOK_TIMING": "1"})
-    data = json.loads((own_copy / ".plumb" / "session" / "cold" / "timing.json")
+    _call(own_copy, {"IASO_HOOK_TIMING": "1"})
+    data = json.loads((own_copy / ".iaso" / "session" / "cold" / "timing.json")
                       .read_text("utf-8"))
     assert set(STEPS) <= set(data["steps"])
     assert all(isinstance(v, (int, float)) and v >= 0 for v in data["steps"].values())
@@ -128,27 +128,27 @@ def test_timing_off_writes_nothing(repo: Path, hook_input,
                                    monkeypatch: pytest.MonkeyPatch) -> None:
     from fakes import FakeVerify
 
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
-    monkeypatch.delenv("PLUMB_HOOK_TIMING", raising=False)
+    monkeypatch.delenv("IASO_HOOK_TIMING", raising=False)
     session_start.main(stdin=io.StringIO(hook_input("SessionStart")), stdout=io.StringIO(),
                        root=repo, verify=FakeVerify())
-    assert not list((repo / ".plumb" / "session").glob("*/timing.json"))
+    assert not list((repo / ".iaso" / "session").glob("*/timing.json"))
 
 
 # -- HC2: what a session start imports ---------------------------------------------------
 
 _MODULES = """
 import io, json, sys
-from plumb.hosts.claude_code import session_start
+from iaso.hosts.claude_code import session_start
 out = io.StringIO()
 session_start.main(stdin=io.StringIO(sys.argv[2]), stdout=out, root=sys.argv[1], watchdog=False)
 print(json.dumps(sorted(sys.modules)))
 """
-# plumb.judgment.tiers stays: the status of a record rechecks auto-approvals with it
-FORBIDDEN = ("plumb.judgment.jev", "plumb.judgment.model", "plumb.judgment.common",
-             "plumb.judgment.textjudge", "plumb.judgment.fidelity", "plumb.capture.calibrate",
-             "plumb.verify.runner", "plumb.verify.cov_plugin", "urllib.request", "yaml")
+# iaso.judgment.tiers stays: the status of a record rechecks auto-approvals with it
+FORBIDDEN = ("iaso.judgment.jev", "iaso.judgment.model", "iaso.judgment.common",
+             "iaso.judgment.textjudge", "iaso.judgment.fidelity", "iaso.capture.calibrate",
+             "iaso.verify.runner", "iaso.verify.cov_plugin", "urllib.request", "yaml")
 
 
 def test_hook_import_set_has_no_judgment_or_verify_runner(own_copy: Path) -> None:
@@ -166,7 +166,7 @@ def test_hook_import_set_has_no_judgment_or_verify_runner(own_copy: Path) -> Non
 # -- HC3: cold-state work leaves the hook -------------------------------------------------
 
 def _start(repo: Path, hook_input, **kwargs) -> list[str]:
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     out = io.StringIO()
     session_start.main(stdin=io.StringIO(hook_input("SessionStart", source="startup")),
@@ -176,14 +176,14 @@ def _start(repo: Path, hook_input, **kwargs) -> list[str]:
 
 @pytest.fixture
 def roomy(monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 60000.0))
 
 
 def test_cold_start_spawns_map_build_does_not_wait(repo: Path, hook_input, write_record,
                                                    roomy, monkeypatch) -> None:
-    import plumb.verify.api as verify_api
+    import iaso.verify.api as verify_api
 
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     (repo / "tests").mkdir()
@@ -195,7 +195,7 @@ def test_cold_start_spawns_map_build_does_not_wait(repo: Path, hook_input, write
     assert len(started) == 1
     assert not any("tests" in line for line in lines)   # SR-374 EX-9: only what blocks
     # the line is not cached as an answer: once the map exists the next start reports it
-    assert not list((repo / ".plumb" / "cache").glob("**/brief_tests*"))
+    assert not list((repo / ".iaso" / "cache").glob("**/brief_tests*"))
 
 
 def test_no_network_call_cold(repo: Path, hook_input, write_record, roomy,
@@ -205,9 +205,9 @@ def test_no_network_call_cold(repo: Path, hook_input, write_record, roomy,
 
     from fakes import FakeVerify
 
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
-    (repo / ".plumb" / "config.yaml").write_text(
+    (repo / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", "utf-8")
     write_record(repo, "---\nid: INT-001\ntitle: One\nquote: q\n---\n")
     calls: list[str] = []
@@ -240,22 +240,22 @@ def test_brief_kept_when_cut(repo: Path, hook_input, write_record, monkeypatch) 
     """The cut falls on the tests line: the records brief is printed whole."""
     from fakes import FakeVerify
 
-    from plumb.hosts.claude_code import session_start
+    from iaso.hosts.claude_code import session_start
 
     write_record(repo, "---\nid: SR-001\ntitle: One\nstatement: s\n---\n")
     monkeypatch.setattr(session_start, "hook_budget", lambda name: (lambda root: 0.001))
-    (repo / ".plumb" / "session").mkdir(parents=True, exist_ok=True)
-    (repo / ".plumb" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
+    (repo / ".iaso" / "session").mkdir(parents=True, exist_ok=True)
+    (repo / ".iaso" / "session" / "brief_seen.json").write_text("{}", "utf-8")  # all changed
     lines = _start(repo, hook_input, verify=FakeVerify())
-    assert lines[0].startswith("plumb: changed since you last looked: SR-001")
-    assert lines[-1].startswith("plumb: check skipped (budget)")
+    assert lines[0].startswith("iaso: changed since you last looked: SR-001")
+    assert lines[-1].startswith("iaso: check skipped (budget)")
 
 
 def test_cold_branch_scan_is_bounded_and_continues_next_start(repo: Path, monkeypatch) -> None:
     import time
 
-    from plumb.api import open_core
-    from plumb.awareness import scan
+    from iaso.api import open_core
+    from iaso.awareness import scan
 
     for n in range(8):
         _git(repo, "branch", f"topic-{n}")

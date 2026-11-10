@@ -1,4 +1,4 @@
-"""``/plumb init`` under the plugin (SP7 4.5; SR-083 EX-1, EX-2): plumb's record folder and git's
+"""``/iaso init`` under the plugin (SP7 4.5; SR-083 EX-1, EX-2): iaso's record folder and git's
 checks, each calling the user-level launcher; nothing under ``.claude/``, no ``CLAUDE.md``."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.present import owner_text
+from iaso.present import owner_text
 
 from .helpers import PLUGIN, git, git_repo, needs_sh, user_launcher
 
@@ -19,14 +19,14 @@ HOOKS = ("commit-msg", "pre-merge-commit", "prepare-commit-msg", "post-merge", "
 @pytest.fixture
 def plugin_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     home = tmp_path / "home"
-    monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(PLUGIN))
-    monkeypatch.setenv("PLUMB_HOME", str(home))
+    monkeypatch.setenv("IASO_PLUGIN_ROOT", str(PLUGIN))
+    monkeypatch.setenv("IASO_HOME", str(home))
     user_launcher(home)
     return home
 
 
 def _init(root: Path, capsys: pytest.CaptureFixture[str]) -> str:
-    from plumb.cli import main
+    from iaso.cli import main
 
     assert main(["init", "--root", str(root)]) == 0
     return capsys.readouterr().out
@@ -40,7 +40,7 @@ def test_claude_dir_untouched(tmp_path: Path, plugin_home: Path,
                               capsys: pytest.CaptureFixture[str]) -> None:
     root = git_repo(tmp_path / "repo")
     out = _init(root, capsys)
-    assert (root / ".plumb" / "config.yaml").is_file()
+    assert (root / ".iaso" / "config.yaml").is_file()
     assert not (root / ".claude").exists()
     assert not (root / "CLAUDE.md").exists()
     assert out.strip() == owner_text.INIT_DONE
@@ -49,22 +49,22 @@ def test_claude_dir_untouched(tmp_path: Path, plugin_home: Path,
 
 def test_git_hooks_written(tmp_path: Path, plugin_home: Path,
                            capsys: pytest.CaptureFixture[str]) -> None:
-    from plumb import launcher
+    from iaso import launcher
 
     root = git_repo(tmp_path / "repo")
     _init(root, capsys)
     for name in HOOKS:
         text = (_hooks(root) / name).read_text(encoding="utf-8")
         assert launcher.user_launcher() in text, name
-    assert "merge=plumb-record" in (root / ".plumb" / ".gitattributes").read_text(
+    assert "merge=iaso-record" in (root / ".iaso" / ".gitattributes").read_text(
         encoding="utf-8")
-    assert git(root, "config", "--get", "merge.plumb-record.driver").stdout.strip()
+    assert git(root, "config", "--get", "merge.iaso-record.driver").stdout.strip()
 
 
 def _commit_env(home: Path) -> dict[str, str]:
     env = dict(os.environ)
-    env.pop("PLUMB_PLUGIN_ROOT", None)  # git's hooks get it from the launcher, not the session
-    env["PLUMB_HOME"] = str(home)
+    env.pop("IASO_PLUGIN_ROOT", None)  # git's hooks get it from the launcher, not the session
+    env["IASO_HOME"] = str(home)
     return env
 
 
@@ -106,8 +106,8 @@ def test_hook_without_plugin_passes_with_line(tmp_path: Path, plugin_home: Path,
     commit through (the merge boundary at push catches what it skipped)."""
     root = git_repo(tmp_path / "repo")
     _init(root, capsys)
-    (plugin_home / "bin" / "plumb").unlink()
+    (plugin_home / "bin" / "iaso").unlink()
     result = _commit(root, "change\n\nSR: SR-999\n", _commit_env(plugin_home))
     assert result.returncode == 0, result.stderr
-    assert "plumb is not set up on this machine; this commit was not checked" in (
+    assert "iaso is not set up on this machine; this commit was not checked" in (
         result.stdout + result.stderr)

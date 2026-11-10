@@ -12,8 +12,8 @@ def run_git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedP
 
 
 def make_repo(root: Path) -> Path:
-    """A git repository on ``main`` adopted by plumb, with one commit."""
-    from plumb.commands import init_repo
+    """A git repository on ``main`` adopted by iaso, with one commit."""
+    from iaso.commands import init_repo
 
     root.mkdir(parents=True, exist_ok=True)
     run_git(root, "init", "-q", "-b", "main")

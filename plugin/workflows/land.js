@@ -1,6 +1,6 @@
 export const meta = {
   name: 'land',
-  description: "Make a plumb branch ready to land: merge main into it, run the full run, repin the moved links and run the merge check; it never merges into main",
+  description: "Make a iaso branch ready to land: merge main into it, run the full run, repin the moved links and run the merge check; it never merges into main",
   whenToUse: "Run when an intent branch is built and proven in its worktree. args: {branch, worktree, models}. models (optional) sets the model of a level: {haiku, sonnet, opus, fable}. It returns {ready, holds, questions}; the main session then lands the branch.",
   phases: [
     { title: 'Merge main in', detail: 'git merge main inside the worktree' },
@@ -20,22 +20,22 @@ if (!branch || !worktree) {
 }
 
 const HEAVY = [
-  'Heavy jobs go one at a time across every session, under the one-heavy-job lock (plumb-heavy.lock).',
-  'plumb takes it itself for plumb tests run, plumb merge-check --run, plumb repin --after-tests, plumb align and plumb debug fix: run those plainly, never inside a lock of your own.',
-  'Any other heavy command (a pytest run) goes through it as: plumb heavy -- <command>',
+  'Heavy jobs go one at a time across every session, under the one-heavy-job lock (iaso-heavy.lock).',
+  'iaso takes it itself for iaso tests run, iaso merge-check --run, iaso repin --after-tests, iaso align and iaso debug fix: run those plainly, never inside a lock of your own.',
+  'Any other heavy command (a pytest run) goes through it as: iaso heavy -- <command>',
   'A command that waits says what it waits for: let it wait, in the background when it is long. Never create or remove the lock file yourself.',
   'Never run pytest with more than -n 2.',
 ].join('\n')
 const WORKTREE = [
   'Work ONLY in the worktree ' + worktree + ' (branch ' + branch + '): begin every shell command with cd ' + worktree + ' &&',
-  'and run plumb as PYTHONPATH=' + worktree + '/src plumb ... Never edit or merge in the main checkout.',
+  'and run iaso as PYTHONPATH=' + worktree + '/src iaso ... Never edit or merge in the main checkout.',
   'Never bypass a hook or a check: no flag that skips verification, no override, no forced push or merge.',
 ].join('\n')
 const QUESTION = [
   'You ask the owner nothing. If something holds on a choice only the owner can make, or a link whose meaning changed,',
   'stop and return it as a question with options and what each option does.',
 ].join('\n')
-const STATE = 'You are one step of the plumb workflow land, getting branch ' + branch + ' ready to land in main. Steps run in order; yours is named below. You never merge the branch into main: the main session does that.'
+const STATE = 'You are one step of the iaso workflow land, getting branch ' + branch + ' ready to land in main. Steps run in order; yours is named below. You never merge the branch into main: the main session does that.'
 
 const STEP = {
   type: 'object',
@@ -57,14 +57,14 @@ const steps = [
     title: 'Merge main in',
     task: [
       'Pin main first: M=$(git rev-parse main). Then run git merge main in the worktree.',
-      'If it conflicts, resolve each code conflict keeping both sides intent. A conflict in a record file (under .plumb/), or one you cannot settle without the owner, is a question: say what each side wants, choose nothing.',
+      'If it conflicts, resolve each code conflict keeping both sides intent. A conflict in a record file (under .iaso/), or one you cannot settle without the owner, is a question: say what each side wants, choose nothing.',
       'Return ok true when the merge is complete and the tree is clean; finding names the pinned M and the files the merge moved.',
     ],
   },
   {
     title: 'Full run',
     task: [
-      'Run the full run under the heavy lock: plumb merge-check --run main',
+      'Run the full run under the heavy lock: iaso merge-check --run main',
       'Return ok true only if it passed; finding names each failing test or hold.',
     ],
   },
@@ -72,14 +72,14 @@ const steps = [
     title: 'Repin',
     task: [
       'Pick the links the merge moved from git diff HEAD (against HEAD, never against main: main moves).',
-      'Repin them under the heavy lock: plumb repin --after-tests',
+      'Repin them under the heavy lock: iaso repin --after-tests',
       'Return ok true when no moved link is stale; finding names what was repinned.',
     ],
   },
   {
     title: 'Merge check',
     task: [
-      'Run plumb merge-check and read what it says.',
+      'Run iaso merge-check and read what it says.',
       'Return ok true only if nothing holds; holds lists each hold in the owner terms (what it is and why), finding the rest.',
     ],
   },

@@ -1,5 +1,5 @@
-"""A study the owner asks for (SR-355): ``plumb study propose --asked``, any time, loop or not,
-outside the limits on plumb's own proposals; the owner still picks the depth on the band."""
+"""A study the owner asks for (SR-355): ``iaso study propose --asked``, any time, loop or not,
+outside the limits on iaso's own proposals; the owner still picks the depth on the band."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION
 
-from plumb import study
-from plumb.browser.service import BrowserService
-from plumb.study import cli
+from iaso import study
+from iaso.browser.service import BrowserService
+from iaso.study import cli
 
 pytestmark = pytest.mark.sr("SR-355")
 
@@ -25,15 +25,15 @@ def _propose(repo: Path, title: str, *extra: str) -> int:
 
 
 def test_ex1_asked_with_no_loop_open_is_offered_and_nothing_written(repo: Path) -> None:
-    assert _propose(repo, "How merges are held") != 0      # plumb's own proposal needs a loop
+    assert _propose(repo, "How merges are held") != 0      # iaso's own proposal needs a loop
     assert _propose(repo, "How merges are held", "--asked") == 0
     [held] = study.studies(repo)
     assert (held["status"], held["recommend"], held["body"]) == ("idea", "diagrams", "")
     assert BrowserService(repo).studies()["studies"] == []
 
 
-def test_ex2_the_steps_limit_holds_only_plumbs_own_proposals(intent: Path) -> None:
-    assert _propose(intent, "How plumb's background jobs run") == 0
+def test_ex2_the_steps_limit_holds_only_iasos_own_proposals(intent: Path) -> None:
+    assert _propose(intent, "How iaso's background jobs run") == 0
     assert _propose(intent, "Another topic") != 0
     assert _propose(intent, "Another topic", "--asked") == 0
     assert [s["status"] for s in study.studies(intent)] == ["idea", "idea"]

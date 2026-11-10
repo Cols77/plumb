@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from capture_helpers import log_prompt, record_text, run
 
-from plumb.api import open_core
+from iaso.api import open_core
 
 pytestmark = pytest.mark.sr("SR-208")
 
@@ -29,7 +29,7 @@ CASES = [
 
 @pytest.fixture
 def project(repo: Path, write_record, monkeypatch) -> Path:
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     write_record(repo, record_text("SR-001", "Add multiply", statement="multiply two numbers"))
     return repo
 

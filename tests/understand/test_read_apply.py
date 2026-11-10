@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.log import append, stream_of
-from plumb.present import owner_text
-from plumb.understand import read
+from iaso.api import open_core
+from iaso.log import append, stream_of
+from iaso.present import owner_text
+from iaso.understand import read
 from understand.fakes import FakeDispatcher, as_worker, owner_level
 from understand.test_read_job import (
     SESSION,
@@ -77,7 +77,7 @@ def covered(core) -> dict[str, str]:
 
 
 def judge_jobs(core) -> list[list[str]]:
-    from plumb.understand import jobs
+    from iaso.understand import jobs
 
     return [list(j.inputs["records"]) for j in jobs.queued(core.root, SESSION)
             if j.kind == "judge"]
@@ -93,11 +93,11 @@ def core(repo: Path, write_record):
 
 def test_ex1_int008_ok_and_sr088_change_both_go_to_the_judge_with_the_words(core) -> None:
     message = ("INT-008 ok, I am not sure I agree with SR-088. In terms of UX, some features "
-               "might have to remain internal to plumb.")
+               "might have to remain internal to iaso.")
     after, applied, job = run(core, message, ["INT-008", "SR-088"], [
         entry_of(core, "INT-008", "accepted", "INT-008 ok"),
-        entry_of(core, "SR-088", "change", "some features might have to remain internal to plumb",
-                 change="some features stay internal to plumb")])
+        entry_of(core, "SR-088", "change", "some features might have to remain internal to iaso",
+                 change="some features stay internal to iaso")])
     assert approvals(after) == {}
     index = core.index()
     assert covered(after) == {i: index[i].hash for i in ("INT-008", "SR-088")}
@@ -199,7 +199,7 @@ def test_confirmation_lines_say_nothing_was_confirmed_by_the_reading(core) -> No
 
 def test_ex13_nothing_confirmed_while_the_job_runs_judged_when_it_returns(
         core, engine_standins) -> None:
-    from plumb.understand import queue, worker
+    from iaso.understand import queue, worker
 
     state(core, ["SR-040"])
     digest = log_prompt(core, "ok")
@@ -228,7 +228,7 @@ def test_confirmation_text_passes_the_owner_level_scan(core) -> None:
 
 def _forge(core, record_id: str, **changes) -> None:
     """An owner-words approval written the way the worker writes it, then altered."""
-    from plumb.approvals import prompt_digest
+    from iaso.approvals import prompt_digest
 
     message = changes.pop("message", "SR-040 ok")
     payload = {"by": "owner-words", "session": SESSION, "job": "read-0123456789abcdef",
@@ -244,7 +244,7 @@ def _forge(core, record_id: str, **changes) -> None:
 
 
 def test_recheck_owner_words_catches_forged_entry(core) -> None:
-    from plumb.confirm import checked
+    from iaso.confirm import checked
 
     _forge(core, "SR-040")                                         # a true entry
     _forge(core, "SR-041", evidence="yes, definitely")             # evidence not in message

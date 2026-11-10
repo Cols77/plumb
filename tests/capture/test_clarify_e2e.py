@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from capture_helpers import record_text, run
 
-from plumb.api import open_core
-from plumb.hosts.claude_code import stop
+from iaso.api import open_core
+from iaso.hosts.claude_code import stop
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -44,8 +44,8 @@ def git(root: Path, *args: str) -> None:
 
 @pytest.fixture
 def project(repo: Path, write_record) -> Path:
-    from plumb.approvals import approve
-    from plumb.contracts import Target
+    from iaso.approvals import approve
+    from iaso.contracts import Target
 
     write_record(repo, record_text(
         "SR-002", "Exports are CSV files", statement="An export is written as a CSV file",
@@ -61,7 +61,7 @@ def project(repo: Path, write_record) -> Path:
 
 
 def start_turn(repo: Path, asked: dict | None = None) -> None:
-    path = repo / ".plumb" / "session" / "s1" / "turn.json"
+    path = repo / ".iaso" / "session" / "s1" / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     kept = asked if asked is not None else previous.get("asked", {})
@@ -86,7 +86,7 @@ def run_stop(repo: Path, hook_input) -> str | None:
 
 
 def asked_decs(reason: str | None) -> list[str]:
-    return re.findall(r"plumb: (DEC-\d+) is unconfirmed", reason or "")
+    return re.findall(r"iaso: (DEC-\d+) is unconfirmed", reason or "")
 
 
 def test_ambiguous_request_yields_exactly_the_questions_that_matter(

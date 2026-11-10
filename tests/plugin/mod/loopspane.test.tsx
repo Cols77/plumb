@@ -1,17 +1,17 @@
 // The loops count and the loops class (SR-393 as DEC-506 decides it): the band's first line says
 // how many loops are worked on in the project, whether or not this session has one, and never grows
-// a line for them; its chip opens plumb's one docked pane (SR-410) on the loops class, one type at a
+// a line for them; its chip opens iaso's one docked pane (SR-410) on the loops class, one type at a
 // time (intent, debug, evaluate) behind a switch always in view; a folded row is glyph, goal and
 // progress; Enter on a row shows its detail and its actions (reopen, the message field); the pane
-// follows the answer of `plumb mod loops`, which plumb is asked again only when the one change
+// follows the answer of `iaso mod loops`, which iaso is asked again only when the one change
 // stamp moved. Each case runs on the terminal and the desktop.
 import { describe, expect } from 'claude-code/testing'
 
 import { ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, TURN_DONE, test, world } from './harness'
 
-const STAMP = `${ROOT}/.git/plumb-loops.stamp`
-const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
+const STAMP = `${ROOT}/.git/iaso-loops.stamp`
+const LOOP = `${ROOT}/.iaso/session/${SESSION}/intent/aaaaaaaaaaaa.json`
 const PROBLEMS = [{ id: 'KI-1', title: 'a known problem' }]
 
 const row = (kind: string, id: string, goal: string, progress: string, over: Record<string, unknown> = {}) => ({
@@ -48,8 +48,8 @@ function loopsWorld(data: () => unknown, stamp = 'one') {
 }
 
 const pane = (surface: 'terminal' | 'desktop') => ({
-  plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-pane',
-  props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } },
+  plugin: 'iaso', surface, component: 'Pane' as const, requestId: 'iaso-pane',
+  props: { title: 'iaso', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } },
 }) as any
 
 const loopsRuns = (w: { runs: { argv: string[] }[] }) => w.runs.filter(r => r.argv[4] === 'loops')
@@ -60,12 +60,12 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer(LIVE))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 4' })).toBeDefined()
       expect(await band.find({ type: 'Text', text: /charge late fees|stop hook|simple task/ })).toBeUndefined()
       const ran = loopsRuns(w)[0]
       expect(ran?.argv.slice(3)).toEqual(['mod', 'loops', '--session', SESSION, '--root', ROOT, '--json'])
-      expect(ran?.env.PLUMB_AGENT_SESSION).toBe('')
+      expect(ran?.env.IASO_AGENT_SESSION).toBe('')
       await band.unmount()
     })
 
@@ -73,10 +73,10 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([...LIVE, IDLE]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 4 · 1 idle' })).toBeDefined()
       await band.press({ key: 'chip:loops' })
-      expect(w.opens).toEqual([{ id: 'plumb-pane', columns: 80, closeOnEscape: true }])
+      expect(w.opens).toEqual([{ id: 'iaso-pane', columns: 80, closeOnEscape: true }])
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '● intent 2 +1 idle' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '○ debug 1' })).toBeDefined()
@@ -95,7 +95,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer(LIVE))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: /done:/ })).toBeUndefined()
@@ -115,7 +115,7 @@ for (const surface of SURFACES) {
       install(on, w)
       await $.session.start(START)
       expect(w.files[LOOP]).toBeUndefined()
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 1' })).toBeDefined()
       expect(await band.find({ key: 'loop:fold' })).toBeUndefined() // no strip: no loop of its own
       await band.press({ key: 'chip:loops' })
@@ -131,7 +131,7 @@ for (const surface of SURFACES) {
         step: 'plan', stopped: null, stages: {}, tasks: { label: 'writing the plan', done: 3, total: 7, started_at: '2026-10-11T11:59:00Z' } })
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ key: 'loop:fold' })).toBeDefined()
       expect(await band.find({ type: 'Text', text: 'writing the plan · 3/7' })).toBeDefined()
       const texts = (await band.findAll({ type: 'Text' })).map(t => t.text)
@@ -144,7 +144,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ key: 'chip:loops' })).toBeUndefined()
       expect(await band.find({ type: 'Text', text: /loops|idle/ })).toBeUndefined()
       await band.unmount()
@@ -154,10 +154,10 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([IDLE, { ...IDLE, id: 'eeeeeeeeeeee' }, { ...IDLE, id: 'ffffffffffff' }]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: '3 idle loops' })).toBeDefined()
       await band.press({ key: 'chip:loops' })
-      expect(w.opened).toEqual(['plumb-pane'])
+      expect(w.opened).toEqual(['iaso-pane'])
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '○ an old loop nobody works on · build · idle since 2026-10-01' })).toBeDefined()
       await view.unmount()
@@ -170,12 +170,12 @@ for (const surface of SURFACES) {
       w.answer = (action, argv) => action === 'known'
         ? { exitCode: 0, data: { open: 1, issues: PROBLEMS.map(p => ({ ...p, symptom: 's', cause: '', fix: '', fixed: '', state: 'open', history: [] })) } }
         : base(action, argv)
-      w.files[`${ROOT}/.plumb/known-issues.json`] = JSON.stringify({ issues: PROBLEMS })
+      w.files[`${ROOT}/.iaso/known-issues.json`] = JSON.stringify({ issues: PROBLEMS })
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:problems' })
-      expect(w.opens.map(o => o.id)).toEqual(['plumb-pane'])
+      expect(w.opens.map(o => o.id)).toEqual(['iaso-pane'])
       const view = await $.ui.mount(pane(surface))
       expect((await view.find({ type: 'Text', text: /^problems / }))?.props.bold).toBe(true)
       await view.unmount()
@@ -187,7 +187,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([row('intent', 'dddddddddddd', 'a loop of another session', step)]))
       const clock = install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '● a loop of another session · plan' })).toBeDefined()
@@ -203,7 +203,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer(LIVE))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:type:debug' })
@@ -223,7 +223,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer(LIVE.slice(0, 3)))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'loops:type:evaluate' })
@@ -233,7 +233,7 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('SR-394: the reopen press runs plumb mod reopen with the key on stdin', async ($, on) => {
+    test('SR-394: the reopen press runs iaso mod reopen with the key on stdin', async ($, on) => {
       const w = loopsWorld(() => answer([{ ...IDLE, reopen: true }]))
       const base = w.answer
       w.answer = (action, argv) => action === 'reopen'
@@ -241,7 +241,7 @@ for (const surface of SURFACES) {
         : base(action, argv)
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:cccccccccccc' })
@@ -251,7 +251,7 @@ for (const surface of SURFACES) {
       expect(ran[0]?.argv.slice(3)).toEqual(['mod', 'reopen', '--session', SESSION, '--root', ROOT, '--json', '--loop', 'cccccccccccc'])
       expect(JSON.parse(ran[0]?.stdin ?? '{}').key).toMatch(/^[0-9a-f]{64}$/)
       expect(ran[0]?.argv.join(' ')).not.toContain(JSON.parse(ran[0]?.stdin ?? '{}').key) // never in argv
-      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'opened a new session for an old loop'])
+      expect(w.toasts).toEqual(['iaso is opening a new session on that loop; its window can take a few seconds', 'opened a new session for an old loop'])
       // SR-394: the row says it is opening, and a second press while it opens runs nothing
       expect(await view.find({ type: 'Text', text: 'opening a new session…' })).toBeDefined()
       await view.press({ key: 'act:reopen' }) // the same action, pressed again
@@ -264,7 +264,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([...LIVE.map(r => ({ ...r, reopen: false })), { ...IDLE, reopen: true }]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ key: 'act:reopen' })).toBeUndefined() // folded rows draw no action
@@ -284,34 +284,34 @@ for (const surface of SURFACES) {
       w.answer = (action, argv) => action === 'reopen' ? { exitCode: 1, data: { opened: false, command: ['claude'], line } } : base(action, argv)
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:cccccccccccc' })
       await view.press({ key: 'act:reopen' })
-      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', line])
+      expect(w.toasts).toEqual(['iaso is opening a new session on that loop; its window can take a few seconds', line])
       // a failed open can be pressed again
       expect(await view.find({ type: 'Text', text: 'reopen in a new session' })).toBeDefined()
       await view.unmount()
       await band.unmount()
     })
 
-    test('SR-394, SR-395: a refused press toasts what plumb said, not a generic failure', async ($, on) => {
+    test('SR-394, SR-395: a refused press toasts what iaso said, not a generic failure', async ($, on) => {
       const w = loopsWorld(() => answer([{ ...IDLE, reopen: true }, row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true })]))
       const base = w.answer
-      const said = (action: string) => `plumb mod ${action}: ${action === 'send' ? 'no session works on this loop; it can be reopened' : 'a session works on this loop already'}`
+      const said = (action: string) => `iaso mod ${action}: ${action === 'send' ? 'no session works on this loop; it can be reopened' : 'a session works on this loop already'}`
       w.answer = (action, argv) => action === 'reopen' || action === 'send'
         ? { exitCode: 1, data: null, stderr: said(action) } : base(action, argv)
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:cccccccccccc' })
       await view.press({ key: 'act:reopen' })
       await view.press({ key: 'row:loops:bbbbbbbbbbbb' }) // the message field is on the expanded row only
       await view.input({ key: 'loops:say:bbbbbbbbbbbb', text: 'rebase please' })
-      expect(w.toasts).toEqual(['plumb is opening a new session on that loop; its window can take a few seconds', 'a session works on this loop already', 'no session works on this loop; it can be reopened'])
+      expect(w.toasts).toEqual(['iaso is opening a new session on that loop; its window can take a few seconds', 'a session works on this loop already', 'no session works on this loop; it can be reopened'])
       await view.unmount()
       await band.unmount()
     })
@@ -321,7 +321,7 @@ for (const surface of SURFACES) {
       w.noInput = true
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
@@ -336,11 +336,11 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([row('intent', 'aaaaaaaaaaaa', 'my own loop', 'build', { send: true, session: SESSION, message })]))
       const clock = install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       w.files[STAMP] = 'two'
       await clock.advance(10_000)
       await $.turn.complete(TURN_DONE)
-      expect(w.submits.length).toBe(0) // the owner chose (2026-11-07): plumb starts no turn
+      expect(w.submits.length).toBe(0) // the owner chose (2026-11-07): iaso starts no turn
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
@@ -353,7 +353,7 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('SR-395: typing on a working row runs plumb mod send with the words on stdin, the row then reads delivered once the list says so', async ($, on) => {
+    test('SR-395: typing on a working row runs iaso mod send with the words on stdin, the row then reads delivered once the list says so', async ($, on) => {
       let message: { state: string; at: string } | null = null
       const w = loopsWorld(() => answer([row('intent', 'bbbbbbbbbbbb', 'a loop list', 'build', { send: true, message })]))
       const base = w.answer
@@ -364,7 +364,7 @@ for (const surface of SURFACES) {
       }
       const clock = install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:bbbbbbbbbbbb' }) // the message field is on the expanded row only
@@ -390,7 +390,7 @@ for (const surface of SURFACES) {
         { send: true, message: { state: 'sent', at: 't1' } })]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
@@ -403,7 +403,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer([...LIVE, IDLE]))
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'chip:loops' })
       const view = await $.ui.mount(pane(surface))
       await view.press({ key: 'row:loops:aaaaaaaaaaaa' })
@@ -416,7 +416,7 @@ for (const surface of SURFACES) {
       const w = loopsWorld(() => answer(LIVE))
       const clock = install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(loopsRuns(w).length).toBe(1)
       w.files[STAMP] = 'two'
       await $.turn.complete(TURN_DONE)
@@ -427,7 +427,7 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    test('the poll reads only the stamp and runs plumb only when it moved', async ($, on) => {
+    test('the poll reads only the stamp and runs iaso only when it moved', async ($, on) => {
       const w = loopsWorld(() => answer(LIVE))
       const touched: string[] = []
       w.files = new Proxy(w.files, {
@@ -437,14 +437,14 @@ for (const surface of SURFACES) {
       })
       const clock = install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(loopsRuns(w).length).toBe(1)
       touched.length = 0
       await clock.advance(30_000) // the stamp did not move
       expect(loopsRuns(w).length).toBe(1)
       // the band's own status reads (the session's files) are older than the loops; they add the
       // stamp and nothing else: no case, loop or run file, no listing
-      const extra = touched.filter(p => !p.startsWith(`${ROOT}/.plumb/session`) && p !== '<list>')
+      const extra = touched.filter(p => !p.startsWith(`${ROOT}/.iaso/session`) && p !== '<list>')
       expect(extra.length).toBeGreaterThan(0)
       expect(new Set(extra)).toEqual(new Set([STAMP]))
       w.files[STAMP] = 'two'

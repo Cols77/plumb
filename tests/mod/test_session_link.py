@@ -1,5 +1,5 @@
-"""SR-125: the session-start hook says which interpreter runs plumb (``host.json``) before any
-step its budget can cut, so plumb's panel can always reach plumb; the brief's decision
+"""SR-125: the session-start hook says which interpreter runs iaso (``host.json``) before any
+step its budget can cut, so iaso's panel can always reach iaso; the brief's decision
 (``brief.json``) is made at the same moment and a cut later in the hook changes neither.
 
 EX-1 the check cut by its budget (a raised budget and the watchdog's hard exit): host.json
@@ -19,19 +19,19 @@ from pathlib import Path
 import pytest
 
 from mod.helpers import DIGEST, SESSION, run_mod
-from plumb.hosts.claude_code import hookio, session_start
-from plumb.mod import handshake
+from iaso.hosts.claude_code import hookio, session_start
+from iaso.mod import handshake
 
 pytestmark = pytest.mark.sr("SR-264")
 
 
 def _host(root: Path) -> dict | None:
-    path = root / ".plumb" / "session" / SESSION / "host.json"
+    path = root / ".iaso" / "session" / SESSION / "host.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
 def _brief(root: Path) -> dict | None:
-    path = root / ".plumb" / "session" / SESSION / "brief.json"
+    path = root / ".iaso" / "session" / SESSION / "brief.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
@@ -56,7 +56,7 @@ def _cut(monkeypatch, *, keep: list[str] | None = None) -> None:
 
 def test_a_check_cut_by_its_budget_still_names_the_interpreter(repo, monkeypatch,
                                                                 hook_input) -> None:
-    _cut(monkeypatch, keep=["plumb: the records brief"])
+    _cut(monkeypatch, keep=["iaso: the records brief"])
     out = _start(repo, hook_input)
     assert hookio.SKIP_BUDGET in out and "the records brief" in out  # the cut, as before
     host = _host(repo)
@@ -68,10 +68,10 @@ def test_the_watchdog_hard_exit_still_leaves_host_json(repo, hook_input) -> None
     """The hook process killed by its watchdog (``os._exit``) mid-check, as on a slow start."""
     script = textwrap.dedent(f"""
         import io, sys, time
-        from plumb.hosts.claude_code import hookio, session_start
+        from iaso.hosts.claude_code import hookio, session_start
         hookio.HARD_LIMIT_S = 1.5  # past the steps before the handler, even on a loaded machine
         def slow(ctx, verify, timer):
-            ctx.keep(["plumb: the records brief"])
+            ctx.keep(["iaso: the records brief"])
             time.sleep(30)
         session_start._handle = slow
         payload = {hook_input("SessionStart", session_id=SESSION, source="startup")!r}
@@ -93,9 +93,9 @@ def test_a_cut_still_prints_the_brief_while_the_panel_owns_the_background(
         repo, monkeypatch, capsys, hook_input) -> None:
     assert run_mod(monkeypatch, capsys, repo, "hello", stdin={"key_digest": DIGEST})[0] == 0
     held = handshake.registration(repo, SESSION)
-    (repo / ".plumb" / "session" / SESSION / "mod.json").write_text(
+    (repo / ".iaso" / "session" / SESSION / "mod.json").write_text(
         json.dumps({**dict(held or {}), "background": True}), encoding="utf-8")
-    _cut(monkeypatch, keep=["plumb: the records brief"])
+    _cut(monkeypatch, keep=["iaso: the records brief"])
     out = _start(repo, hook_input)
     assert "the records brief" in out              # SR-266 EX-1: the agent keeps the brief
     assert _brief(repo) == {"injected": True}

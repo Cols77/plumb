@@ -1,4 +1,4 @@
-"""The CLI-only fallback: plumb turn start and plumb turn end (sp4 3.2, SR-053)."""
+"""The CLI-only fallback: iaso turn start and iaso turn end (sp4 3.2, SR-053)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from hosts_helpers import make_project, scripted_judge
 
-from plumb.cli import main
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-282")
 
@@ -22,7 +22,7 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
 
 
 def _prompts(repo: Path) -> list[dict]:
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     return [json.loads(line) for line in path.read_text("utf-8").splitlines()]
 
 
@@ -68,7 +68,7 @@ def test_turn_end_prints_summary_and_block_exit_0(project: Path, monkeypatch,
     assert data["block"] is None
 
 
-def test_turn_outside_plumb_repo_is_silent(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_turn_outside_iaso_repo_is_silent(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("sys.stdin", io.StringIO("hello"))
     assert main(["turn", "start"]) == 0

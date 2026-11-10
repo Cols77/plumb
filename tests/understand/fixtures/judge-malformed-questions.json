@@ -98,7 +98,7 @@
    {
     "answer_corrects": false,
     "beyond": [
-     "EX-1 says 'plumb validate reports no dangling link for it'. That is a new validation behaviour the owner never asked for. The owner asked for dirty artifacts to be removed, not for validation to change how it treats references to deleted items."
+     "EX-1 says 'iaso validate reports no dangling link for it'. That is a new validation behaviour the owner never asked for. The owner asked for dirty artifacts to be removed, not for validation to change how it treats references to deleted items."
     ],
     "by": "model",
     "clear": false,

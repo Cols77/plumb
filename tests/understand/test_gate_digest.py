@@ -9,12 +9,12 @@ from typing import Any
 import pytest
 from capture.capture_helpers import log_prompt
 
-from plumb.api import open_core
-from plumb.understand import cmd_clarify, gate, hooks, worker
+from iaso.api import open_core
+from iaso.understand import cmd_clarify, gate, hooks, worker
 
 pytestmark = pytest.mark.sr("SR-225")
 
-TEXT = "/plumb clarify let users export their data"  # SR-171: the check runs on the command
+TEXT = "/iaso clarify let users export their data"  # SR-171: the check runs on the command
 CARD = {"intent": "yes", "topic": "exporting", "gap": True,
         "gaps": [{"id": "format", "question": "Which format?", "suggestions": ["csv", "json"],
                   "blocking": True}]}

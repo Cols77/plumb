@@ -8,14 +8,14 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
+from iaso.api import open_core
+from iaso.verify import open_verify
 
 
 @pytest.fixture
 def project(repo: Path) -> Path:
     make_project(repo)
-    write(repo, ".plumb/config.yaml", "verify:\n  flaky_rerun: true\n")
+    write(repo, ".iaso/config.yaml", "verify:\n  flaky_rerun: true\n")
     write(repo, ".gitignore", "__pycache__/\n")
     commit_all(repo)
     return repo
