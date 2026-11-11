@@ -30,6 +30,14 @@ def rewrite_text(text: str) -> str:
     return text
 
 
+def restore_old(text: str) -> str:
+    """``text`` with the old name put back (the inverse of ``rewrite_text``): the path a file had
+    before the conversion. A repin looks for the pinned version there (SR-432)."""
+    for old, new in _FORMS:
+        text = text.replace(new, old)
+    return text
+
+
 def find_old(start: Path) -> Path | None:
     """The nearest folder upward holding the old records folder (never iaso's own home),
     stopping at the first git root."""
