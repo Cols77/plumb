@@ -14,14 +14,14 @@ SRC = str(Path(__file__).resolve().parents[2] / "src")
 
 
 def run(repo: Path, *args: str, **kw) -> subprocess.CompletedProcess:
-    env = {**os.environ, "PYTHONPATH": SRC, "PLUMB_HEAVY_WAIT_S": "0.1"}
-    return subprocess.run([sys.executable, "-m", "plumb", *args], cwd=repo, env=env,
+    env = {**os.environ, "PYTHONPATH": SRC, "IASO_HEAVY_WAIT_S": "0.1"}
+    return subprocess.run([sys.executable, "-m", "iaso", *args], cwd=repo, env=env,
                           capture_output=True, text=True, encoding="utf-8", **kw)
 
 
 def popen(repo: Path, *args: str) -> subprocess.Popen:
-    env = {**os.environ, "PYTHONPATH": SRC, "PLUMB_HEAVY_WAIT_S": "0.1"}
-    return subprocess.Popen([sys.executable, "-m", "plumb", *args], cwd=repo, env=env,
+    env = {**os.environ, "PYTHONPATH": SRC, "IASO_HEAVY_WAIT_S": "0.1"}
+    return subprocess.Popen([sys.executable, "-m", "iaso", *args], cwd=repo, env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             encoding="utf-8")
 
@@ -35,7 +35,7 @@ def gitrepo(tmp_path: Path) -> Path:
 @pytest.mark.sr("SR-386")
 def test_second_heavy_command_waits_for_the_first_and_says_so_once(gitrepo: Path) -> None:
     """EX-1: B waits, says once what it waits for, starts when A's run ends."""
-    lock = gitrepo / ".git" / "plumb-heavy.lock"
+    lock = gitrepo / ".git" / "iaso-heavy.lock"
     marker = gitrepo / "a-done"
     a = popen(gitrepo, "heavy", "--", sys.executable, "-c",
               f"import time, pathlib; time.sleep(2); pathlib.Path(r'{marker}').write_text('x')")
@@ -57,7 +57,7 @@ def test_second_heavy_command_waits_for_the_first_and_says_so_once(gitrepo: Path
 @pytest.mark.sr("SR-386")
 def test_a_lock_of_a_dead_process_is_taken_over_and_said_once(gitrepo: Path) -> None:
     """EX-2: the lock names a process no longer running."""
-    lock = gitrepo / ".git" / "plumb-heavy.lock"
+    lock = gitrepo / ".git" / "iaso-heavy.lock"
     done = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
                           capture_output=True, text=True)
     dead = done.stdout.strip()
@@ -71,15 +71,15 @@ def test_a_lock_of_a_dead_process_is_taken_over_and_said_once(gitrepo: Path) -> 
 @pytest.mark.sr("SR-386")
 def test_no_lock_held_runs_at_once_and_says_nothing(gitrepo: Path, capsys) -> None:
     """EX-3: in process, no lock held."""
-    from plumb.heavy import heavy
+    from iaso.heavy import heavy
 
-    lock = gitrepo / ".git" / "plumb-heavy.lock"
+    lock = gitrepo / ".git" / "iaso-heavy.lock"
     with heavy(gitrepo, "a job"):
         assert lock.read_text(encoding="utf-8").splitlines()[0] == "a job"
-        assert os.environ.get("PLUMB_HEAVY_HELD") == "1"
+        assert os.environ.get("IASO_HEAVY_HELD") == "1"
     out = capsys.readouterr()
     assert out.out == "" and out.err == "" and not lock.exists()
-    assert "PLUMB_HEAVY_HELD" not in os.environ
+    assert "IASO_HEAVY_HELD" not in os.environ
 
 
 @pytest.mark.sr("SR-386")

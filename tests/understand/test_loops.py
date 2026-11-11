@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from plumb import cli
-from plumb.understand import cmd_intent, files, gate, loops
+from iaso import cli
+from iaso.understand import cmd_intent, files, gate, loops
 
 from capture.capture_helpers import log_prompt
 from conftest import git
@@ -66,7 +66,7 @@ def test_ex2_main_lists_a_loop_opened_in_a_worktree(repo: Path, tmp_path: Path) 
 
 
 def test_ex3_no_intent_yet_the_goal_is_the_opening_words_on_one_line(repo: Path) -> None:
-    words = "/plumb intent " + "make the list\nbetter " * 12
+    words = "/iaso intent " + "make the list\nbetter " * 12
     digest = log_prompt(repo, words, session=SESSION)
     _loop(repo, digest=digest)
     goal = _only(loops.listing(repo, agents=LIVE))["goal"]
@@ -118,10 +118,10 @@ def test_ex8_no_loop_says_so(repo: Path, capsys: pytest.CaptureFixture) -> None:
 
 def test_a_loop_held_in_a_worktree_reads_the_gate_and_words_where_the_session_runs(
         repo: Path, tmp_path: Path) -> None:
-    digest = log_prompt(repo, "/plumb intent track the loops", session=SESSION)
+    digest = log_prompt(repo, "/iaso intent track the loops", session=SESSION)
     _loop(repo, digest=digest)
     gate.close(repo, SESSION, digest, gate.INTENT_CHANGE)
-    (repo / ".plumb" / "session" / SESSION / "host.json").write_text("{}", encoding="utf-8")
+    (repo / ".iaso" / "session" / SESSION / "host.json").write_text("{}", encoding="utf-8")
     wt = _worktree(repo, tmp_path)
     path = cmd_intent.loop_path(wt, SESSION, digest)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,7 +144,7 @@ def test_listing_changes_nothing(repo: Path, tmp_path: Path) -> None:
 
     def snapshot() -> dict[Path, tuple[int, bytes]]:
         return {p: (p.stat().st_mtime_ns, p.read_bytes())
-                for r in (repo, tmp_path / "wt") for p in (r / ".plumb").rglob("*") if p.is_file()}
+                for r in (repo, tmp_path / "wt") for p in (r / ".iaso").rglob("*") if p.is_file()}
 
     before = snapshot()
     loops.listing(repo, agents=LIVE)
@@ -154,7 +154,7 @@ def test_listing_changes_nothing(repo: Path, tmp_path: Path) -> None:
 def test_save_and_adopt_move_the_stamp(repo: Path, tmp_path: Path) -> None:
     wt = _worktree(repo, tmp_path)
     stamp = Path(loops.listing(wt, agents={})["stamp"])
-    assert stamp == repo / ".git" / "plumb-loops.stamp"
+    assert stamp == repo / ".git" / "iaso-loops.stamp"
     path = _loop(repo)
     first = stamp.read_text(encoding="utf-8")
     cmd_intent.save(path, files.read_json(path))
@@ -187,7 +187,7 @@ def test_find_ambiguous_words_list_candidates_and_change_nothing(repo: Path) -> 
         loops.find(data["rows"], "intent loop")
     assert str(raised.value).count("\n") == 2 and "aaaaaaaaaaaa" in str(raised.value)
     assert loops.find(data["rows"], "bbbbbb")["session"] == "sb"
-    # the owner's whole sentence, as the /plumb text passes it, finds the loop it names
+    # the owner's whole sentence, as the /iaso text passes it, finds the loop it names
     assert loops.find(data["rows"], "reopen the bbbbbbbbbbbb loop")["session"] == "sb"
     assert [json.dumps(r, sort_keys=True) for r in data["rows"]] == before
 

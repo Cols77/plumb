@@ -17,9 +17,9 @@ from capture_helpers import log_prompt as hook_prompt  # noqa: E402
 from capture_helpers import run  # noqa: E402
 from jev_fixtures import calibrated  # noqa: E402
 
-from plumb.api import open_core  # noqa: E402
-from plumb.present import owner_text  # noqa: E402
-from plumb.understand import files, hooks, judge  # noqa: E402
+from iaso.api import open_core  # noqa: E402
+from iaso.present import owner_text  # noqa: E402
+from iaso.understand import files, hooks, judge  # noqa: E402
 from understand.fakes import as_worker  # noqa: E402
 from understand.test_judge_job import (  # noqa: E402
     SESSION,
@@ -81,7 +81,7 @@ def judge_confirmed(repo: Path, write_record, monkeypatch) -> list[str]:
     """Auto-approve on and calibrated: the owner's words restated are confirmed by the judge."""
     stub = calibrated(repo, write_record, monkeypatch, requirements=True)
     assert run(repo, "config", "auto-approve", "on") == 0
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "session-1")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "session-1")
     before = set(open_core(repo).index())
     path = repo / "doc.json"
     path.write_text(json.dumps({"intent": INTENT, "requirements": [REQUIREMENT]}),
@@ -97,7 +97,7 @@ def judge_confirmed(repo: Path, write_record, monkeypatch) -> list[str]:
 def run_judge_job(repo: Path, ids: list[str]) -> None:
     """The judge job over ``ids`` as the worker runs it: JEV first, the fast track, the
     entries written with the worker's token."""
-    from plumb.understand import verdict
+    from iaso.understand import verdict
     from understand.fakes import FakeDispatcher
 
     core = open_core(repo)
@@ -121,7 +121,7 @@ def test_ex3_auto_approve_on_and_calibrated_confirms_with_the_judges_verdict(
 def test_ex2_a_typed_settle_says_the_switch_is_gone_and_changes_nothing(
         repo: Path, write_record) -> None:
     make_world(repo, write_record, 1)
-    assert typed(repo, "/plumb settle on intent") == [owner_text.TYPED_SETTLE_GONE]
+    assert typed(repo, "/iaso settle on intent") == [owner_text.TYPED_SETTLE_GONE]
     assert not list(files.jobs_dir(repo, SESSION).glob("*.json"))     # no request was checked
 
 
@@ -129,7 +129,7 @@ def test_ex2_a_typed_settle_says_the_switch_is_gone_and_changes_nothing(
 
 
 @pytest.mark.sr("SR-210")
-@pytest.mark.parametrize("text", ["/plumb undo {id}", "/plumb:plumb undo {id}"])
+@pytest.mark.parametrize("text", ["/iaso undo {id}", "/iaso:iaso undo {id}"])
 def test_ex3_a_typed_undo_is_done_by_the_hook(
         repo: Path, judge_confirmed: list[str], text: str) -> None:
     _, sr = judge_confirmed
@@ -140,10 +140,10 @@ def test_ex3_a_typed_undo_is_done_by_the_hook(
     (entry,) = [e for e in core.events()
                  if e.kind == "revocation" and e.payload.get("by") == "undone"]
     assert entry.payload["by"] == "undone" and entry.payload["via"] == "typed"
-    from plumb import words
+    from iaso import words
 
     assert entry.payload["prompt_digest"] and entry.payload["quote_digest"]
-    assert words.joined(core, entry)["quote"].startswith("/plumb")   # DEC-116: the words are local
+    assert words.joined(core, entry)["quote"].startswith("/iaso")   # DEC-116: the words are local
     assert run(repo, "undo", sr) == 2                    # no such command any more
 
 
@@ -151,7 +151,7 @@ def test_ex3_a_typed_undo_is_done_by_the_hook(
 def test_ex3_a_typed_undo_of_a_record_nobody_judged_changes_nothing(
         repo: Path, write_record) -> None:
     ids = make_world(repo, write_record, 1)
-    lines = typed(repo, f"/plumb undo {ids[0]}")
+    lines = typed(repo, f"/iaso undo {ids[0]}")
     assert lines and not [e for e in open_core(repo).events() if e.kind == "revocation"]
 
 

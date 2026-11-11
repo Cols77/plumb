@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from verify_helpers import write
 
-from plumb.verify.funcmap import MODULE, FuncMap, file_functions
+from iaso.verify.funcmap import MODULE, FuncMap, file_functions
 
 SRC = "src/pkg/mod.py"
 BODY = "def add(a, b):\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n"

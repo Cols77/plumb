@@ -9,17 +9,17 @@ from pathlib import Path
 
 import pytest
 
-from plumb.study import video
+from iaso.study import video
 
 pytestmark = pytest.mark.sr("SR-317")
 
-SKILL = (Path(__file__).resolve().parents[2] / "src/plumb/hosts/claude_code/templates/skills"
-         / "plumb-study-video")
+SKILL = (Path(__file__).resolve().parents[2] / "src/iaso/hosts/claude_code/templates/skills"
+         / "iaso-study-video")
 COMMIT = "cef045011722"
 
 
 def test_ex1_manim_is_installed_and_the_render_uses_no_opengl(tmp_path, monkeypatch):
-    """SR-317 EX-1: Manim comes with plumb[video] (SR-380); the render command asks for no
+    """SR-317 EX-1: Manim comes with iaso[video] (SR-380); the render command asks for no
     OpenGL."""
     assert re.search(r"^video = \[\"manim>=", (SKILL.parents[6] / "pyproject.toml").read_text(
         encoding="utf-8"), re.M)   # the extra brings it; the env may not be synced yet

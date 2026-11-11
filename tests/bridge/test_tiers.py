@@ -6,14 +6,14 @@ import dataclasses
 
 import pytest
 
-from plumb.judgment.model import (
+from iaso.judgment.model import (
     JudgmentAnswer,
     JudgmentQuestion,
     JudgmentRequest,
     make_record,
     verify_record,
 )
-from plumb.judgment.tiers import Thresholds, route
+from iaso.judgment.tiers import Thresholds, route
 
 pytestmark = pytest.mark.sr("SR-245")
 
@@ -80,7 +80,7 @@ SAME_113 = ("jev-1.13", "jev-1.13.0", "typesafe/jev-1.13", "typesafe/jev-1.13-20
 
 @pytest.mark.sr("SR-243")
 def test_normalize_version_folds_vendor_prefix_alias_marker_and_snapshot_date() -> None:
-    from plumb.judgment.tiers import normalize_version, same_version
+    from iaso.judgment.tiers import normalize_version, same_version
 
     assert {normalize_version(v) for v in SAME_113} == {"jev-1.13"}
     assert normalize_version("~typesafe/jev-latest") == "jev-latest"
@@ -105,7 +105,7 @@ def test_route_treats_equivalent_names_as_the_validated_version() -> None:
 
 @pytest.mark.sr("SR-243")
 def test_context_limits_follow_the_normalized_version(monkeypatch) -> None:
-    from plumb.judgment import state
+    from iaso.judgment import state
 
     big, small = state.ContextLimits(64000, 32000), state.ContextLimits(8000, 4000)
     monkeypatch.setattr(state, "VERSION_LIMITS", {"jev-1.13.0": big, "jev-0.9.0": small})

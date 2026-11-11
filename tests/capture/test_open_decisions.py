@@ -1,7 +1,7 @@
 """The open decisions that matter (R1/R11, owner decision 5): a superseded DEC is closed and
 never blocks the one-question-per-message queue. One test per entry point that reads the
 rule: the stop hook, ``next_question`` and the escalation trigger
-(``plumb.capture.clarify.open_decisions``)."""
+(``iaso.capture.clarify.open_decisions``)."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from capture_helpers import record_text
 
-from plumb.api import open_core
-from plumb.capture.clarify import next_question, open_decisions
-from plumb.capture.records import decide
+from iaso.api import open_core
+from iaso.capture.clarify import next_question, open_decisions
+from iaso.capture.records import decide
 
 pytestmark = pytest.mark.sr("SR-223")
 
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.sr("SR-223")
 def superseded(repo: Path, write_record) -> Path:
     """DEC-001 (matters) is answered "B" by superseding it with DEC-002, which the owner
     confirms; DEC-003 (matters) is the next decision that must be asked."""
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     write_record(repo, record_text("INT-021", "calculator work", quote="add things",
                                    readback="add things"))
@@ -49,7 +49,7 @@ def test_next_question_skips_the_superseded_decision(superseded: Path) -> None:
 
 
 def test_escalation_does_not_count_the_superseded_decision(superseded: Path) -> None:
-    from plumb.capture.escalation import escalation
+    from iaso.capture.escalation import escalation
 
     found = escalation(open_core(superseded), matched=["SR-010"])
     assert not [s for s in found if s.trigger == "decisions"]

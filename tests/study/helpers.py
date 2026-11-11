@@ -5,13 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from plumb import study
-from plumb.study import cli
+from iaso import study
+from iaso.study import cli
 
 
 def written(root: Path, session: str, title: str, why: str, body: Path,
             topic: str | None = None, depth: str = "diagrams") -> int:
-    """``plumb study propose``, accepted at ``depth``, then ``plumb study add``: the first
+    """``iaso study propose``, accepted at ``depth``, then ``iaso study add``: the first
     non-zero exit code, else 0."""
     common = ["--root", str(root), "--session", session]
     code = cli.run("study", ["propose", "--title", title, "--why", why, "--depth", "diagrams",
@@ -25,7 +25,7 @@ def written(root: Path, session: str, title: str, why: str, body: Path,
 
 
 def drawn(root: Path, slug: str) -> list[str]:
-    """The IDs ``plumb study gather`` finds on the study's topic (SR-360 EX-1, EX-3)."""
-    from plumb.api import open_core
+    """The IDs ``iaso study gather`` finds on the study's topic (SR-360 EX-1, EX-3)."""
+    from iaso.api import open_core
 
     return [r["id"] for r in cli.gather(open_core(root), root, slug)["records"]]

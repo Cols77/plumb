@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.verify import open_verify
+from iaso.api import open_core
+from iaso.verify import open_verify
 
 pytestmark = pytest.mark.sr("SR-255")
 

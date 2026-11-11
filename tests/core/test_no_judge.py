@@ -1,4 +1,4 @@
-"""SR-174: with no judge reachable plumb says so once and the step waits, deciding nothing
+"""SR-174: with no judge reachable iaso says so once and the step waits, deciding nothing
 by rule; work that needs no judge goes on. Judges are stubbed unreachable, then back."""
 
 from __future__ import annotations
@@ -10,11 +10,11 @@ from types import SimpleNamespace
 import pytest
 
 from core.stale_asked import asked
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.capture import autoapprove
-from plumb.contracts import Target
-from plumb.understand import repin
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.capture import autoapprove
+from iaso.contracts import Target
+from iaso.understand import repin
 
 pytestmark = pytest.mark.sr("SR-245")
 
@@ -41,7 +41,7 @@ def test_ex1_auto_approval_without_a_key_says_so_once_and_approves_nothing(
     from understand.fakes import FakeDispatcher
     from understand.test_judge_job import build_job, make_world, verdict_answer
 
-    from plumb.understand import judge, verdict
+    from iaso.understand import judge, verdict
 
     ids = make_world(repo, write_record, 1)
     core = open_core(repo)

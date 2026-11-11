@@ -16,11 +16,19 @@ import pytest
 _SRC = str(Path(__file__).resolve().parents[1] / "src")
 if sys.path[:1] != [_SRC]:
     sys.path.insert(0, _SRC)
-for _name in [n for n in sys.modules if n == "plumb" or n.startswith("plumb.")]:
+for _name in [n for n in sys.modules if n == "iaso" or n.startswith("iaso.")]:
     if not str(getattr(sys.modules[_name], "__file__", "") or "").startswith(_SRC):
         del sys.modules[_name]
 
 pytest_plugins = ["loadbound"]
+
+# A run started from a git hook (a landing, a debug job) inherits GIT_DIR and kin: every fixture's
+# `git init` would then rewrite the host repository's shared config (report-2680054f). Dropped
+# here, before any fixture or helper runs git.
+from iaso.background import GIT_HOOK_VARS  # noqa: E402
+
+for _name in GIT_HOOK_VARS:
+    os.environ.pop(_name, None)
 
 _KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT": "features",
               "NC": "ncs"}
@@ -52,24 +60,24 @@ def owner_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """The test process stands in for the owner's interactive terminal: every owner-only
     question (``approvals.require_owner``) is answered "y". The guard's own tests
     (``tests/core/test_owner_terminal.py``) restore the real terminal check."""
-    from plumb import approvals
+    from iaso import approvals
 
     monkeypatch.setattr(approvals, "owner_terminal_answer", lambda question: "y")
     # The agent's session marker, set by the host for every command an agent runs, must not
     # leak in: a test that needs it sets it itself.
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
 
 
 # Variable families the machine running the tests may set; none may reach a test.
-_ISOLATED_PREFIXES = ("CLAUDE_", "PLUMB_", "CODEX_", "HERMES_", "GITHEAD_")
+_ISOLATED_PREFIXES = ("CLAUDE_", "IASO_", "CODEX_", "HERMES_", "GITHEAD_")
 _CREDENTIAL_PREFIXES = ("TYPESAFE_", "OPENROUTER_")
 
 
 @pytest.fixture(autouse=True)
 def isolated_environment(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
                          monkeypatch: pytest.MonkeyPatch) -> None:
-    """The one choke point for where a test runs: every host and plumb variable of the outer
-    environment is removed, and the home directory (HOME, USERPROFILE, PLUMB_HOME) points
+    """The one choke point for where a test runs: every host and iaso variable of the outer
+    environment is removed, and the home directory (HOME, USERPROFILE, IASO_HOME) points
     into a temp dir, so no test reads the machine's real settings or credentials. The
     ``jev_live`` tests alone keep the real credentials and home (they call the live service)."""
     live = request.node.get_closest_marker("jev_live") is not None
@@ -80,7 +88,7 @@ def isolated_environment(request: pytest.FixtureRequest, tmp_path_factory: pytes
     if live:
         return
     home = tmp_path_factory.mktemp("home")
-    for name in ("HOME", "USERPROFILE", "PLUMB_HOME"):
+    for name in ("HOME", "USERPROFILE", "IASO_HOME"):
         monkeypatch.setenv(name, str(home))
     monkeypatch.delenv("HOMEDRIVE", raising=False)
     monkeypatch.delenv("HOMEPATH", raising=False)
@@ -89,11 +97,11 @@ def isolated_environment(request: pytest.FixtureRequest, tmp_path_factory: pytes
 @pytest.fixture(autouse=True)
 def jev_user_files(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory,
                    monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests never read the real user-level JEV files (``~/.config/plumb/jev`` and
+    """Tests never read the real user-level JEV files (``~/.config/iaso/jev`` and
     ``jev.json``); only ``jev_live`` tests do, so a configured machine runs them."""
     if request.node.get_closest_marker("jev_live"):
         return
-    from plumb.judgment import jev
+    from iaso.judgment import jev
 
     home = tmp_path_factory.mktemp("user-config")
     monkeypatch.setattr(jev, "user_store_path", lambda: home / "jev")
@@ -108,7 +116,7 @@ def every_record_is_the_sessions_work(request: pytest.FixtureRequest,
     ``work_scope`` tests run the real branch rule."""
     if request.node.get_closest_marker("work_scope"):
         return
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     monkeypatch.setattr(judge, "work_ids", lambda core: set(core.index()))
 
@@ -120,7 +128,7 @@ def main_checkout_is_not_guarded(request: pytest.FixtureRequest,
     only ``main_guard`` tests run the real guard of main's checkout."""
     if request.node.get_closest_marker("main_guard"):
         return
-    from plumb import main_guard
+    from iaso import main_guard
 
     monkeypatch.setattr(main_guard, "main_checkout", lambda directory, root: None)
 
@@ -129,17 +137,17 @@ def main_checkout_is_not_guarded(request: pytest.FixtureRequest,
 def the_disk_floor_is_not_the_test_machines(monkeypatch: pytest.MonkeyPatch) -> None:
     """SR-402: the scratch repositories sit in a temporary folder that may be short of space;
     only the work copy tests run the floor."""
-    from plumb import selfdebug
+    from iaso import selfdebug
 
     monkeypatch.setattr(selfdebug, "FLOOR_GB", 0)
 
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A temporary git repository adopted by plumb (``.plumb/`` dirs) with one commit."""
-    from plumb.commands import init_repo
+    """A temporary git repository adopted by iaso (``.iaso/`` dirs) with one commit."""
+    from iaso.commands import init_repo
 
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init", "-q", "-b", "main")
@@ -158,7 +166,7 @@ def _write_record(repo: Path, text: str, name: str | None = None) -> Path:
     if match is None:
         raise ValueError("record text has no id line")
     record_id = match.group(1)
-    directory = repo / ".plumb" / _KIND_DIRS[record_id.split("-")[0]]
+    directory = repo / ".iaso" / _KIND_DIRS[record_id.split("-")[0]]
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / (name or f"{record_id}.md")
     path.write_bytes(text.encode("utf-8"))

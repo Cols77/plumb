@@ -11,15 +11,15 @@ from pathlib import Path
 import pytest
 
 from mergedriver.mdhelpers import conflicted, parse
-from plumb import cli
-from plumb.hosts.claude_code import session_start, stop
+from iaso import cli
+from iaso.hosts.claude_code import session_start, stop
 
 pytestmark = pytest.mark.sr("SR-256")
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 
 
 def _start_turn(repo: Path, session: str = "s1") -> None:
-    path = repo / ".plumb" / "session" / session / "turn.json"
+    path = repo / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}),
@@ -51,10 +51,10 @@ def test_brief_and_status_card_count_conflicts(repo: Path, hook_input) -> None:
     payload = hook_input("SessionStart", session_id="s2", source="startup")
     assert session_start.main(stdin=io.StringIO(payload), stdout=out, root=repo,
                               verify=None) == 0
-    assert "1 intent conflict(s) await your choice (/plumb conflicts)" in out.getvalue()
-    from plumb.api import open_core
-    from plumb.hosts.claude_code.snapshot import build_snapshot
-    from plumb.present.render import status_card
+    assert "1 intent conflict(s) await your choice (/iaso conflicts)" in out.getvalue()
+    from iaso.api import open_core
+    from iaso.hosts.claude_code.snapshot import build_snapshot
+    from iaso.present.render import status_card
 
     snapshot = build_snapshot(open_core(repo))
     assert snapshot.conflicts == 1

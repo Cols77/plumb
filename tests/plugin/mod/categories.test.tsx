@@ -8,17 +8,17 @@ import { BRASS, PLUM, RED } from '../../../plugin/hooks/text'
 import { ROOT, SESSION } from './fixtures'
 import { BAND, install, START, SURFACES, test, world } from './harness'
 
-const SESS = `${ROOT}/.plumb/session/${SESSION}`
-const STATUS = `${ROOT}/.plumb/session/status.json`
-const JUDGES = `${ROOT}/.plumb/session/judges.json`
+const SESS = `${ROOT}/.iaso/session/${SESSION}`
+const STATUS = `${ROOT}/.iaso/session/status.json`
+const JUDGES = `${ROOT}/.iaso/session/judges.json`
 const BUILD = `${SESS}/build.json`
 const LOOP = `${SESS}/intent/aaaaaaaaaaaa.json`
-const REGISTER = `${ROOT}/.plumb/known-issues.json`
-const STAMP = `${ROOT}/.git/plumb-loops.stamp`
-const PANE = 'plumb-pane'
+const REGISTER = `${ROOT}/.iaso/known-issues.json`
+const STAMP = `${ROOT}/.git/iaso-loops.stamp`
+const PANE = 'iaso-pane'
 
 const study = (slug: string, title: string, status: string, extra = '') =>
-  [`${ROOT}/.plumb/studies/${slug}.md`, `---\ntitle: ${JSON.stringify(title)}\ntopic: "t"\nstep: "plan"\nloop: "aaaaaaaaaaaa"\n` +
+  [`${ROOT}/.iaso/studies/${slug}.md`, `---\ntitle: ${JSON.stringify(title)}\ntopic: "t"\nstep: "plan"\nloop: "aaaaaaaaaaaa"\n` +
     `why: "the plan adds ${slug}"\nrecommend: "diagrams"\ndepth: ""\nstatus: ${JSON.stringify(status)}\n${extra}---\n`] as const
 
 const issue = (n: number, state: string) => ({ id: `KI-${n}`, title: `problem ${n}`, symptom: `symptom ${n}`, cause: `cause ${n}`,
@@ -50,14 +50,14 @@ function mk({ loops = [], known = [], studies = [], judges, build, loop = false 
   return w
 }
 
-const pane = (surface: 'terminal' | 'desktop') => ({ plugin: 'plumb', surface, component: 'Pane' as const, requestId: PANE,
-  props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } } }) as any
+const pane = (surface: 'terminal' | 'desktop') => ({ plugin: 'iaso', surface, component: 'Pane' as const, requestId: PANE,
+  props: { title: 'iaso', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } } }) as any
 
 async function open($: any, on: any, surface: 'terminal' | 'desktop', o: Opt, chip?: string) {
   const w = mk(o)
   install(on, w)
   await $.session.start(START)
-  const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+  const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
   if (chip) await band.press({ key: `chip:${chip}` })
   return { w, band, view: chip ? await $.ui.mount(pane(surface)) : undefined as any }
 }
@@ -74,7 +74,7 @@ for (const surface of SURFACES) {
       expect((await band.find({ type: 'Text', text: 'problems 1' }))?.props.color).toBe(PLUM.dark)
       expect(await band.find({ key: 'hide' })).toBeDefined()
       expect(await band.find({ type: 'Text', text: /First idea|A new study|problem 1|new study:|study idea/ })).toBeUndefined()
-      expect(await band.findAll({ type: 'Text', text: /^plumb / })).toHaveLength(1)
+      expect(await band.findAll({ type: 'Text', text: /^iaso / })).toHaveLength(1)
       await band.unmount()
     })
 
@@ -101,7 +101,7 @@ for (const surface of SURFACES) {
     })
 
     test('SR-409 EX-4: a build misalignment and a judge that cannot settle: one red chip each, no red line', async ($, on) => {
-      const { band } = await open($, on, surface, { build: { lines: ["plumb 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false },
+      const { band } = await open($, on, surface, { build: { lines: ["iaso 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false },
         judges: { down: { JEV: { code: 'no-key', line: 'JEV judge, no key (OPENROUTER_API_KEY not found)' } } } })
       expect((await band.find({ type: 'Text', text: /^build/ }))?.props.color).toBe(RED)
       expect((await band.find({ type: 'Text', text: /^judge/ }))?.props.color).toBe(RED)
@@ -113,7 +113,7 @@ for (const surface of SURFACES) {
       const w = mk({})
       install(on, w)
       await $.session.start(START)
-      const band = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       await band.press({ key: 'hide' })
       const [p, t] = IDEAS[0]!
       w.files[p] = t
@@ -158,7 +158,7 @@ for (const surface of SURFACES) {
       const { view, band } = await open($, on, surface, { loops: [loopRow('aaaaaaaaaaaa', 'live loop', true)], studies: [...IDEAS] }, 'loops')
       const before = (await band.findAll({ type: 'Text' })).map(t => t.text)
       // the right arrow from class:loops: the ring lands on the next tab, as the person moves it
-      await $.ui.focus({ component: 'Pane', requestId: PANE, plugin: 'plumb', element: 'class:studies', origin: { kind: 'person' } } as any)
+      await $.ui.focus({ component: 'Pane', requestId: PANE, plugin: 'iaso', element: 'class:studies', origin: { kind: 'person' } } as any)
       expect((await view.find({ type: 'Text', text: /^studies/ }))?.props.bold).toBe(true)
       expect((await band.findAll({ type: 'Text' })).map(t => t.text)).toEqual(before)
       await view.unmount()
@@ -291,7 +291,7 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
-    const OLD = { lines: ["plumb 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false }
+    const OLD = { lines: ["iaso 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false }
 
     test('SR-413 EX-1: main rebuilt after the cache: one red build chip; the class names both builds and the fix', async ($, on) => {
       const { view, band } = await open($, on, surface, { build: OLD }, 'build')
@@ -333,11 +333,11 @@ for (const surface of SURFACES) {
     })
 
     test('SR-413 EX-5: a question set aside: one plum row naming it, expanded to why; never called unreachable', async ($, on) => {
-      const { view, band } = await open($, on, surface, { judges: { down: {}, set_aside: [{ question: 'Was this settled?', why: "a question names plumb's own words" }] } }, 'judge')
+      const { view, band } = await open($, on, surface, { judges: { down: {}, set_aside: [{ question: 'Was this settled?', why: "a question names iaso's own words" }] } }, 'judge')
       const row = await view.find({ type: 'Text', text: /Was this settled\?/ })
       expect(row?.props.color).toBe(PLUM.dark)
       await view.press({ key: 'row:judge:aside:0' })
-      expect(await view.find({ type: 'Text', text: /a question names plumb's own words/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /a question names iaso's own words/ })).toBeDefined()
       expect(await view.find({ type: 'Text', text: /no judge can be reached/ })).toBeUndefined()
       expect((await band.find({ type: 'Text', text: /^judge/ }))?.props.color).not.toBe(RED)
       await view.unmount()
@@ -359,7 +359,7 @@ const stepped = (id: string, goal: string, current: 'clarify' | 'plan' | 'build'
 
 for (const surface of SURFACES) {
   describe(`SR-414 and SR-305 in the pane on the ${surface}`, () => {
-    test('SR-414 EX-1: a live row offers show its window; pressing it asks plumb to reopen and says what plumb answers', async ($, on) => {
+    test('SR-414 EX-1: a live row offers show its window; pressing it asks iaso to reopen and says what iaso answers', async ($, on) => {
       const { w, view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'plan')] }, 'loops')
       const base = w.answer
       w.answer = (a, v) => a === 'reopen' ? { exitCode: 0, data: { opened: false, shown: true, line: 'brought the window of second window to the front' } } : base(a, v)
@@ -379,7 +379,7 @@ for (const surface of SURFACES) {
     test('SR-414 EX-2: the platform cannot raise it: the owner is told the session and its folder', async ($, on) => {
       const { w, view, band } = await open($, on, surface, { loops: [stepped('bbbbbbbbbbbb', 'second window', 'plan')] }, 'loops')
       const base = w.answer
-      const line = `plumb cannot bring that window forward here; it is session other in ${ROOT}`
+      const line = `iaso cannot bring that window forward here; it is session other in ${ROOT}`
       w.answer = (a, v) => a === 'reopen' ? { exitCode: 1, data: { opened: false, shown: false, line } } : base(a, v)
       await view.press({ key: 'row:loops:bbbbbbbbbbbb' })
       await view.press({ key: 'act:reopen' })

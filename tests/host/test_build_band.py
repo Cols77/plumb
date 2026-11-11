@@ -1,5 +1,5 @@
-"""SR-358: at every prompt plumb compares the plugin the session runs with plumb's local main (by
-vendored source digest) and the plugin Claude Code installed with the main of plumb's repository
+"""SR-358: at every prompt iaso compares the plugin the session runs with iaso's local main (by
+vendored source digest) and the plugin Claude Code installed with the main of iaso's repository
 (by commit, as the local clone's history orders them) and notes one line per misalignment, with
 both versions and the fix, for the band's red lines. A repository that is not known yet is noted
 as unchecked, never red, and the hook never waits for it. Nothing is reinstalled."""
@@ -15,11 +15,11 @@ from pathlib import Path
 import pytest
 from fakes import FakeBackend, FakeVerify
 
-from plumb import build
-from plumb.hosts.claude_code import prompt
+from iaso import build
+from iaso.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-358")
-URL = "https://github.com/Cols77/plumb"
+URL = "https://github.com/Cols77/iaso"
 REAL_LATEST = build._latest      # the `repository` fixture replaces it
 
 
@@ -35,7 +35,7 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _build(repo: Path, digest: str) -> str:
-    """A build of plumb committed in ``repo`` (plumb's local clone): its commit."""
+    """A build of iaso committed in ``repo`` (iaso's local clone): its commit."""
     _manifest(repo, digest)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", f"build {digest}")
@@ -46,12 +46,12 @@ def _turn(repo: Path, hook_input) -> dict:
     payload = hook_input("UserPromptSubmit", prompt="hello there", session_id="s1")
     assert prompt.main(stdin=io.StringIO(payload), stdout=io.StringIO(), root=repo,
                        verify=FakeVerify(), backend=FakeBackend()) == 0
-    return json.loads((repo / ".plumb" / "session" / "s1" / "build.json").read_text("utf-8"))
+    return json.loads((repo / ".iaso" / "session" / "s1" / "build.json").read_text("utf-8"))
 
 
 @pytest.fixture
 def repository(monkeypatch: pytest.MonkeyPatch) -> dict:
-    """plumb's repository main: its ``commit``; "" when it is not known."""
+    """iaso's repository main: its ``commit``; "" when it is not known."""
     held = {"commit": ""}
 
     def latest(url: str) -> str:
@@ -64,15 +64,15 @@ def repository(monkeypatch: pytest.MonkeyPatch) -> dict:
 @pytest.fixture
 def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository):
     """``loaded(digest, installed=None)``: the plugin Claude Code runs, as the hooks'
-    PLUMB_PLUGIN_ROOT names it; ``installed`` is the commit Claude Code recorded for it."""
+    IASO_PLUGIN_ROOT names it; ``installed`` is the commit Claude Code recorded for it."""
     cached = tmp_path / "cache"
     (cached / "plugin" / ".claude-plugin").mkdir(parents=True)
     (cached / "plugin" / ".claude-plugin" / "plugin.json").write_text(
         json.dumps({"repository": URL}), encoding="utf-8")
-    monkeypatch.setenv("PLUMB_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("IASO_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)     # the session's own plugin
-    monkeypatch.setenv("PLUMB_PLUGIN_ROOT", str(cached / "plugin"))
+    monkeypatch.setenv("IASO_PLUGIN_ROOT", str(cached / "plugin"))
     monkeypatch.setattr(prompt, "understand_lines", lambda ctx, core, digest, text: [])
 
     def load(digest: str, installed: str | None = None) -> None:
@@ -80,7 +80,7 @@ def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository):
         if installed:
             file = tmp_path / "claude" / "plugins" / "installed_plugins.json"
             file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text(json.dumps({"version": 2, "plugins": {"plumb@plumb": [
+            file.write_text(json.dumps({"version": 2, "plugins": {"iaso@iaso": [
                 {"scope": "project", "projectPath": "elsewhere", "gitCommitSha": "other",
                  "installPath": str(cached / "plugin")},
                 {"scope": "user", "gitCommitSha": installed,
@@ -124,7 +124,7 @@ def test_ex2_installed_plugin_equal_to_its_repository_the_line_is_gone(
     loaded("aaa-0000", installed=repository["commit"])
     assert build.outdated(repo) == (False, "")
     assert _turn(repo, hook_input) == {"lines": [], "unchecked": False}
-    monkeypatch.delenv("PLUMB_PLUGIN_ROOT")                      # not run from a plugin
+    monkeypatch.delenv("IASO_PLUGIN_ROOT")                      # not run from a plugin
     assert build.check(repo)["lines"] == []
 
 
@@ -147,7 +147,7 @@ def test_ex3_local_main_rebuilt_after_the_load_says_reload(
     repository["commit"] = _build(repo, "bbb-0000")
     loaded("aaa-0000")
     assert _turn(repo, hook_input)["lines"] == [
-        "plumb aaa-000 is behind local main's bbb-000: reload plugins"]
+        "iaso aaa-000 is behind local main's bbb-000: reload plugins"]
 
 
 def test_the_plugin_built_from_a_branch_is_ahead_of_local_main(
@@ -158,7 +158,7 @@ def test_the_plugin_built_from_a_branch_is_ahead_of_local_main(
     _git(repo, "checkout", "-q", "main")
     loaded("ccc-0000")
     assert build.check(repo)["lines"] == [
-        "plumb ccc-000 is ahead of local main's aaa-000 (built from another branch)"]
+        "iaso ccc-000 is ahead of local main's aaa-000 (built from another branch)"]
 
 
 def test_ex5_an_unknown_repository_is_unchecked_not_red(
@@ -176,10 +176,10 @@ def spawned(monkeypatch: pytest.MonkeyPatch) -> list:
 
 
 def _kept(commit: str, age: float) -> None:
-    from plumb.launcher import plumb_home
+    from iaso.launcher import iaso_home
 
-    plumb_home().mkdir(parents=True, exist_ok=True)
-    (plumb_home() / "latest.json").write_text(json.dumps(
+    iaso_home().mkdir(parents=True, exist_ok=True)
+    (iaso_home() / "latest.json").write_text(json.dumps(
         {"url": URL, "commit": commit, "at": time.time() - age}), encoding="utf-8")
 
 

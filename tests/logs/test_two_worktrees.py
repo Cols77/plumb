@@ -8,9 +8,9 @@ import pytest
 from logutil import entries
 
 from logs.gitrepo import add_worktree, commit_all, make_repo, run_git
-from plumb import approvals, log
-from plumb.api import open_core
-from plumb.validate import validate
+from iaso import approvals, log
+from iaso.api import open_core
+from iaso.validate import validate
 
 pytestmark = pytest.mark.sr("SR-232")
 
@@ -30,10 +30,10 @@ def _activity(root: Path, side: str, record: str) -> None:
 
 def test_appends_in_two_worktrees_merge_without_conflict(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("PLUMB_AGENT_SESSION", raising=False)
+    monkeypatch.delenv("IASO_AGENT_SESSION", raising=False)
     main = make_repo(tmp_path / "main")
     for n in (1, 2):
-        path = main / ".plumb" / "requirements" / f"SR-00{n}.md"
+        path = main / ".iaso" / "requirements" / f"SR-00{n}.md"
         path.write_text(SR.format(n=n), encoding="utf-8")
     open_core(main).log_append("events", "repin", {"note": "base"})
     commit_all(main, "records")

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
+from iaso.api import open_core
 from understand.fakes import as_worker
 from understand.test_judge_job import (
     SESSION,
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.sr("SR-248")
 
 
 def owner_on(root: Path, probability: float = 0.7, confidence: str = "medium") -> None:
-    """The owner's auto-approve switch, as ``plumb config auto-approve on`` logs it."""
+    """The owner's auto-approve switch, as ``iaso config auto-approve on`` logs it."""
     open_core(root).log_append("events", "config", {"by": "owner", "auto_approve": {
         "enabled": True, "backend": "jev", "min_probability": probability,
         "min_confidence": confidence}})
@@ -62,8 +62,8 @@ def test_ex2_without_a_round_nothing_is_approved_and_an_intent_is_after_one(
 
 
 def test_ex4_undo_revokes_it_and_counts_as_a_no(world: Path) -> None:  # noqa: F811
-    from plumb.capture.calibrate import labelled_set
-    from plumb.understand import tidy
+    from iaso.capture.calibrate import labelled_set
+    from iaso.understand import tidy
 
     judged(world, ("SR-001", "supported", 0.8))
     assert tidy.run("undo", ["SR-001", "--root", str(world)]) == 0
@@ -92,8 +92,8 @@ def test_ex6_without_the_owners_switch_a_round_still_approves(world: Path) -> No
 
 def test_ex7_recheck_refuses_an_approval_with_no_round_or_not_clear_on_read(
         world: Path) -> None:  # noqa: F811
-    from plumb.approvals import approval_items
-    from plumb.confirm import checked
+    from iaso.approvals import approval_items
+    from iaso.confirm import checked
 
     digest = owner_answers(world, ["INT-001"])    # an answer about another record
     core = open_core(world)

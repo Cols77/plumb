@@ -6,13 +6,13 @@ import sys
 
 import pytest
 
-from plumb.evaluate import tasks
+from iaso.evaluate import tasks
 
-RULE = ("Whenever plumb behaves wrongly (a refusal you cannot explain, an error, a command or "
-        "hook line that contradicts plumb's skills or its own words, a question you cannot "
-        "answer), append one JSON line to `.plumb/eval-issues.jsonl`: "
-        '`{"when": ISO time, "command": the plumb command or hook, "expected": what you '
-        'expected, "got": what plumb said, "context": what you were doing}`. '
+RULE = ("Whenever iaso behaves wrongly (a refusal you cannot explain, an error, a command or "
+        "hook line that contradicts iaso's skills or its own words, a question you cannot "
+        "answer), append one JSON line to `.iaso/eval-issues.jsonl`: "
+        '`{"when": ISO time, "command": the iaso command or hook, "expected": what you '
+        'expected, "got": what iaso said, "context": what you were doing}`. '
         "Then go on with the work.")
 
 

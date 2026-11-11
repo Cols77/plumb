@@ -1,4 +1,4 @@
-"""BRIDGE BS1: the cascade-to-LLM hook point and ``plumb judgment status`` (spec 8.2)."""
+"""BRIDGE BS1: the cascade-to-LLM hook point and ``iaso judgment status`` (spec 8.2)."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import EscalationRequest, Judgment, LLMCascade
-from plumb.judgment import get_cascade
-from plumb.judgment.cascade import HostAgentCascade, reaches_owner
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import EscalationRequest, Judgment, LLMCascade
+from iaso.judgment import get_cascade
+from iaso.judgment.cascade import HostAgentCascade, reaches_owner
 
 pytestmark = [pytest.mark.sr("SR-242"), pytest.mark.sr("SR-245")]
 
@@ -24,7 +24,7 @@ def _judgment(tier: str, subject: str = "SR-004") -> Judgment:
 
 
 def _queue(repo: Path) -> list[dict]:
-    path = repo / ".plumb" / "session" / "escalations.jsonl"
+    path = repo / ".iaso" / "session" / "escalations.jsonl"
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

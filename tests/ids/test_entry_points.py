@@ -11,13 +11,13 @@ from pathlib import Path
 import pytest
 
 from ids.gitrepo import make_repo, run_git, write
-from plumb import ids
-from plumb.cli import main
-from plumb.paths import PlumbPaths
+from iaso import ids
+from iaso.cli import main
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-257")
 
-SRC = Path(__file__).resolve().parents[2] / "src" / "plumb"
+SRC = Path(__file__).resolve().parents[2] / "src" / "iaso"
 
 
 def recent(root: Path) -> list[str]:
@@ -36,7 +36,7 @@ def root(tmp_path: Path) -> Path:
     root = make_repo(tmp_path / "r")
     # another worktree already reserved SR-001 to SR-004, INT-001 and DEC-001 to DEC-002:
     # this worktree has none of those files, so only the ref can say so
-    ids.observe(PlumbPaths(root), ["SR-004", "INT-001", "DEC-002", "FEAT-001", "NC-0001"])
+    ids.observe(IasoPaths(root), ["SR-004", "INT-001", "DEC-002", "FEAT-001", "NC-0001"])
     write(root, "INT-001", "an intent", quote="q", readback="r")
     return root
 
@@ -48,25 +48,25 @@ def root(tmp_path: Path) -> Path:
     ("feature", ["--description", "d"], "FEAT-002"),
     ("nc", [], "NC-0002"),
 ])
-def test_plumb_new_reserves_each_kind(root: Path, kind: str, args: list[str],
+def test_iaso_new_reserves_each_kind(root: Path, kind: str, args: list[str],
                                       expected: str) -> None:
     assert cli(root, "new", kind, "--title", f"a {kind}", *args) == 0
     assert recent(root)[-1] == expected
-    assert (root / ".plumb").rglob(f"{expected}.md")
+    assert (root / ".iaso").rglob(f"{expected}.md")
 
 
-def test_plumb_intent_reserves(root: Path) -> None:
+def test_iaso_intent_reserves(root: Path) -> None:
     assert cli(root, "intent", "--quote", "add multiply", "--readback", "add multiply") == 0
     assert recent(root)[-1] == "INT-002"
 
 
-def test_plumb_decide_reserves(root: Path) -> None:
+def test_iaso_decide_reserves(root: Path) -> None:
     assert cli(root, "decide", "--question", "floats?", "--chosen", "integers",
                "--derives-from", "INT-001") == 0
     assert recent(root)[-1] == "DEC-003"
 
 
-def test_plumb_decide_supersede_reserves(root: Path) -> None:
+def test_iaso_decide_supersede_reserves(root: Path) -> None:
     write(root, "DEC-002", "integers", question="floats?", chosen="integers")
     assert cli(root, "decide", "--question", "floats?", "--chosen", "floats too",
                "--supersede", "DEC-002") == 0
@@ -79,24 +79,24 @@ DOC = {"intent": "INT-001",
        "decisions": [{"question": "floats?", "chosen": "integers", "alternatives": ["floats"]}]}
 
 
-def test_plumb_capture_reserves(root: Path, tmp_path: Path) -> None:
+def test_iaso_capture_reserves(root: Path, tmp_path: Path) -> None:
     doc = tmp_path / "doc.json"
     doc.write_text(json.dumps(DOC), encoding="utf-8")
     assert cli(root, "capture", "--file", str(doc)) == 0
     assert recent(root)[-3:] == ["SR-005", "SR-006", "DEC-003"]
 
 
-def test_plumb_capture_dry_run_reserves_nothing(root: Path, tmp_path: Path) -> None:
+def test_iaso_capture_dry_run_reserves_nothing(root: Path, tmp_path: Path) -> None:
     doc = tmp_path / "doc.json"
     doc.write_text(json.dumps(DOC), encoding="utf-8")
     before = run_git(root, "rev-parse", ids.REF).strip()
     assert cli(root, "capture", "--file", str(doc), "--dry-run") == 0
     assert run_git(root, "rev-parse", ids.REF).strip() == before
-    assert not (root / ".plumb" / "requirements" / "SR-005.md").exists()
+    assert not (root / ".iaso" / "requirements" / "SR-005.md").exists()
 
 
 def test_intent_conflict_ids_reserve(root: Path) -> None:
-    assert ids.reserve(PlumbPaths(root), "conflict") == ["IC-001"]
+    assert ids.reserve(IasoPaths(root), "conflict") == ["IC-001"]
     assert recent(root)[-1] == "IC-001"
 
 
@@ -118,9 +118,9 @@ def test_no_module_computes_record_numbers_outside_store_and_ids() -> None:
     assert offenders == []
 
 
-def test_plumb_capture_reserves_once_per_prefix(root: Path, tmp_path: Path,
+def test_iaso_capture_reserves_once_per_prefix(root: Path, tmp_path: Path,
                                                 monkeypatch) -> None:
-    from plumb.ids import ref as ref_mod
+    from iaso.ids import ref as ref_mod
 
     messages: list[str] = []
     real = ref_mod.update
@@ -133,4 +133,4 @@ def test_plumb_capture_reserves_once_per_prefix(root: Path, tmp_path: Path,
     doc = tmp_path / "doc.json"
     doc.write_text(json.dumps(DOC), encoding="utf-8")
     assert cli(root, "capture", "--file", str(doc)) == 0
-    assert messages == ["plumb: reserve SR-005, SR-006", "plumb: reserve DEC-003"]
+    assert messages == ["iaso: reserve SR-005, SR-006", "iaso: reserve DEC-003"]

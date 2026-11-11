@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import files, tidy, worker
+from iaso.api import open_core
+from iaso.understand import files, tidy, worker
 from understand.test_judge_job import SESSION, requirement_text
 
 pytestmark = pytest.mark.sr("SR-217")
@@ -33,7 +33,7 @@ SAID = "remove the worktree but not the branch, remove duplicates"
 
 def _waiting(repo: Path) -> str:
     """A judge question on SR-001 in a session, and the owner's earlier answer logged."""
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     index = open_core(repo).index()
     files.write_json_atomic(judge.questions_path(repo, "cli"), [
@@ -53,13 +53,13 @@ def _tidy(repo: Path) -> None:
 
 
 def _left(repo: Path) -> list[str]:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     return [str(q.get("question")) for q in judge.open_anywhere(open_core(repo))]
 
 
 def _close(world, digest: str, quote: str) -> None:
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     world.dispatcher.script = {"tidy": {"questions": [
         {"question": judge.question_key(ASKED), "answer": digest, "quote": quote}]}}
@@ -84,7 +84,7 @@ def test_a_quote_not_in_the_answer_closes_nothing(repo: Path, world) -> None:
 
 
 def test_the_owner_can_reopen_a_closed_question(repo: Path, world, capsys) -> None:
-    from plumb.understand import cmd_question
+    from iaso.understand import cmd_question
 
     _close(world, _waiting(repo), "remove the worktree but not the branch")
     _tidy(repo)
@@ -102,7 +102,7 @@ def test_the_job_reads_waiting_questions(repo: Path, world) -> None:
 def test_a_typed_reply_is_not_asked_again_until_the_job_read_it(repo: Path, world) -> None:
     """SR-212: a reply in the owner's own words leaves the question open; no session is told to
     ask it until the job has read the reply; a reply that settled nothing brings it back."""
-    from plumb.understand import judge
+    from iaso.understand import judge
 
     _waiting(repo)
     key = judge.question_key(ASKED)

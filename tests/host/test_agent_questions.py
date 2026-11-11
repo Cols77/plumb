@@ -1,4 +1,4 @@
-"""SR-362: the agent puts the judge's questions in the owner's terms (``plumb question reword``,
+"""SR-362: the agent puts the judge's questions in the owner's terms (``iaso question reword``,
 merging those on one principle) and asks every one; a point the owner already answered is the
 judge's not to raise again (``judge._answered_before``). The model is scripted."""
 
@@ -23,8 +23,8 @@ from understand.test_judge_job import SESSION
 from understand.test_judge_questions import answer as judged
 from understand.test_judge_questions import asking, written
 
-from plumb.api import open_core
-from plumb.understand import cmd_clarify, cmd_question, judge
+from iaso.api import open_core
+from iaso.understand import cmd_clarify, cmd_question, judge
 
 pytestmark = pytest.mark.sr("SR-362")
 
@@ -76,7 +76,7 @@ def test_an_answer_given_before_the_rewording_answers_the_question_it_covers(
     """The agent asked in its own words and registered the wording afterwards: the owner's
     earlier answer is pointed at the judge's question (``answer-bound``, their words not
     copied), so it is not asked twice and the judge reads it again."""
-    from plumb.understand import premise
+    from iaso.understand import premise
 
     judge_asks(world, (ASK, ["SR-001"]))
     answer(world, hook_input, WORDED, "Only public pages", options=SHOWN)
@@ -122,7 +122,7 @@ def _reword_flags(repo: Path, *covers: str) -> int:
 
 
 def _needed(repo: Path) -> list[bool]:
-    from plumb.understand import testchange
+    from iaso.understand import testchange
 
     answers = judge.answers_by_key(open_core(repo))
     return [testchange.owner_needed(answers, node, srs) for node, srs in FLAGS]
@@ -133,7 +133,7 @@ def test_one_wording_merges_two_flag_questions_and_one_answer_ends_both(
     """report-5f6565d7: the merge check's hidden-regression flag questions are in no session's
     question file; a wording may cover them all the same, and the owner's one "needed" ends
     every flag it covers (``testchange.owner_needed`` reads it by each flag's key)."""
-    from plumb.understand import testchange
+    from iaso.understand import testchange
 
     texts = [testchange.flag_question(node, srs) for node, srs in FLAGS]
     assert _reword_flags(world, *texts) == 0
@@ -151,7 +151,7 @@ def test_one_wording_merges_two_flag_questions_and_one_answer_ends_both(
 
 def test_a_flag_answer_given_before_the_rewording_ends_the_flags_it_covers(
         world: Path, hook_input) -> None:  # noqa: F811
-    from plumb.understand import testchange
+    from iaso.understand import testchange
 
     texts = [testchange.flag_question(node, srs) for node, srs in FLAGS]
     answer(world, hook_input, FLAGGED, FLAG_SHOWN[0]["label"], options=FLAG_SHOWN)
@@ -164,7 +164,7 @@ def test_a_flag_answer_given_before_the_rewording_ends_the_flags_it_covers(
 
 def test_a_wording_covering_a_flag_and_a_judge_question_answers_both(
         world: Path, hook_input) -> None:  # noqa: F811
-    from plumb.understand import testchange
+    from iaso.understand import testchange
 
     flag = testchange.flag_question(*FLAGS[0])
     judge_asks(world, (ASK, ["SR-001"]))
@@ -198,9 +198,9 @@ def test_the_missed_check_counts_a_registered_wording_as_matched(
     assert outcome.lines == [cmd_clarify.ASK_QUESTIONS.format(n=1)]
 
 
-def test_ex5_each_question_carries_its_key_and_plumbs_words_are_marked_to_reword(
+def test_ex5_each_question_carries_its_key_and_iasos_words_are_marked_to_reword(
         world: Path) -> None:  # noqa: F811
-    """EX-5: the agent gets the key ``reword`` takes; a question in plumb's own
+    """EX-5: the agent gets the key ``reword`` takes; a question in iaso's own
     words is marked to be put in the owner's terms first."""
     judge_asks(world, (ASK, ["SR-001"]), (OTHER, ["INT-001"]))
     path = judge.questions_path(world, SESSION)
@@ -219,7 +219,7 @@ def test_ex5_each_question_carries_its_key_and_plumbs_words_are_marked_to_reword
 
 def _judge_raises(repo: Path, text: str, principle: str, reading: str = "") -> None:
     """The judge raises ``text`` on ``principle``; ``reading``: the round reads that answer."""
-    from plumb.understand import judge as judging
+    from iaso.understand import judge as judging
 
     core = open_core(repo)
     job = judging.build(core, SESSION, records=["SR-001"])

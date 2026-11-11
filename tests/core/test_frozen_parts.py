@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from merge.merge_helpers import commit, project, write
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.commands import status_data
+from iaso import cli
+from iaso.api import open_core
+from iaso.commands import status_data
 
 pytestmark = pytest.mark.sr("SR-380")
 
@@ -28,11 +28,11 @@ INT = "---\nid: INT-001\ntitle: Hosts\nquote: q\nreadback: Hosts.\n---\n"
 
 
 def _adapter(repo: Path) -> None:
-    write(repo, ".plumb/intents/INT-001.md", INT)
-    write(repo, ".plumb/requirements/SR-001.md", SR)
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR)
     write(repo, "src/hosts/codex/adapter.py", "def brief():\n    return 1\n")
     write(repo, "tests/hosts/test_codex.py", "def test_brief():\n    assert True\n")
-    write(repo, ".plumb/config.yaml", FREEZE)
+    write(repo, ".iaso/config.yaml", FREEZE)
     root = ["--root", str(repo)]
     assert cli.main(["link", "SR-001", "derives_from", "INT-001", *root]) == 0
     assert cli.main(["link", "SR-001", "implemented_by", "src/hosts/codex/adapter.py",
@@ -59,7 +59,7 @@ def test_ex2_a_sleeping_part_counts_no_stale_link_in_drift_or_brief(
 
 def test_ex2_a_sleeping_part_holds_no_merge_and_owes_no_evidence(repo: Path, capsys) -> None:
     project(repo)
-    write(repo, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n"
+    write(repo, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n"
           "freeze:\n  - src/pkg/mod.py\n  - tests/test_mod.py\n")
     sha = commit(repo, "project")
     write(repo, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
@@ -67,7 +67,7 @@ def test_ex2_a_sleeping_part_holds_no_merge_and_owes_no_evidence(repo: Path, cap
     cli.main(["merge-check", sha, "--no-run", "--json", "--root", str(repo)])
     report = json.loads(capsys.readouterr().out)
     assert report["stale_links"] == [] and report["untested_links"] == []
-    from plumb.verify import open_verify
+    from iaso.verify import open_verify
 
     assert open_verify(open_core(repo)).unverified_acceptance(["SR-001"]) == {}
 
@@ -79,13 +79,13 @@ def test_ex2_a_frozen_record_waits_on_no_judge(repo: Path, write_record) -> None
     assert data["awaiting"] == ["SR-002"] and data["records"]["requirement"] == 1
 
 
-def test_ex3_the_host_working_on_plumb_wakes_its_part(
+def test_ex3_the_host_working_on_iaso_wakes_its_part(
         repo: Path, write_record, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
     _adapter(repo)
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "codex")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "codex")
     assert [d["target"] for d in _drift(repo, capsys)["stale"]] == [
         "src/hosts/codex/adapter.py"]
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "hermes")      # another host's marker: still asleep
+    monkeypatch.setenv("IASO_AGENT_SESSION", "hermes")      # another host's marker: still asleep
     assert _drift(repo, capsys)["stale"] == []
 
 
@@ -95,9 +95,9 @@ def test_dec_404_a_failing_frozen_test_makes_no_full_run_red(repo: Path) -> None
     only failure is in a sleeping part is a pass, and the failure is not listed."""
     from types import SimpleNamespace
 
-    from plumb.boundary import fullrun
+    from iaso.boundary import fullrun
 
-    write(repo, ".plumb/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
+    write(repo, ".iaso/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
     core = open_core(repo)
     frozen_id, live_id = "tests/hosts/test_codex.py::test_brief", "tests/test_mod.py::test_add"
     nodes = [{"id": frozen_id, "outcome": "failed"}, {"id": live_id, "outcome": "passed"}]
@@ -116,9 +116,9 @@ def test_dec_404_a_failing_frozen_test_makes_no_full_run_red(repo: Path) -> None
 def test_dec_404_the_merge_verification_names_no_test_of_a_frozen_part(repo: Path) -> None:
     """DEC-404, SR-380: whatever the verify lane hands the merge boundary, a failing, unverified
     or regressed test in a frozen part is left out before any hold reads it."""
-    from plumb.merge import live_verification
+    from iaso.merge import live_verification
 
-    write(repo, ".plumb/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
+    write(repo, ".iaso/config.yaml", "freeze:\n  - tests/hosts/test_codex.py\n")
     core = open_core(repo)
     frozen = {"test": "tests/hosts/test_codex.py::test_brief", "examples": ["EX-1"]}
     live = {"test": "tests/test_mod.py::test_add", "examples": ["EX-1"]}

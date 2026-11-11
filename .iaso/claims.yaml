@@ -1,0 +1,21 @@
+# SR: trailer policy (iaso trailers check-msg, iaso claims check).
+require_trailer: true
+# Extra exempt globs (the defaults .iaso/**, docs/**, .claude/**, uv.lock, .gitignore and
+# .gitattributes always apply).
+exempt: [CLAUDE.md, README.md, plugin/vendor/**, src/iaso/browser/static/**]   # CLAUDE.md: written by iaso hooks install, like .claude/**; README.md: documentation, like docs/**; plugin/vendor/**: the bundled wheel and its manifest, built by scripts/build_plugin.py from declared sources (the owner's choice, 2026-10-15); src/iaso/browser/static/**: the built browser bundle and fonts, from the declared ui/ sources (the owner's choice, 2026-10-16)
+# NC-backed baseline of undeclared paths; it may only shrink: [{commit, path, nc}]
+baseline:
+- {commit: e4105c9, path: tests/importer/test_claims.py, nc: NC-0002}
+- {commit: 3a02f02, path: tests/importer/test_claims.py, nc: NC-0002}
+- {commit: 7367172, path: src/iaso/hosts/claude_code/templates/SKILL.md, nc: NC-0001}
+- {commit: d86352c, path: tests/present/test_review.py, nc: NC-0003}
+- {commit: 34ef8d5, path: tests/present/test_confirm.py, nc: NC-0003}
+- {commit: f90064e, path: tests/present/test_confirm.py, nc: NC-0003}
+- {commit: 82512bf, path: tests/present/test_confirm.py, nc: NC-0003}
+- {commit: 8e9f02b, path: src/iaso/hosts/claude_code/stop.py, nc: NC-0003}
+- {commit: 09985b5, path: src/iaso/approvals.py, nc: NC-0003}
+- {commit: 09985b5, path: src/iaso/confirm.py, nc: NC-0003}
+- {commit: 09985b5, path: src/iaso/explain.py, nc: NC-0003}
+- {commit: 09985b5, path: src/iaso/merge.py, nc: NC-0003}
+- {commit: 09985b5, path: src/iaso/readback.py, nc: NC-0003}
+- {commit: 09985b5, path: tests/hosts/test_self_recorded.py, nc: NC-0003}

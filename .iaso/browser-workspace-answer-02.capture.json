@@ -1,0 +1,32 @@
+{
+  "intent": {
+    "title": "Resolve all Iaso issue types within one project before adding coding agents",
+    "quote": "One project at a time sounds more reasonnable and also more compliant with the way it is implemented now, don't you think? The team / issues / assignments are handled by the underlying coding agent harness like claude code. For now let's just focus on allowing the user to resolve the intent conflicts and really the resolve the issues found by iaso. Basically resolve each type of issue. Then in the future we might want to power it with a coding agent somehow",
+    "readback": "Focus the first browser UI on one project at a time and on actually resolving every type of issue Iaso discovers, including intent conflicts. Leave team coordination and assignments to the existing coding-agent harness. Coding-agent integration is a possible later extension.",
+    "will": [
+      "Work within one project at a time.",
+      "Provide a resolution workflow for every issue type found by Iaso, including intent conflicts.",
+      "Distinguish answering an issue from completing any corrective work it requires."
+    ],
+    "wont": [
+      "Build team coordination, assignment management, or a cross-project inbox in the initial scope.",
+      "Require or embed a coding agent in the initial browser UI."
+    ],
+    "assumptions": [
+      "How users complete code or test repairs from this UI remains an open design question."
+    ]
+  },
+  "decisions": [
+    {
+      "title": "One project at a time; resolve Iaso issues before adding agent integration",
+      "question": "What scope should the first browser workspace cover?",
+      "chosen": "Resolve each kind of Iaso issue within one project; leave team coordination and assignments to the existing harness and consider coding-agent integration later.",
+      "alternatives": [
+        "Aggregate issues across projects.",
+        "Embed an agent workspace and team assignment system immediately."
+      ],
+      "matters": true,
+      "rationale": "The owner explicitly narrowed the initial scope and challenged the earlier multi-project recommendation."
+    }
+  ]
+}

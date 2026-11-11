@@ -1,4 +1,4 @@
-"""SR-325: every plumb failure leaves one debug case the moment it happens; ``plumb debug``
+"""SR-325: every iaso failure leaves one debug case the moment it happens; ``iaso debug``
 lists them beside the stale links, reruns each once and counts them. Models are stubbed."""
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ from types import SimpleNamespace
 import pytest
 
 from core.stale_asked import asked
-from plumb import debug, stale
-from plumb.api import open_core
-from plumb.contracts import Job, JobError, JobResult, Target
-from plumb.hosts.claude_code import hookio
-from plumb.links import NO_MODEL, AfterTests
-from plumb.understand import worker
+from iaso import debug, stale
+from iaso.api import open_core
+from iaso.contracts import Job, JobError, JobResult, Target
+from iaso.hosts.claude_code import hookio
+from iaso.links import NO_MODEL, AfterTests
+from iaso.understand import worker
 
 pytestmark = pytest.mark.sr("SR-325")
 
@@ -52,7 +52,7 @@ def _repin(monkeypatch, step: AfterTests) -> list[str]:
         calls.append(record)
         return step
 
-    monkeypatch.setattr("plumb.links.repin_after_tests", fake)
+    monkeypatch.setattr("iaso.links.repin_after_tests", fake)
     return calls
 
 

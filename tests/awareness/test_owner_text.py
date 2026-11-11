@@ -1,4 +1,4 @@
-"""sp6 11.1 (R14): every owner-visible awareness surface names a /plumb command or plain
+"""sp6 11.1 (R14): every owner-visible awareness surface names a /iaso command or plain
 words, never a shell command. One test per surface, each rendering it for real."""
 
 from __future__ import annotations
@@ -11,11 +11,11 @@ import pytest
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
 from awareness.scenario import change, setup
-from plumb import awareness
-from plumb.api import open_core
-from plumb.awareness import publish as pub
-from plumb.present import owner_text
-from plumb.present.owner_text import bare_cli_verbs
+from iaso import awareness
+from iaso.api import open_core
+from iaso.awareness import publish as pub
+from iaso.present import owner_text
+from iaso.present.owner_text import bare_cli_verbs
 
 
 def _overlapping(tmp_path: Path, n: int = 5) -> Path:
@@ -28,7 +28,7 @@ def _overlapping(tmp_path: Path, n: int = 5) -> Path:
     for i in range(1, n + 1):
         for root in (main, other):
             requirement(root, f"SR-0{i:02d}", f"thing {i}", f"{root.name}")
-        paths.append(f".plumb/requirements/SR-0{i:02d}.md")
+        paths.append(f".iaso/requirements/SR-0{i:02d}.md")
     pub.publish(open_core(other), paths)
     pub.publish(open_core(main), paths)
     return main
@@ -37,7 +37,7 @@ def _overlapping(tmp_path: Path, n: int = 5) -> Path:
 @pytest.mark.sr("SR-258")
 def test_brief_lines(tmp_path: Path) -> None:
     lines = awareness.brief_lines(open_core(_overlapping(tmp_path)))
-    assert any("+2 more" in line and "/plumb status" in line for line in lines)
+    assert any("+2 more" in line and "/iaso status" in line for line in lines)
     assert bare_cli_verbs("\n".join(lines)) == []
 
 
@@ -50,8 +50,8 @@ def test_delta_and_stop_lines(tmp_path: Path) -> None:
 
 @pytest.mark.sr("SR-258")
 def test_status_card(tmp_path: Path) -> None:
-    from plumb.hosts.claude_code.snapshot import build_snapshot
-    from plumb.present.render import status_card
+    from iaso.hosts.claude_code.snapshot import build_snapshot
+    from iaso.present.render import status_card
 
     snapshot = build_snapshot(open_core(_overlapping(tmp_path)), tests_summary=("ok", (), ()))
     for ascii_only in (False, True):
@@ -63,7 +63,7 @@ def test_status_card(tmp_path: Path) -> None:
 
 @pytest.mark.sr("SR-258")
 def test_status_section(tmp_path: Path) -> None:
-    from plumb.cli import main as cli_main
+    from iaso.cli import main as cli_main
 
     root = _overlapping(tmp_path, 2)
     out = io.StringIO()
@@ -85,8 +85,8 @@ def test_status_section(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-259")
 def test_early_conflict_card_and_lines(tmp_path: Path) -> None:
     """The early card, the recorded line and the known and settled lines (R17)."""
-    from plumb import approvals
-    from plumb.awareness import inflight
+    from iaso import approvals
+    from iaso.awareness import inflight
 
     main, other = setup(tmp_path)
     change(main, "main's version")
@@ -106,7 +106,7 @@ def test_early_conflict_card_and_lines(tmp_path: Path) -> None:
 
 @pytest.mark.sr("SR-259")
 def test_clarify_inflight_lines(tmp_path: Path) -> None:
-    from plumb.capture.clarify import clarify, view_lines
+    from iaso.capture.clarify import clarify, view_lines
 
     main, other = setup(tmp_path)
     change(other, "feat-x's version")
@@ -123,8 +123,8 @@ def test_every_awareness_constant_passes() -> None:
         assert bare_cli_verbs(getattr(owner_text, name)) == [], name
 
 
-def test_bare_cli_verbs_flags_plumb_verbs() -> None:
-    assert bare_cli_verbs("run plumb inflight drop feat-x") == ["plumb inflight"]
-    assert bare_cli_verbs("uv run plumb status") == ["plumb status"]
-    assert bare_cli_verbs("/plumb status and plumb: SR-005 is changing") == []
+def test_bare_cli_verbs_flags_iaso_verbs() -> None:
+    assert bare_cli_verbs("run iaso inflight drop feat-x") == ["iaso inflight"]
+    assert bare_cli_verbs("uv run iaso status") == ["iaso status"]
+    assert bare_cli_verbs("/iaso status and iaso: SR-005 is changing") == []
     assert json.dumps(bare_cli_verbs("")) == "[]"

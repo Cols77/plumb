@@ -1,4 +1,4 @@
-"""Studies and the understanding picture (SR-292, SR-293, SR-294; DEC-207): ``plumb study
+"""Studies and the understanding picture (SR-292, SR-293, SR-294; DEC-207): ``iaso study
 propose|add|list|candidates|mark``, at most one study idea per loop step, none on a topic the
 owner knows, written only once the owner accepts it at a depth."""
 
@@ -15,11 +15,11 @@ from mod.helpers import DIGEST, KEY, run_mod
 from understand import test_intent_loop
 from understand.test_intent_loop import SESSION, _findings
 
-from plumb import study
-from plumb.api import open_core
-from plumb.mergedriver import conflicts
-from plumb.study import cli
-from plumb.understand import cmd_intent
+from iaso import study
+from iaso.api import open_core
+from iaso.mergedriver import conflicts
+from iaso.study import cli
+from iaso.understand import cmd_intent
 from study.helpers import written
 
 pytestmark = pytest.mark.sr("SR-292")
@@ -67,10 +67,10 @@ def _next_step(repo: Path, tmp_path: Path, stage: str) -> None:
 
 
 def test_a_study_is_written_new_for_the_loop_step(intent: Path, tmp_path: Path) -> None:
-    assert _add(intent, tmp_path, "How plumb's background jobs run", "background jobs") == 0
+    assert _add(intent, tmp_path, "How iaso's background jobs run", "background jobs") == 0
     [held] = study.studies(intent)
     assert {k: held[k] for k in ("title", "topic", "step", "status")} == {
-        "title": "How plumb's background jobs run", "topic": "background jobs",
+        "title": "How iaso's background jobs run", "topic": "background jobs",
         "step": "clarify", "status": "new"}
     assert "```mermaid" in held["body"]
 
@@ -105,20 +105,20 @@ def test_sr292_ex3_a_removed_line_makes_the_topic_a_candidate_again(intent: Path
                                                                    tmp_path: Path) -> None:
     """SR-292 EX-3: the owner removes 'knows: hooks'; hooks studies are candidates again."""
     study.save_picture(intent, "- knows: hooks\n- knows: the judge\n")
-    assert _add(intent, tmp_path, "How plumb's hooks run", "hooks") != 0
+    assert _add(intent, tmp_path, "How iaso's hooks run", "hooks") != 0
     study.save_picture(intent, "- knows: the judge\n")
     assert study.picture(intent) == {"knows": ["the judge"], "needs": []}
-    assert _add(intent, tmp_path, "How plumb's hooks run", "hooks") == 0
+    assert _add(intent, tmp_path, "How iaso's hooks run", "hooks") == 0
 
 
 def test_sr292_ex4_a_fresh_project_starts_from_the_prompts(intent: Path,
                                                           capsys: pytest.CaptureFixture) -> None:
     """SR-292 EX-4: no picture yet: the owner's prompts so far, nothing assumed known."""
-    log_prompt(intent, "/plumb intent add multiply next to add", session=SESSION)
+    log_prompt(intent, "/iaso intent add multiply next to add", session=SESSION)
     assert not study.picture_path(intent).exists()
     found = _candidates(intent, capsys)
     assert found["picture"] == {"knows": [], "needs": []} and found["known"] == []
-    assert found["prompts"] == ["/plumb intent add multiply next to add"]
+    assert found["prompts"] == ["/iaso intent add multiply next to add"]
     assert found["loop"]["step"] == "clarify" and not found["loop"]["has_study"]
 
 
@@ -126,7 +126,7 @@ def test_sr292_ex4_a_fresh_project_starts_from_the_prompts(intent: Path,
 def test_sr293_ex3_none_for_a_step_whose_topic_is_known(intent: Path, tmp_path: Path) -> None:
     """SR-293 EX-3: the picture says the owner knows the step's topic: no study for it."""
     study.save_picture(intent, "- knows: background jobs\n")
-    assert _add(intent, tmp_path, "How plumb's background jobs run", "background jobs") != 0
+    assert _add(intent, tmp_path, "How iaso's background jobs run", "background jobs") != 0
     assert study.studies(intent) == []
 
 
@@ -168,9 +168,9 @@ def test_sr293_ex6_a_passed_gate_tells_the_agent_to_pick_the_steps_study(
     assert test_intent_loop._run(intent, "gate", "clarify", "--intent", "INT-001",
                                  "--findings", low) == 0
     last = capsys.readouterr().out.strip().splitlines()[-1]
-    assert last.startswith("plumb: pick the plan step's study") and "study candidates" in last
+    assert last.startswith("iaso: pick the plan step's study") and "study candidates" in last
     assert "study propose" in last and "nothing" in last
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     capsys.readouterr()
     assert test_intent_loop._run(intent, "gate", "clarify", "--intent", "INT-001",
                                  "--findings", low) == 0
@@ -186,7 +186,7 @@ def test_sr336_ex3_no_question_waits_the_step_study_as_before(
     """SR-336 EX-3: no question waits: nothing to study ahead of, and the step's study of
     general interest is proposed as DEC-207 has it, one per step."""
     assert _candidates(intent, capsys)["waiting"] == []
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     [held] = study.studies(intent)
     assert (held["step"], held["status"], "serves" in held) == ("clarify", "idea", False)
     assert _propose(intent, "Another study", "other") != 0
@@ -195,10 +195,10 @@ def test_sr336_ex3_no_question_waits_the_step_study_as_before(
 @pytest.mark.sr("SR-293")
 def test_sr293_ex6_a_proposed_study_is_only_an_idea(intent: Path) -> None:
     """SR-293 EX-6: proposing writes the idea (title, why, recommended depth), no page."""
-    assert _propose(intent, "How plumb's background jobs run", "background jobs") == 0
+    assert _propose(intent, "How iaso's background jobs run", "background jobs") == 0
     [held] = study.studies(intent)
     assert {k: held[k] for k in ("title", "why", "recommend", "status", "body")} == {
-        "title": "How plumb's background jobs run", "why": "the plan adds a job",
+        "title": "How iaso's background jobs run", "why": "the plan adds a job",
         "recommend": "diagrams", "status": "idea", "body": ""}
     # it holds the step (EX-5) and cannot be written before the owner accepts it
     assert _propose(intent, "Another study", "other") != 0
@@ -210,7 +210,7 @@ def test_sr293_ex6_a_proposed_study_is_only_an_idea(intent: Path) -> None:
 def test_sr293_ex7_accepted_with_diagrams_the_study_has_its_diagram(intent: Path,
                                                                     tmp_path: Path) -> None:
     """SR-293 EX-7: accepted at 'diagrams', the study is written in plain words with them."""
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     assert study.choose(intent, slug, "diagrams")["status"] == "accepted"
     assert _study(intent, "add", slug, "--file", str(_body(tmp_path))) == 0
@@ -222,7 +222,7 @@ def test_sr293_ex7_accepted_with_diagrams_the_study_has_its_diagram(intent: Path
 @pytest.mark.sr("SR-293")
 def test_sr293_ex8_markdown_only_has_no_diagram(intent: Path, tmp_path: Path) -> None:
     """SR-293 EX-8: 'Markdown only' chosen where diagrams were recommended: no diagram."""
-    assert _propose(intent, "How plumb's background jobs run", depth="diagrams") == 0
+    assert _propose(intent, "How iaso's background jobs run", depth="diagrams") == 0
     slug = _idea(intent)
     study.choose(intent, slug, "md")
     assert _study(intent, "add", slug, "--file", str(_body(tmp_path))) != 0   # has a diagram
@@ -274,39 +274,39 @@ def test_report_604e5ebf_a_diagram_too_big_to_read_is_refused(intent: Path,
 def test_sr293_ex9_a_declined_idea_is_never_proposed_again(intent: Path, tmp_path: Path,
                                                           capsys: pytest.CaptureFixture) -> None:
     """SR-293 EX-9: 'not now': nothing written, and the idea is not proposed again."""
-    assert _propose(intent, "How plumb's background jobs run", "background jobs") == 0
+    assert _propose(intent, "How iaso's background jobs run", "background jobs") == 0
     slug = _idea(intent)
     assert study.choose(intent, slug, None)["status"] == "declined"
     assert study.get(intent, slug)["body"] == ""
     _next_step(intent, tmp_path, "clarify")
     assert _candidates(intent, capsys)["declined"] == ["background jobs"]
     assert _propose(intent, "Background jobs, again", "Background  Jobs") != 0
-    assert _propose(intent, "How plumb's background jobs run", "the dispatcher") != 0
+    assert _propose(intent, "How iaso's background jobs run", "the dispatcher") != 0
     assert [s["status"] for s in study.studies(intent)] == ["declined"]
 
 
 @pytest.mark.sr("SR-294")
 def test_sr294_ex8_the_next_turn_tells_the_agent_the_accepted_depth(
         intent: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
-    """SR-294 EX-8: the owner chose 'with diagrams' in the band (``plumb mod study``, the key
+    """SR-294 EX-8: the owner chose 'with diagrams' in the band (``iaso mod study``, the key
     on stdin); the agent's next turn is told the idea was accepted at that depth."""
     from types import SimpleNamespace
 
-    from plumb.understand.hooks import on_prompt
+    from iaso.understand.hooks import on_prompt
 
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     assert run_mod(monkeypatch, capsys, intent, "hello", stdin={"key_digest": DIGEST})[0] == 0
     code, answer, _ = run_mod(monkeypatch, capsys, intent, "study", "--study", slug,
                               "--depth", "diagrams", stdin={"key": KEY})
     assert code == 0 and answer == {"slug": slug, "status": "accepted", "depth": "diagrams"}
     lines = on_prompt(SimpleNamespace(root=intent, session_id=SESSION), None, {})
-    assert lines[0] == ("plumb: the owner accepted the study idea 'How plumb's background jobs "
-                        f"run' at depth diagrams: write it now: plumb study gather {slug}, "
-                        f"then plumb study add {slug} --records <the IDs you drew on> "
+    assert lines[0] == ("iaso: the owner accepted the study idea 'How iaso's background jobs "
+                        f"run' at depth diagrams: write it now: iaso study gather {slug}, "
+                        f"then iaso study add {slug} --records <the IDs you drew on> "
                         "--file <body.md>")
     assert _candidates(intent, capsys)["accepted"] == [
-        {"slug": slug, "title": "How plumb's background jobs run", "depth": "diagrams"}]
+        {"slug": slug, "title": "How iaso's background jobs run", "depth": "diagrams"}]
 
 
 @pytest.mark.sr("SR-294")
@@ -315,11 +315,11 @@ def test_sr294_ex7_only_the_owners_press_chooses_and_video_waits(
         intent: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture,
         how: str) -> None:
     """SR-294 EX-7: the choice is the panel's key-checked press; video is offered too."""
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     assert run_mod(monkeypatch, capsys, intent, "hello", stdin={"key_digest": DIGEST})[0] == 0
     if how == "the agent's marker":
-        monkeypatch.setenv("PLUMB_AGENT_SESSION", SESSION)
+        monkeypatch.setenv("IASO_AGENT_SESSION", SESSION)
     if how == "twice":
         study.choose(intent, slug, None)
     code = run_mod(monkeypatch, capsys, intent, "study", "--study", slug, "--depth",
@@ -333,9 +333,9 @@ def test_sr294_ex7_only_the_owners_press_chooses_and_video_waits(
 @pytest.mark.sr("SR-294")
 def test_sr294_ex9_not_now_writes_nothing_and_the_room_lists_no_idea(intent: Path) -> None:
     """SR-294 EX-9: 'not now' leaves no page; an idea is never a study of the room's."""
-    from plumb.browser.service import BrowserService
+    from iaso.browser.service import BrowserService
 
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     assert BrowserService(intent).studies()["studies"] == []
     with pytest.raises(LookupError):
@@ -350,7 +350,7 @@ def test_sr371_ex2_ex3_progress_shows_while_written_and_goes_with_the_study(
         intent: Path, tmp_path: Path) -> None:
     """SR-371 EX-2, EX-3: `study progress` is kept on the accepted study; `add` of a study with no clip
     clears it at once."""
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     study.choose(intent, slug, "diagrams")
     assert _study(intent, "progress", slug, "--step", "scene 1", "--done", "3", "--total", "5") == 0
@@ -363,7 +363,7 @@ def test_sr371_ex2_ex3_progress_shows_while_written_and_goes_with_the_study(
 @pytest.mark.sr("SR-371")
 def test_sr371_ex4_progress_on_a_study_not_accepted_is_refused(intent: Path) -> None:
     """SR-371 EX-4: an idea the owner has not accepted takes no progress."""
-    assert _propose(intent, "How plumb's background jobs run") == 0
+    assert _propose(intent, "How iaso's background jobs run") == 0
     slug = _idea(intent)
     assert _study(intent, "progress", slug, "--step", "x", "--done", "1", "--total", "2") != 0
     assert "progress" not in study.get(intent, slug)

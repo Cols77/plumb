@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from capture_helpers import run
 
-from plumb.api import open_core
-from plumb.capture.records import is_short_answer
-from plumb.understand.claim import claim
+from iaso.api import open_core
+from iaso.capture.records import is_short_answer
+from iaso.understand.claim import claim
 
 pytestmark = pytest.mark.sr("SR-212")
 

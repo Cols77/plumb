@@ -1,6 +1,6 @@
-"""SR-327: outside plumb's own repository a debug case whose rerun fails again ends with a
+"""SR-327: outside iaso's own repository a debug case whose rerun fails again ends with a
 defect report and changes nothing, unless the configuration turns self-debug on and names
-plumb's source checkout (then the fix lands on a branch there); issue reporting files one
+iaso's source checkout (then the fix lands on a branch there); issue reporting files one
 issue per case through gh. gh is a fake executable on PATH; the fixer and the runner are
 scripted; git is real."""
 
@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb import debug, selfdebug
-from plumb.api import open_core
-from plumb.cli import main
-from plumb.commands import init_repo
+from iaso import debug, selfdebug
+from iaso.api import open_core
+from iaso.cli import main
+from iaso.commands import init_repo
 
 pytestmark = pytest.mark.sr("SR-327")
 
@@ -32,14 +32,14 @@ def _git(root: Path, *args: str) -> str:
 
 
 def _config(repo: Path, text: str) -> None:
-    (repo / ".plumb" / "config.yaml").write_text(text, "utf-8")
+    (repo / ".iaso" / "config.yaml").write_text(text, "utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "config")
 
 
 @pytest.fixture
 def case_repo(repo: Path) -> Path:
-    """Another repository (not plumb's own) with code of its own and one open debug case."""
+    """Another repository (not iaso's own) with code of its own and one open debug case."""
     (repo / "app.py").write_text(f"# {SECRET}\n", "utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "app")
@@ -50,16 +50,17 @@ def case_repo(repo: Path) -> Path:
 
 @pytest.fixture
 def source(tmp_path: Path) -> Path:
-    """A plumb-shaped source checkout with a defect in src/plumb/calc.py."""
-    root = tmp_path / "plumb-src"
-    (root / "src" / "plumb").mkdir(parents=True)
-    (root / "pyproject.toml").write_text('[project]\nname = "plumb"\n', "utf-8")
-    (root / "src" / "plumb" / "__init__.py").write_text("", "utf-8")
-    (root / "src" / "plumb" / "calc.py").write_text("def add(a, b):\n    return a - b\n", "utf-8")
+    """A iaso-shaped source checkout with a defect in src/iaso/calc.py."""
+    root = tmp_path / "iaso-src"
+    (root / "src" / "iaso").mkdir(parents=True)
+    (root / "pyproject.toml").write_text('[project]\nname = "iaso"\n', "utf-8")
+    (root / "src" / "iaso" / "__init__.py").write_text("", "utf-8")
+    (root / "src" / "iaso" / "calc.py").write_text("def add(a, b):\n    return a - b\n", "utf-8")
     _git(root, "init", "-q", "-b", "main")
     _git(root, "config", "user.email", "t@example.com")
     _git(root, "config", "user.name", "T")
     _git(root, "config", "core.autocrlf", "false")
+    (root / ".iaso").mkdir()   # an old repository, as tests/conftest.py's repo (SR-431)
     init_repo(root)
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "setup")
@@ -75,7 +76,7 @@ def gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     script.write_text(
         "import sys\nopen(sys.argv[1], 'a', encoding='utf-8').write(\n"
         "    ' '.join(sys.argv[2:]) + '\\n' + sys.stdin.read() + '\\n---\\n')\n"
-        "print('https://github.com/Cols77/plumb/issues/1')\n", "utf-8")
+        "print('https://github.com/Cols77/iaso/issues/1')\n", "utf-8")
     if sys.platform == "win32":
         (bin_dir / "gh.cmd").write_text(f'@"{sys.executable}" "{script}" "{log}" %*\r\n', "utf-8")
     else:
@@ -100,24 +101,24 @@ def test_ex1_self_debug_off_ends_with_a_defect_report_and_changes_no_code(
     assert _debug(case_repo) == 1
     row = _case(case_repo)
     assert row["state"] == "open"
-    for part in (CASE, "ValueError: boom", LOG, "Repro: plumb debug", "Missing:"):
+    for part in (CASE, "ValueError: boom", LOG, "Repro: iaso debug", "Missing:"):
         assert part in row["report"]
     assert _git(case_repo, "status", "--porcelain", "--untracked-files=no") == ""
-    assert not (case_repo / ".plumb" / "wt").exists()
+    assert not (case_repo / ".iaso" / "wt").exists()
 
 
 def test_ex2_self_debug_on_with_a_source_lands_the_fix_on_a_branch_of_the_source(
         case_repo: Path, source: Path) -> None:
     _config(case_repo, f"debug:\n  self_fix: true\n  source: '{source.as_posix()}'\n")
     head = _git(case_repo, "rev-parse", "HEAD")
-    calc = source / ".plumb" / "wt" / f"debug-{CASE}" / "src" / "plumb" / "calc.py"
+    calc = source / ".iaso" / "wt" / f"debug-{CASE}" / "src" / "iaso" / "calc.py"
 
     def fixer(**kw) -> dict:
         wt = kw["worktree"]
         (wt / "tests").mkdir(exist_ok=True)
         (wt / "tests" / "test_calc.py").write_text(
-            "from plumb.calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", "utf-8")
-        (wt / "src" / "plumb" / "calc.py").write_text("def add(a, b):\n    return a + b\n",
+            "from iaso.calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n", "utf-8")
+        (wt / "src" / "iaso" / "calc.py").write_text("def add(a, b):\n    return a + b\n",
                                                       "utf-8")
         return {"test": TEST}
 
@@ -130,7 +131,7 @@ def test_ex2_self_debug_on_with_a_source_lands_the_fix_on_a_branch_of_the_source
 
     out = selfdebug.handle(core, _case(case_repo), fixer=fixer, runner=runner, **ok_stages())
     assert out.state == "fixed", out.detail
-    assert "return a + b" in _git(source, "show", f"debug/{CASE}:src/plumb/calc.py")
+    assert "return a + b" in _git(source, "show", f"debug/{CASE}:src/iaso/calc.py")
     assert _git(source, "show", f"debug/{CASE}:tests/test_calc.py")
     assert [e.payload["case"] for e in open_core(source).log_read(
         "events", ["selfdebug-review"])] == [CASE]
@@ -144,7 +145,7 @@ def test_ex3_self_debug_on_without_a_source_says_once_what_is_missing_and_report
         case_repo: Path, capsys) -> None:
     _config(case_repo, "debug:\n  self_fix: true\n")
     assert _debug(case_repo) == 1
-    assert capsys.readouterr().out.count("debug.source names no plumb checkout") == 1
+    assert capsys.readouterr().out.count("debug.source names no iaso checkout") == 1
     assert "debug.source" in _case(case_repo)["report"]
     assert selfdebug.report_elsewhere(open_core(case_repo), _case(case_repo)).line == ""
 
@@ -152,14 +153,14 @@ def test_ex3_self_debug_on_without_a_source_says_once_what_is_missing_and_report
 def test_ex4_issue_reporting_files_one_issue_with_the_case_and_log_and_never_the_repository(
         case_repo: Path, gh: Path) -> None:
     _config(case_repo, "debug:\n  report_issues: true\n")
-    (case_repo / ".plumb" / "intents" / "INT-001.md").write_text(
+    (case_repo / ".iaso" / "intents" / "INT-001.md").write_text(
         f"---\nid: INT-001\n---\n{SECRET}\n", "utf-8")
     assert _debug(case_repo) == 1
     row = _case(case_repo)
-    assert row["issue"] == "https://github.com/Cols77/plumb/issues/1"
+    assert row["issue"] == "https://github.com/Cols77/iaso/issues/1"
     sent = gh.read_text("utf-8")
-    assert sent.count("issue create -R Cols77/plumb") == 1
-    for part in (CASE, "ValueError: boom", LOG, "Repro: plumb debug"):
+    assert sent.count("issue create -R Cols77/iaso") == 1
+    for part in (CASE, "ValueError: boom", LOG, "Repro: iaso debug"):
         assert part in sent
     assert SECRET not in sent
     selfdebug.report_elsewhere(open_core(case_repo), row)

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.trace import owned_paths, untraced_paths
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.trace import owned_paths, untraced_paths
 
 pytestmark = pytest.mark.sr("SR-200")
 
@@ -44,7 +44,7 @@ def test_unlinked_source_path_is_untraced(linked: Path) -> None:
 
 def test_docs_records_tests_and_infra_are_never_untraced(linked: Path) -> None:
     core = open_core(linked)
-    paths = ["README.md", "docs/guide.md", ".plumb/requirements/SR-001.md",
+    paths = ["README.md", "docs/guide.md", ".iaso/requirements/SR-001.md",
              "tests/test_other.py", "tests/conftest.py", "pyproject.toml", "uv.lock",
              ".claude/settings.json", ".github/workflows/ci.sh", "LICENSE", "data.json",
              "src/__pycache__/mul.cpython-312.pyc", "src/pkg.egg-info/PKG-INFO"]
@@ -52,7 +52,7 @@ def test_docs_records_tests_and_infra_are_never_untraced(linked: Path) -> None:
 
 
 def test_owner_exempt_globs_are_not_untraced(linked: Path) -> None:
-    (linked / ".plumb" / "config.yaml").write_text(
+    (linked / ".iaso" / "config.yaml").write_text(
         "trace:\n  exempt: [\"src/gen/*\"]\n", encoding="utf-8")
     core = open_core(linked)
     assert untraced_paths(core, ["src/gen/table.py", "src/mul.py"]) == ["src/mul.py"]
@@ -78,7 +78,7 @@ def test_flat_layout_and_root_code_files_are_source_by_default(linked: Path) -> 
 
 @pytest.mark.sr("SR-200")
 def test_configured_source_dirs_are_the_only_source(linked: Path) -> None:
-    (linked / ".plumb" / "config.yaml").write_text("source_dirs: [lib]\n", encoding="utf-8")
+    (linked / ".iaso" / "config.yaml").write_text("source_dirs: [lib]\n", encoding="utf-8")
     core = open_core(linked)
     assert core.config.source_dirs_set
     assert untraced_paths(core, ["lib/x.py", "tool.py", "src/mul.py"]) == ["lib/x.py"]
@@ -87,9 +87,9 @@ def test_configured_source_dirs_are_the_only_source(linked: Path) -> None:
 @pytest.mark.sr("SR-200")
 def test_verify_selection_shares_the_source_definition(linked: Path) -> None:
     """The covering-test selection samples for the same paths the trace calls source."""
-    from plumb.trace import is_code_path
+    from iaso.trace import is_code_path
 
     core = open_core(linked)
     for rel, expected in (("mypkg/extra.py", True), ("tool.py", True), ("README.md", False),
-                          ("tests/test_x.py", False), (".plumb/config.yaml", False)):
+                          ("tests/test_x.py", False), (".iaso/config.yaml", False)):
         assert is_code_path(core.config, rel) is expected, rel

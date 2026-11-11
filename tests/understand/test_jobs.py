@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.understand import files, jobs
+from iaso.understand import files, jobs
 
 pytestmark = pytest.mark.sr("SR-273")
 
@@ -54,8 +54,8 @@ def test_the_owners_answer_is_read_before_the_backlog_pass(tmp_path: Path) -> No
 
 
 def test_a_result_counts_only_with_the_workers_ledger_entry(tmp_path: Path) -> None:
-    from plumb.contracts import JobResult
-    from plumb.understand import ledger
+    from iaso.contracts import JobResult
+    from iaso.understand import ledger
 
     job = jobs.new_job("read", "s1", "read.v1", {"n": 1})
     assert jobs.result(tmp_path, "s1", job.id) is None

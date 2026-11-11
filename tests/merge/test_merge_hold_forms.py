@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, git, project, repin_all, write
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.boundary import merge_report, render
-from plumb.boundary.premerge import check
+from iaso import approvals
+from iaso.api import open_core
+from iaso.boundary import merge_report, render
+from iaso.boundary.premerge import check
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -44,7 +44,7 @@ def _both(root: Path) -> tuple[int, int, str]:
 
 
 def _run(root: Path, broken: bool) -> None:
-    from plumb.verify import open_verify
+    from iaso.verify import open_verify
 
     if broken:
         write(root, "src/pkg/mod.py", "def add(a, b):\n    return a - b\n")
@@ -80,12 +80,12 @@ def test_a_passing_run_lets_both_forms_through(merging: Path) -> None:
 def test_a_failing_test_beside_an_open_question_exits_5(merging: Path) -> None:
     """EX-6: precedence 1, then 5, then 4."""
     _run(merging, broken=True)
-    write(merging, ".plumb/requirements/SR-001.md", (merging / ".plumb/requirements/SR-001.md")
+    write(merging, ".iaso/requirements/SR-001.md", (merging / ".iaso/requirements/SR-001.md")
           .read_text(encoding="utf-8").replace("returns a + b.", "returns the sum a + b."))
     repin_all(merging)
     git(merging, "add", "-A")     # reworded in the merge: unconfirmed, so the judge asks
     core = open_core(merging)
-    path = merging / ".plumb" / "session" / "s1" / "judge_questions.json"
+    path = merging / ".iaso" / "session" / "s1" / "judge_questions.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([{
         "key": "should add sum?", "question": "Should add sum?", "header": "Add", "job": "j1",
@@ -100,7 +100,7 @@ def test_a_failing_test_beside_an_open_question_exits_5(merging: Path) -> None:
 
 def test_a_malformed_claims_policy_is_listed_by_both_and_holds_neither(merging: Path) -> None:
     _run(merging, broken=False)
-    write(merging, ".plumb/claims.yaml", "exempt: not-a-list\n")
+    write(merging, ".iaso/claims.yaml", "exempt: not-a-list\n")
     git(merging, "add", "-A")
     quick, report, text = _both(merging)
     assert quick == report == 0, text

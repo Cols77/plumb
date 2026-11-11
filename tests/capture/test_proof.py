@@ -1,5 +1,5 @@
-"""SR-127 (DEC-037): a requirement's proof plan and evidence; ``plumb proof``, ``plumb show``,
-``plumb capture`` and ``plumb validate`` read them, and recording them confirms nothing."""
+"""SR-127 (DEC-037): a requirement's proof plan and evidence; ``iaso proof``, ``iaso show``,
+``iaso capture`` and ``iaso validate`` read them, and recording them confirms nothing."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from capture_helpers import run
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.validate import validate
+from iaso import approvals
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.validate import validate
 
 pytestmark = pytest.mark.sr("SR-253")
 
@@ -74,7 +74,7 @@ def test_recording_proof_neither_confirms_nor_unconfirms(sr: Path) -> None:
     core = open_core(sr)
     before = core.index()["SR-001"].hash
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
-    assert run(sr, "proof", "SR-001", "--plan", "run plumb show", "--kind", "command") == 0
+    assert run(sr, "proof", "SR-001", "--plan", "run iaso show", "--kind", "command") == 0
     core = open_core(sr)
     assert core.index()["SR-001"].hash == before
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
@@ -178,10 +178,10 @@ def test_ex1_a_drawing_change_without_a_live_session_proof_is_named(sr: Path, ca
 
 
 def test_code_that_draws_nothing_gets_no_such_line(sr: Path, capsys) -> None:
-    from plumb.capture.proof import draws
+    from iaso.capture.proof import draws
 
     assert run(sr, "proof", "SR-001", "--plan", "pytest", "--kind", "command") == 0
     assert "changes what Claude Code draws" not in capsys.readouterr().out
-    assert draws("plugin/hooks/cards.tsx") and draws("plugin\\hooks\\plumb.ts")
-    assert not draws("plugin/hooks/guard.gen.ts") and not draws("src/plumb/mod/session.py")
+    assert draws("plugin/hooks/cards.tsx") and draws("plugin\\hooks\\iaso.ts")
+    assert not draws("plugin/hooks/guard.gen.ts") and not draws("src/iaso/mod/session.py")
     assert not draws("plugin/hooks/hooks.json")

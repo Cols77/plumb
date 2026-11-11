@@ -10,27 +10,27 @@ import pytest
 
 from ids import scenario
 from ids.gitrepo import make_repo, write
-from plumb.cli import main
-from plumb.present import owner_text
-from plumb.present.owner_text import bare_cli_verbs
+from iaso.cli import main
+from iaso.present import owner_text
+from iaso.present.owner_text import bare_cli_verbs
 
 
 @pytest.mark.sr("SR-257")
-def test_bare_cli_verbs_flags_plumb_verbs() -> None:
-    assert bare_cli_verbs("run plumb merge-fix now") == ["plumb merge-fix"]
-    assert bare_cli_verbs("uv run plumb log migrate") == ["plumb log"]
-    assert bare_cli_verbs("then plumb approve SR-001") == ["plumb approve"]
+def test_bare_cli_verbs_flags_iaso_verbs() -> None:
+    assert bare_cli_verbs("run iaso merge-fix now") == ["iaso merge-fix"]
+    assert bare_cli_verbs("uv run iaso log migrate") == ["iaso log"]
+    assert bare_cli_verbs("then iaso approve SR-001") == ["iaso approve"]
 
 
 @pytest.mark.sr("SR-257")
 def test_slash_command_passes() -> None:
-    assert bare_cli_verbs("say /plumb merge-fix, or /plumb status") == []
+    assert bare_cli_verbs("say /iaso merge-fix, or /iaso status") == []
 
 
 @pytest.mark.sr("SR-257")
-def test_plumb_colon_prefix_passes() -> None:
-    assert bare_cli_verbs('plumb: SR-005 "relay checks" is also changed') == []
-    assert bare_cli_verbs("plumb log: not available in this build") == []
+def test_iaso_colon_prefix_passes() -> None:
+    assert bare_cli_verbs('iaso: SR-005 "relay checks" is also changed') == []
+    assert bare_cli_verbs("iaso log: not available in this build") == []
 
 
 IDS_CONSTANTS = ("ID_UNRESERVED", "ID_BUSY", "RENUMBERED", "APPROVAL_CARRIED",
@@ -46,7 +46,7 @@ def test_every_ids_constant_passes() -> None:
 
 @pytest.mark.sr("SR-257")
 def test_fallback_line(tmp_path: Path, capsys) -> None:
-    from plumb.commands import init_repo
+    from iaso.commands import init_repo
 
     root = tmp_path / "plain"
     root.mkdir()
@@ -58,8 +58,8 @@ def test_fallback_line(tmp_path: Path, capsys) -> None:
 
 @pytest.mark.sr("SR-257")
 def test_busy_error(tmp_path: Path, monkeypatch, capsys) -> None:
-    from plumb.ids import ref as ref_mod
-    from plumb.ids import reservation
+    from iaso.ids import ref as ref_mod
+    from iaso.ids import reservation
 
     root = make_repo(tmp_path / "r")
     monkeypatch.setattr(reservation, "RETRY_S", 0.1)
@@ -88,8 +88,8 @@ def test_merge_fix_output(tmp_path: Path, capsys) -> None:
 
 @pytest.mark.sr("SR-257")
 def test_carried_label_surfaces(tmp_path: Path, capsys) -> None:
-    from plumb.api import open_core
-    from plumb.boundary.glance import glance_line, glance_rows
+    from iaso.api import open_core
+    from iaso.boundary.glance import glance_line, glance_rows
 
     s = scenario.build(tmp_path)
     main(["merge-fix", "--root", str(s.origin)])
@@ -106,16 +106,16 @@ def test_carried_label_surfaces(tmp_path: Path, capsys) -> None:
 @pytest.mark.parametrize("command", [["check", "--merge", "main"],
                                      ["merge-check", "main", "--no-run"]])
 def test_collision_section(tmp_path: Path, capsys, command) -> None:
-    from plumb.boundary.report import collision_lines
+    from iaso.boundary.report import collision_lines
 
     root = make_repo(tmp_path / "r")
     write(root, "SR-070", "relay checks")
-    (root / ".plumb" / "requirements" / "SR-070-b.md").write_text(
+    (root / ".iaso" / "requirements" / "SR-070-b.md").write_text(
         "---\nid: SR-070\ntitle: export csv\n---\n", encoding="utf-8")
     assert main([*command, "--root", str(root)]) == 1
     out = capsys.readouterr().out
     section = [line for line in out.splitlines()
-               if "ID collisions" in line or "/plumb merge-fix" in line]
+               if "ID collisions" in line or "/iaso merge-fix" in line]
     assert len(section) == 2
     assert bare_cli_verbs("\n".join(section)) == []
     assert collision_lines([]) == []

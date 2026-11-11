@@ -10,8 +10,8 @@ import pytest
 from capture.capture_helpers import log_prompt
 from understand.test_clarify_job import SESSION
 
-from plumb.api import open_core
-from plumb.understand import clarify, gate, judge, queue, read, worker
+from iaso.api import open_core
+from iaso.understand import clarify, gate, judge, queue, read, worker
 
 pytestmark = pytest.mark.sr("SR-212")
 

@@ -9,9 +9,9 @@ import pytest
 
 from ids import scenario
 from ids.gitrepo import commit_all, make_repo, record_text, run_git, write
-from plumb import ids
-from plumb.api import open_core
-from plumb.cli import main
+from iaso import ids
+from iaso.api import open_core
+from iaso.cli import main
 
 pytestmark = pytest.mark.sr("SR-257")
 
@@ -20,7 +20,7 @@ def test_unmerged_add_add_is_a_collision(tmp_path: Path) -> None:
     s = scenario.build(tmp_path)
     [found] = ids.collisions(open_core(s.origin))
     assert (found.id, found.how) == ("SR-002", "add/add")
-    assert found.paths == (".plumb/requirements/SR-002.md",)
+    assert found.paths == (".iaso/requirements/SR-002.md",)
     assert found.sides == ("relay checks", "export csv")
 
 
@@ -40,12 +40,12 @@ def test_duplicate_ids_at_two_paths(tmp_path: Path) -> None:
     root = make_repo(tmp_path / "r")
     write(root, "SR-005", "first")
     commit_all(root, "first")
-    (root / ".plumb" / "requirements" / "SR-005-copy.md").write_text(
+    (root / ".iaso" / "requirements" / "SR-005-copy.md").write_text(
         record_text("SR-005", "second"), encoding="utf-8")
     [found] = ids.collisions(open_core(root))
     assert found.how == "duplicate"
-    assert found.paths == (".plumb/requirements/SR-005.md",
-                           ".plumb/requirements/SR-005-copy.md")
+    assert found.paths == (".iaso/requirements/SR-005.md",
+                           ".iaso/requirements/SR-005-copy.md")
     assert found.sides == ("first", "second")
 
 
@@ -69,18 +69,18 @@ def test_merge_report_exits_1_with_fix_line(tmp_path: Path, capsys, command) -> 
     assert code == 1
     assert "ID collisions hold the merge" in out
     assert '"relay checks" and "export csv"' in out
-    assert ".plumb/requirements/SR-002.md" in out and "/plumb merge-fix fixes it" in out
+    assert ".iaso/requirements/SR-002.md" in out and "/iaso merge-fix fixes it" in out
 
 
 def test_duplicate_named_with_both_files(tmp_path: Path, capsys) -> None:
     root = make_repo(tmp_path / "r")
     write(root, "SR-070", "relay checks")
-    (root / ".plumb" / "requirements" / "SR-070-b.md").write_text(
+    (root / ".iaso" / "requirements" / "SR-070-b.md").write_text(
         record_text("SR-070", "export csv"), encoding="utf-8")
     assert main(["check", "--merge", "main", "--root", str(root)]) == 1
     out = capsys.readouterr().out
-    [line] = [x for x in out.splitlines() if "/plumb merge-fix fixes it" in x]
-    assert ".plumb/requirements/SR-070.md" in line and ".plumb/requirements/SR-070-b.md" in line
+    [line] = [x for x in out.splitlines() if "/iaso merge-fix fixes it" in x]
+    assert ".iaso/requirements/SR-070.md" in line and ".iaso/requirements/SR-070-b.md" in line
 
 
 @pytest.mark.parametrize("command", [["check", "--merge", "HEAD"],
@@ -99,7 +99,7 @@ def test_no_collision_after_fix(tmp_path: Path, capsys, command) -> None:
 # the incoming record is lost from the tree. Every entry point still reports the collision
 # (they all read ``ids.collisions``), and merge-fix restores the incoming record renumbered.
 
-SR_PATH = ".plumb/requirements/SR-002.md"
+SR_PATH = ".iaso/requirements/SR-002.md"
 
 
 def _resolved_by_hand(tmp_path: Path, *, commit: bool = True) -> scenario.Scenario:
@@ -167,5 +167,5 @@ def test_kept_one_merge_in_progress_is_fixed_and_staged(tmp_path: Path) -> None:
     s = _resolved_by_hand(tmp_path, commit=False)
     result = ids.merge_fix(open_core(s.origin))
     assert [r["to"] for r in result.renumbered] == ["SR-003"] and result.remaining == ()
-    assert ".plumb/requirements/SR-003.md" in result.staged
+    assert ".iaso/requirements/SR-003.md" in result.staged
     assert ids.collisions(open_core(s.origin)) == ()

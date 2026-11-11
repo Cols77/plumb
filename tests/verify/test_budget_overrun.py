@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from verify_helpers import commit_all, make_project, write
 
-from plumb.api import open_core
-from plumb.verify import open_verify
-from plumb.verify.cli import report_lines
+from iaso.api import open_core
+from iaso.verify import open_verify
+from iaso.verify.cli import report_lines
 
 pytestmark = pytest.mark.sr("SR-255")
 
@@ -31,7 +31,7 @@ def project(repo: Path) -> Path:
         body += f"\n\ndef test_slow_{i:02d}():\n    time.sleep(2.0)\n"
     write(repo, "tests/test_slow.py", body)
     # every estimate is far too low: unknown tests count 0.05 s
-    write(repo, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n  default_test_s: 0.05\n"
+    write(repo, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n  default_test_s: 0.05\n"
           "  hard_limit_factor: 2\n")
     commit_all(repo)
     return repo

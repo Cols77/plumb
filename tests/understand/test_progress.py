@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.progress import Reporter, status_text
-from plumb.understand import files
+from iaso.progress import Reporter, status_text
+from iaso.understand import files
 from understand.fakes import owner_level
 
 pytestmark = pytest.mark.sr("SR-272")

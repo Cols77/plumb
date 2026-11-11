@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, write_record
-from plumb.api import open_core
+from iaso.api import open_core
 
 
 def setup(tmp_path: Path) -> tuple[Path, Path]:
@@ -26,7 +26,7 @@ def setup(tmp_path: Path) -> tuple[Path, Path]:
 
 def capture(root: Path, doc: dict[str, Any], *, backend: Any = None,
             dry_run: bool = False) -> Any:
-    from plumb.capture.capture import capture as run
+    from iaso.capture.capture import capture as run
 
     return run(open_core(root), doc, dry_run=dry_run, backend=backend)
 

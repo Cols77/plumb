@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import api, hashing
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import api, hashing
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-310")
 
@@ -91,7 +91,7 @@ def test_a_changed_link_target_invalidates(root: Path) -> None:
 
 
 def test_a_new_event_invalidates(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import confirm
+    from iaso import confirm
 
     runs: list[int] = []
     real = confirm.remaining_entries

@@ -1,4 +1,4 @@
-"""P5: /plumb review, the deep review in the owner's terms (sp5 6.2, SR-064)."""
+"""P5: /iaso review, the deep review in the owner's terms (sp5 6.2, SR-064)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ import pytest
 from logutil import legacy_relay
 from present_helpers import FEAT1, INT1, SR1, SR2, fake_capture, run_prompt, write_all
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-202")
 
@@ -55,20 +55,20 @@ def test_glance_lists_relayed_approvals_and_names_no_command(records: Path, hook
     legacy_relay(records, ["SR-001"], approvals.prompt_digest(text), "ok SR-001")
     out = _review(records, capsys)
     assert '"add returns the sum of two numbers" relayed from your words "ok SR-001"' in out
-    assert "plumb revoke" not in out and "say so in conversation" in out   # SR-267
+    assert "iaso revoke" not in out and "say so in conversation" in out   # SR-267
 
 
 def test_drift_and_scope_by_plain_words(records: Path, capsys) -> None:
     (records / "src" / "calc.py").write_text("def add(a, b):\n    return b + a\n", "utf-8")
     out = _review(records, capsys, "how", "numbers", "are", "added")
-    assert out.startswith("plumb review of SR-001")
+    assert out.startswith("iaso review of SR-001")
     assert "1 stale link(s): SR-001#0 -> src/calc.py" in out
     assert "Rounding mode" not in out  # out of scope
 
 
 def test_drift_hints_from_capture(records: Path, capsys, monkeypatch) -> None:
     fake_capture(monkeypatch,
-                 drift_hints=lambda core, changed: ["plumb: hint: SR-002 may depend on "
+                 drift_hints=lambda core, changed: ["iaso: hint: SR-002 may depend on "
                                                     "INT-001"],
                  ownership_proposals=lambda core, paths: {})
     out = _review(records, capsys)

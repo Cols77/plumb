@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from plumb.hosts.claude_code import pretool
+from iaso.hosts.claude_code import pretool
 
 pytestmark = pytest.mark.sr("SR-267")
 

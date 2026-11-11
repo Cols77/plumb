@@ -7,9 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from plumb.api import open_core
-from plumb.contracts import JobError, JobResult
-from plumb.understand import cmd_clarify, files, gate, jobs, ledger, queue, worker
+from iaso.api import open_core
+from iaso.contracts import JobError, JobResult
+from iaso.understand import cmd_clarify, files, gate, jobs, ledger, queue, worker
 from understand.test_judge_cascade import world  # noqa: F401
 from understand.test_judge_job import SESSION, build_job, log_prompt
 from understand.test_judge_questions import answer, asking
@@ -36,7 +36,7 @@ def test_a_question_older_than_the_owners_message_is_not_repeated_when_the_judge
     ledger.record(world, SESSION, newer.id)
     jobs.write_result(world, SESSION, JobResult(
         job=newer.id, status="error",
-        error=JobError("dispatch", "judgment.backend is not set in .plumb/config.yaml")))
+        error=JobError("dispatch", "judgment.backend is not set in .iaso/config.yaml")))
 
     outcome = cmd_clarify.wait(open_core(world), SESSION, timeout=10)
     # not repeated, and nothing held (SR-378 EX-4)

@@ -1,9 +1,9 @@
-"""Every CLI verb prints plumb's glyphs through a pipe in a legacy code page (audit round 3).
+"""Every CLI verb prints iaso's glyphs through a pipe in a legacy code page (audit round 3).
 
-An agent's shell tool runs ``plumb`` with stdout piped, which Python encodes in the locale
+An agent's shell tool runs ``iaso`` with stdout piped, which Python encodes in the locale
 code page (cp1252 on Windows) unless PYTHONUTF8 or PYTHONIOENCODING says otherwise: the
 status card's ● or the confirm card's ▸ then raised UnicodeEncodeError. The one choke point
-is ``plumb.cli.main`` (``utf8_output``); one test per owner-view entry point, each in a
+is ``iaso.cli.main`` (``utf8_output``); one test per owner-view entry point, each in a
 subprocess with the code page forced to cp1252 and PYTHONUTF8=0.
 """
 
@@ -16,8 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-202")
 
@@ -48,9 +48,9 @@ def project(repo: Path, write_record) -> Path:
 
 def _run_legacy(repo: Path, *argv: str) -> subprocess.CompletedProcess[bytes]:
     env = {k: v for k, v in os.environ.items()
-           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "PLUMB_AGENT_SESSION")}
+           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "IASO_AGENT_SESSION")}
     env.update({"PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252"})  # the owner's console
-    return subprocess.run([sys.executable, "-m", "plumb", *argv, "--root", str(repo)],
+    return subprocess.run([sys.executable, "-m", "iaso", *argv, "--root", str(repo)],
                           cwd=repo, env=env, capture_output=True, timeout=120)
 
 

@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import Core
-from plumb.contracts import DispatchError, Job
-from plumb.understand import dispatch, jobs, queue, worker
-from plumb.understand.dispatch import openrouter
+from iaso.api import Core
+from iaso.contracts import DispatchError, Job
+from iaso.understand import dispatch, jobs, queue, worker
+from iaso.understand.dispatch import openrouter
 from understand.fakes import FakeKind, fake_claude, fake_kinds
 
 pytestmark = pytest.mark.sr("SR-273")
@@ -112,7 +112,7 @@ def test_not_configured_is_an_error_not_a_fallback(
         {"type": "result", "is_error": False, "structured_output": {"n": 1}}))
     monkeypatch.setenv("PATH", claude.env()["PATH"])
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))     # we are "under Claude Code"
-    (repo / ".plumb" / "config.yaml").write_text("understand:\n  dispatch: openrouter\n",
+    (repo / ".iaso" / "config.yaml").write_text("understand:\n  dispatch: openrouter\n",
                                                  encoding="utf-8")
     monkeypatch.setattr(worker, "start_detached", lambda root, session: None)
     fake_kinds(monkeypatch, {"a": FakeKind("a")})
@@ -127,10 +127,10 @@ def test_not_configured_is_an_error_not_a_fallback(
     assert claude.calls() == []
 
 
-def test_the_key_comes_from_the_credential_plumb_already_reads(
+def test_the_key_comes_from_the_credential_iaso_already_reads(
         repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-from-env")
-    (repo / ".plumb" / "config.yaml").write_text("understand:\n  dispatch: openrouter\n",
+    (repo / ".iaso" / "config.yaml").write_text("understand:\n  dispatch: openrouter\n",
                                                  encoding="utf-8")
     chosen = dispatch.configured(Core(repo))
     assert chosen.available() is None and chosen.key == "sk-or-from-env"

@@ -4,7 +4,7 @@
 FEAT-001). The clone's SR-002 is "export csv" (approved by the clone's owner, with a test
 marker, a body wikilink and an example reference in a decision); origin's SR-002 is "relay
 checks", referenced by origin's DEC-002. Origin then merges the clone's ``main``: git stops
-on the add/add of ``.plumb/requirements/SR-002.md``.
+on the add/add of ``.iaso/requirements/SR-002.md``.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ids.gitrepo import clone, commit_all, make_repo, run_git
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso.api import open_core
+from iaso.contracts import Target
 
 
 @dataclass
@@ -59,7 +59,7 @@ def build(tmp_path: Path, *, approve: bool = True, merge: bool = True,
         'import pytest\n\n\n@pytest.mark.sr("SR-002")\ndef test_export():\n'
         '    assert "SR-002" != "data"\n', encoding="utf-8")
     if approve:
-        from plumb import approvals
+        from iaso import approvals
 
         approvals.approve(open_core(other), ["SR-002"])
     first = commit_all(other, "export csv\n\nSR: SR-002")

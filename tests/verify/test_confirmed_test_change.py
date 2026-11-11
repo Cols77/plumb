@@ -3,7 +3,7 @@ the owner seeing it (SR-030); the merge boundary is never green while an accepta
 change can affect lacks passing evidence, or while the deferred full run is neither done nor
 waived by the owner (SR-031).
 
-Entry points: the stop hook, ``plumb validate --merge``, ``plumb status`` and ``plumb drift``
+Entry points: the stop hook, ``iaso validate --merge``, ``iaso status`` and ``iaso drift``
 (SR-030); the merge boundary after a shared test infrastructure change and after a change to
 one requirement's code that breaks another requirement's acceptance test (SR-031).
 """
@@ -19,13 +19,13 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, commit_all, make_project, write
 
-from plumb import approvals, cli
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.hosts.claude_code import stop
-from plumb.merge import merge_check
-from plumb.verify import open_verify
-from plumb.verify.evidence import _track_regression
+from iaso import approvals, cli
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.hosts.claude_code import stop
+from iaso.merge import merge_check
+from iaso.verify import open_verify
+from iaso.verify.evidence import _track_regression
 
 FEAT = ("---\nid: FEAT-001\ntitle: Arithmetic\ndescription: d\n"
         "requirements: [SR-001, SR-002]\n---\n")
@@ -48,7 +48,7 @@ REWRITTEN = ("import pytest\n\nfrom pkg.mod import add\n\n\n@pytest.mark.sr(\"SR
 def _check(root: Path, base: str, *, as_json: bool = False) -> int:
     """The merge report after the reviewed link ends are repinned (a stale link of a touched
     requirement holds the merge with exit 1 before verification is read, sp3 5)."""
-    from plumb.links import repin
+    from iaso.links import repin
 
     repin(open_core(root), all_stale=True)
     return merge_check(open_core(root), base, as_json=as_json)
@@ -115,7 +115,7 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
 def _judge_answers(tmp_path: Path, monkeypatch, answer: dict) -> Path:
     script = tmp_path / "answers.json"
     script.write_text(json.dumps({"testchange": answer}), encoding="utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
     return script
 
 
@@ -124,11 +124,11 @@ def test_a_hidden_regression_queues_a_background_judge_and_the_flag_stays_until_
     """SR-207 EX-6, SR-273: finding the hidden regression queues a job (no model is called in
     the check); until it answers, and when it says the edit was made to pass or is unsure,
     the flag stays; a confident "real, needed" drops it."""
-    import plumb.judgment as judgment
-    from plumb.understand import jobs, worker
+    import iaso.judgment as judgment
+    from iaso.understand import jobs, worker
 
     root, base = confirmed
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     monkeypatch.setattr(judgment, "get_backend", lambda *a, **k: pytest.fail("a hook asked"))
     _rewrite_test_to_pass(root)
 
@@ -157,10 +157,10 @@ def test_a_hidden_regression_queues_a_background_judge_and_the_flag_stays_until_
         assert not item["judge"]["real"] and not item["judge"].get("pending")
         for path in (jobs.job_path(root, "s1", job.id), jobs.result_path(root, "s1", job.id)):
             path.unlink()
-        from plumb.understand import ledger
+        from iaso.understand import ledger
 
         ledger.forget(root, "s1", job.id)
-        for entry in list(root.glob(".plumb/log/test-change-verdict/*.json")):
+        for entry in list(root.glob(".iaso/log/test-change-verdict/*.json")):
             entry.unlink()
 
     _judge_answers(tmp_path, monkeypatch, {"verdict": "real", "probability": 0.9,
@@ -172,10 +172,10 @@ def test_a_hidden_regression_queues_a_background_judge_and_the_flag_stays_until_
 
 
 def test_a_failed_judge_job_keeps_the_flag(confirmed, monkeypatch, tmp_path) -> None:
-    from plumb.understand import jobs, worker
+    from iaso.understand import jobs, worker
 
     root, _ = confirmed
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     _rewrite_test_to_pass(root)
     open_verify(open_core(root)).masked_regressions()
     _judge_answers(tmp_path, monkeypatch, {"error": "the model could not be reached"})
@@ -192,7 +192,7 @@ def test_a_counted_full_run_does_not_clear_a_hidden_regression(confirmed, capsys
                                                               monkeypatch) -> None:
     """SR-207, SR-254 EX-21: a green full run of the merged tree from another checkout counts,
     but the test was rewritten to pass: the hidden regression still holds the merge."""
-    from plumb.boundary import fullrun
+    from iaso.boundary import fullrun
 
     root, base = confirmed
     _rewrite_test_to_pass(root)
@@ -264,7 +264,7 @@ def test_status_and_drift_name_the_changed_acceptance_test(confirmed, capsys) ->
 
 
 def _start_turn(root: Path, session: str = "s1") -> None:
-    path = root / ".plumb" / "session" / session / "turn.json"
+    path = root / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}), "utf-8")
@@ -286,7 +286,7 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
     data = _stop(root, hook_input, active=False)
     assert data.get("decision") == "block", data
     reason = data["reason"]
-    assert "plumb: regression hidden: tests/test_mod.py::test_add" in reason
+    assert "iaso: regression hidden: tests/test_mod.py::test_add" in reason
     assert ("SR-001 EX-1 \"given two numbers, when added, then the sum is returned\""
             in reason)
     # SR-373, SR-207 EX-2: the owner gets one plain line naming the behaviour, with the block
@@ -300,7 +300,7 @@ def test_stop_asks_when_a_test_was_rewritten_to_hide_a_regression(confirmed,
 def test_stop_line_says_a_judge_is_reading_while_the_job_is_queued(confirmed, hook_input,
                                                                    monkeypatch) -> None:
     root, _ = confirmed
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     _start_turn(root)
     _rewrite_test_to_pass(root)
     reason = _stop(root, hook_input, active=False)["reason"]
@@ -310,10 +310,10 @@ def test_stop_line_says_a_judge_is_reading_while_the_job_is_queued(confirmed, ho
 @pytest.mark.sr("SR-245", "SR-207")
 def test_stop_line_names_the_judge_and_the_reason_when_the_job_failed(
         confirmed, hook_input, monkeypatch, tmp_path) -> None:
-    from plumb.understand import worker
+    from iaso.understand import worker
 
     root, _ = confirmed
-    monkeypatch.setenv("PLUMB_SESSION_ID", "s1")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
     _start_turn(root)
     _rewrite_test_to_pass(root)
     open_verify(open_core(root)).masked_regressions()
@@ -368,7 +368,7 @@ def test_owner_waiver_of_the_full_run_covers_exactly_this_change(confirmed, caps
 
 def test_waiver_is_refused_under_the_agent_marker(confirmed, monkeypatch, capsys) -> None:
     root, base = confirmed
-    monkeypatch.setenv("PLUMB_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
     assert cli.main(["tests", "waive", "--root", str(root), "--merge", base,
                      "--reason", "x"]) == 3
     capsys.readouterr()

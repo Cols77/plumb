@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 from understand.fakes import owner_level
 
-from plumb import progress
-from plumb.api import open_core
-from plumb.verify import runner
+from iaso import progress
+from iaso.api import open_core
+from iaso.verify import runner
 
 pytestmark = pytest.mark.sr("SR-272")
 
@@ -57,7 +57,7 @@ def test_full_run_reports_done_of_total_and_current_file(repo: Path, loud: None)
 
 
 def test_merge_check_step_names(repo: Path, loud: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.boundary import cli, fullrun
+    from iaso.boundary import cli, fullrun
 
     seen: list[str] = []
     original = progress.Reporter.update
@@ -84,11 +84,11 @@ def test_merge_check_step_names(repo: Path, loud: None, monkeypatch: pytest.Monk
     def fake_report(core_: Any, base: str, *, run_full: bool, hook: bool) -> Any:
         fullrun.full_run(core_, Verify(), pending=True, reasons=["r"], unverified=False,
                          waived=False, run_full=True, runner=lambda c: object())
-        from plumb.boundary.report import MergeReport
+        from iaso.boundary.report import MergeReport
 
         return MergeReport(base=base)   # SR-374: the merge insight reads the report's fields
 
-    import plumb.boundary as boundary
+    import iaso.boundary as boundary
 
     monkeypatch.setattr(boundary, "merge_report", fake_report)
     monkeypatch.setattr(boundary, "render", lambda report: [])
@@ -102,7 +102,7 @@ def test_merge_check_step_names(repo: Path, loud: None, monkeypatch: pytest.Monk
 
 
 def test_map_build_elapsed_only(repo: Path, loud: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb.verify.testmap import STEP_MAP, build_map
+    from iaso.verify.testmap import STEP_MAP, build_map
 
     _suite(repo, files=2, per_file=1, nap=0)
     err = Pipe()
@@ -117,7 +117,7 @@ def test_coverage_collection_reports_done_of_total_tests(repo: Path, loud: None,
                                                          monkeypatch: pytest.MonkeyPatch) -> None:
     if not runner.coverage_available():
         pytest.skip("coverage is not installed")
-    from plumb.verify import open_verify
+    from iaso.verify import open_verify
 
     _suite(repo, files=2, per_file=3, nap=0.1)
     err = Pipe()
@@ -131,7 +131,7 @@ def test_coverage_collection_reports_done_of_total_tests(repo: Path, loud: None,
 
 
 def test_align_report(repo: Path, loud: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    from plumb import align
+    from iaso import align
 
     seen: list[tuple[str, int, int]] = []
     original = progress.Reporter.update
@@ -170,5 +170,5 @@ def test_no_behaviour_change_exit_codes_and_evidence(repo: Path,
     with pytest.raises(RuntimeError):
         runner.run_pytest(repo, [], progress=broken)     # the first call is the caller's own
     # while a hook process never draws at all
-    monkeypatch.setattr(sys.modules["plumb.verify"], "HOOK_PROCESS", True, raising=False)
+    monkeypatch.setattr(sys.modules["iaso.verify"], "HOOK_PROCESS", True, raising=False)
     assert progress.default_stream() is None

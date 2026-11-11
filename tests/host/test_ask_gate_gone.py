@@ -9,8 +9,8 @@ import pytest
 from host.test_answer_rejudge import ASK, judge_asks, world  # noqa: F401
 from understand.test_judge_job import SESSION
 
-from plumb.hosts.claude_code import pretool
-from plumb.understand import judge
+from iaso.hosts.claude_code import pretool
+from iaso.understand import judge
 
 pytestmark = pytest.mark.sr("SR-378")
 

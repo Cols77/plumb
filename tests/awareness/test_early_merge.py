@@ -2,7 +2,7 @@
 at capture is settled by that answer, never asked again (SR-077 EX-11, EX-12).
 
 One test per entry point that meets the conflict: the record merge driver with git's
-pre-merge-commit hook (the quick merge check), ``plumb merge-check`` and /plumb conflicts
+pre-merge-commit hook (the quick merge check), ``iaso merge-check`` and /iaso conflicts
 (the card), and the owner's pick on the merge-time card, which answers an early decision
 still waiting so the merge check never asks it a second time."""
 
@@ -24,11 +24,11 @@ from mergedriver.mdhelpers import (
 )
 
 from awareness.scenario import capture
-from plumb import cli
-from plumb.api import open_core
+from iaso import cli
+from iaso.api import open_core
 
 pytestmark = [pytest.mark.sr("SR-259"), pytest.mark.sr("SR-260")]
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 OURS = "A relay pins only the records the owner's words affirm."
 THEIRS = "A relay pins the stated group, named by its title."
 
@@ -43,7 +43,7 @@ def _lanes(tmp_path: Path) -> tuple[Path, Path]:
     """main and worktree feat-x, the driver and the quick merge check installed; feat-x
     captures its version of SR-005 (its claim), then main captures another: the early
     conflict is raised on main."""
-    from plumb.boundary.premerge import install_hook
+    from iaso.boundary.premerge import install_hook
 
     main = make_repo(tmp_path / "main")
     install_driver(main)
@@ -66,7 +66,7 @@ def _decision(root: Path) -> Any:
 
 
 def _commit_lanes(main: Path, other: Path) -> None:
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     approve(open_core(other), ["SR-005"])
     # no SR trailer: SR-005 is touched by its record, and delivers nothing to prove (DEC-256)
@@ -78,7 +78,7 @@ def _answered(tmp_path: Path, take: str) -> tuple[Path, Path, str]:
     main, other = _lanes(tmp_path)
     dec = _decision(main)
     assert cli.main(["conflict", "choose", dec.id, "--take", take, "--root", str(main)]) == 0
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     approve(open_core(main), ["INT-001", "SR-005"])
     _commit_lanes(main, other)
@@ -89,7 +89,7 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
     """git merge: the quick check settles SR-005 with the owner's answer (feat-x's
     version) and stages it; git wrote the commit's tree before the hook, so the merge is
     held once and "finish the merge" records the answer. Nothing is asked again."""
-    from plumb.boundary.premerge import check
+    from iaso.boundary.premerge import check
 
     main, _other, dec = _answered(tmp_path, "feat-x")
     merged = run_git(main, "merge", "--no-edit", "feat-x", check=False)
@@ -101,7 +101,7 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
     resolutions = [e.payload for e in open_core(main).log_read("events",
                                                                ["conflict-resolution"])]
     assert [(r["by"], r["decision"]) for r in resolutions] == [("owner-decision", dec)]
-    assert run_git(main, "diff", "--name-only", "--", ".plumb").stdout == ""  # all staged
+    assert run_git(main, "diff", "--name-only", "--", ".iaso").stdout == ""  # all staged
     assert check(open_core(main), "merge").exit == 0                # "finish the merge"
     run_git(main, "commit", "-q", "--no-edit")
     data = parse(run_git(main, "show", f"HEAD:{SR}").stdout)[0]
@@ -110,10 +110,10 @@ def test_merge_hook_applies_the_earlier_answer(tmp_path: Path) -> None:
 
 def test_merge_card_and_conflicts_show_the_earlier_answer(tmp_path: Path) -> None:
     """Without the hook (``--no-verify``): the card says it is already answered, and
-    /plumb conflicts settles it."""
+    /iaso conflicts settles it."""
     main, _other, _dec = _answered(tmp_path, "main")
     run_git(main, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
-    from plumb.mergedriver.conflicts import conflict_card, open_conflicts
+    from iaso.mergedriver.conflicts import conflict_card, open_conflicts
 
     core = open_core(main)
     [conflict] = open_conflicts(core)
@@ -131,7 +131,7 @@ def test_merge_card_and_conflicts_show_the_earlier_answer(tmp_path: Path) -> Non
 
 
 def test_merge_check_lists_no_answered_question(tmp_path: Path) -> None:
-    from plumb.boundary.premerge import check
+    from iaso.boundary.premerge import check
 
     main, _other, dec = _answered(tmp_path, "feat-x")
     run_git(main, "merge", "--no-edit", "--no-verify", "--no-commit", "feat-x", check=False)
@@ -145,10 +145,10 @@ def test_merge_card_answer_answers_the_waiting_decision(tmp_path: Path, monkeypa
     """The early decision was never answered: the merge-time card is the one question
     (the merge check does not list the decision beside it), and its answer answers the
     decision too."""
-    from plumb.boundary.premerge import check
+    from iaso.boundary.premerge import check
     main, other = _lanes(tmp_path)
     dec = _decision(main).id
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     approve(open_core(main), ["INT-001", "SR-005"])
     _commit_lanes(main, other)

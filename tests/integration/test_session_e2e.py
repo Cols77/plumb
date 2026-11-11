@@ -1,6 +1,6 @@
-"""End-to-end: a simulated Claude Code session through plumb's installed hooks.
+"""End-to-end: a simulated Claude Code session through iaso's installed hooks.
 
-A temporary repository is adopted by plumb (``init``, an ``INT``, two ``SR`` records with
+A temporary repository is adopted by iaso (``init``, an ``INT``, two ``SR`` records with
 examples, pinned links, owner approval in the owner's terminal, ``tests map``, ``hooks
 install``). ``scripts/drive_session.py`` then runs each hook command from
 ``.claude/settings.json`` as its own process with the JSON Claude Code sends: SessionStart, a
@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from plumb import approvals, cli
-from plumb.api import open_core
+from iaso import approvals, cli
+from iaso.api import open_core
 
 ROOT = Path(__file__).resolve().parents[2]
 # End-to-end allowance includes process startup and filesystem scanning on Windows.
@@ -72,7 +72,7 @@ requirements: [SR-001, SR-002]
 FILES = {
     "pyproject.toml": "[tool.pytest.ini_options]\npythonpath = [\"src\"]\n"
                       "testpaths = [\"tests\"]\n"
-                      "markers = [\"sr(id): links a test to a plumb requirement\"]\n",
+                      "markers = [\"sr(id): links a test to a iaso requirement\"]\n",
     "src/pkg/__init__.py": "",
     "src/pkg/mod.py": "def add(a, b):\n    return a + b\n\n\ndef mul(a, b):\n"
                       "    return a * b\n",
@@ -80,7 +80,7 @@ FILES = {
                          "@pytest.mark.sr(\"SR-001\")\ndef test_add():\n"
                          "    assert add(1, 2) == 3\n\n\n@pytest.mark.sr(\"SR-002\")\n"
                          "def test_mul():\n    assert mul(2, 3) == 6\n",
-    ".plumb/config.yaml": "verify:\n  flaky_rerun: false\n",
+    ".iaso/config.yaml": "verify:\n  flaky_rerun: false\n",
 }
 
 
@@ -99,10 +99,15 @@ def _driver():
 
 
 @pytest.fixture
-def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
-    # hooks run `plumb` from PATH, as an installed tool would
-    monkeypatch.setenv("PATH", str(Path(sys.executable).parent) + os.pathsep
-                       + os.environ.get("PATH", ""))
+def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> Path:
+    # hooks run `iaso` from PATH, as an installed tool would: a shim for this interpreter and
+    # source, so the test does not depend on how the venv was installed
+    shim_dir = tmp_path_factory.mktemp("shim")
+    shim = shim_dir / "iaso"
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m iaso "$@"\n', encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", str(shim_dir) + os.pathsep + str(Path(sys.executable).parent)
+                       + os.pathsep + os.environ.get("PATH", ""))
     for rel, text in FILES.items():
         path = repo / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,7 +125,7 @@ def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
     assert cli.main(["tests", "map", *root]) == 0
     assert cli.main(["hooks", "install", "--launcher", "path", *root]) == 0
     _git(repo, "add", "-A")
-    _git(repo, "commit", "-q", "-m", "adopt plumb", "--no-verify")
+    _git(repo, "commit", "-q", "-m", "adopt iaso", "--no-verify")
     return repo
 
 
@@ -129,7 +134,7 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     script = adopted.parent / "judge.json"
     script.write_text(json.dumps({"repin": {"verdict": "unchanged", "confidence": 0.9,
                                             "reason": "only a comment was appended"}}), "utf-8")
-    monkeypatch.setenv("PLUMB_FAKE_DISPATCH", str(script))
+    monkeypatch.setenv("IASO_FAKE_DISPATCH", str(script))
     driver = _driver()
     steps = driver.drive(
         adopted, edit="src/pkg/mod.py",
@@ -144,33 +149,33 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     # SessionStart: the compact brief (R9, SR-374 EX-9): what changed and what blocks, no
     # counts; a first session start has seen nothing before and nothing blocks here
     brief = by_name["SessionStart"].stdout
-    assert "plumb brief:" not in brief and "tests:" not in brief
+    assert "iaso brief:" not in brief and "tests:" not in brief
     assert len(brief.splitlines()) <= 6
 
     # no judge is configured here (INT-029): the hook says so in one line, flags nothing by
     # rules, and still gives the prompt its record
     change = by_name["UserPromptSubmit (contradicts)"].stdout
     assert "SR-001 [confirmed]" in change
-    assert change.count("plumb: judging unavailable:") == 1 and "judgment.backend" in change
+    assert change.count("iaso: judging unavailable:") == 1 and "judgment.backend" in change
     assert "this may change" not in change
-    assert not (adopted / ".plumb" / "session" / "intent_flags.jsonl").exists()
+    assert not (adopted / ".iaso" / "session" / "intent_flags.jsonl").exists()
 
     # a turn that changed nothing prints nothing
     assert by_name["Stop (no change)"].stdout.strip() == ""
 
     # the contradicting prompt gave SR-001 one line; the next prompt naming it in the same
-    # session injects no repeat (R9 delta), and its examples come from plumb show
+    # session injects no repeat (R9 delta), and its examples come from iaso show
     assert "EX-1" not in change and "tests/test_mod.py" not in change
     named = by_name["UserPromptSubmit (names SR)"].stdout
     assert "SR-001 [confirmed]" not in named
     assert "this may change" not in named
 
     # the edit is tracked; Stop blocks once for the covering tests
-    touched = adopted / ".plumb" / "session" / "plumb-driven-1" / "touched.txt"
+    touched = adopted / ".iaso" / "session" / "iaso-driven-1" / "touched.txt"
     assert touched.read_text("utf-8").splitlines() == ["src/pkg/mod.py"]
     block = json.loads(by_name["Stop"].stdout)
     assert block["decision"] == "block"
-    assert "plumb tests run --paths src/pkg/mod.py" in block["reason"]
+    assert "iaso tests run --paths src/pkg/mod.py" in block["reason"]
 
     # the covering tests ran and their evidence was appended
     run = by_name["covering tests"]
@@ -182,10 +187,10 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
     assert "test-run" in evidence
 
     # SR-373: nothing needs the owner (confirmed records, covering tests passing, no
-    # question): no plumb line, only the status line moves
+    # question): no iaso line, only the status line moves
     assert by_name["Stop (stop_hook_active)"].stdout.strip() == ""
 
-    assert by_name["statusline"].stdout.startswith("plumb ")  # the status card (sp5 2)
+    assert by_name["statusline"].stdout.startswith("iaso ")  # the status card (sp5 2)
 
     # Every hook stays within the integration allowance; the test run has its own bound.
     for step in steps:
@@ -202,8 +207,8 @@ def test_session_through_installed_hooks(adopted: Path, monkeypatch: pytest.Monk
 def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     """The capture flow (sp2, R1, R2, R11): a read-back shown as an intent card, a proposed
     example, the decision that matters asked once, and the owner's "ok" relayed for exactly
-    what the summary showed is left for plumb's own reader: the agent is told to relay nothing."""
-    from plumb.api import open_core
+    what the summary showed is left for iaso's own reader: the agent is told to relay nothing."""
+    from iaso.api import open_core
 
     driver = _driver()
     steps = driver.drive_capture(adopted)
@@ -212,19 +217,19 @@ def test_capture_flow_through_installed_hooks(adopted: Path) -> None:
     assert all(s.code == 0 for s in steps), [(s.name, s.code, s.stderr) for s in steps]
 
     # the agent records the read-back in one call; everything stays proposed (R1)
-    captured = by_name["plumb capture"].stdout
+    captured = by_name["iaso capture"].stdout
     for line in ("INT-002 proposed", "SR-003 proposed", "DEC-001 proposed"):
         assert line in captured
 
     # INT-036/INT-037: no stop asks the decision or lists the proposed records in prose; the
     # request's read-back is the one card, drawn by the clarify check, and the owner's answer
-    # is read by plumb itself, so the agent is told to relay nothing
+    # is read by iaso itself, so the agent is told to relay nothing
     for name in ("Stop (asks the decision)", "Stop (read-back shown)", "Stop (not asked again)",
                  "Stop (summary again)"):
         assert "is unconfirmed" not in by_name[name].stdout and "block" not in by_name[name].stdout
     answer = by_name["UserPromptSubmit (owner ok)"].stdout
-    assert "plumb relay" not in answer and "awaiting confirmation" not in answer
-    assert "plumb relay" not in by_name
+    assert "iaso relay" not in answer and "awaiting confirmation" not in answer
+    assert "iaso relay" not in by_name
     core = open_core(adopted)
     assert not [e for e in core.events()
                 if e.kind == "approval" and e.payload.get("by") == "agent-relayed"]
@@ -250,10 +255,10 @@ proof:
 
 
 @pytest.mark.sr("SR-260")
-def test_merge_check_on_plumb_reports_the_owners_pending_confirmations(
+def test_merge_check_on_iaso_reports_the_owners_pending_confirmations(
         adopted: Path, write_record) -> None:
     """The owner's choice (a scratch repository): a commit into main delivers SR-003, which the
-    owner has not confirmed and whose proof nobody has shown; plumb merge-check (report only,
+    owner has not confirmed and whose proof nobody has shown; iaso merge-check (report only,
     --no-run) lists it as awaiting and holds the merge."""
     base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=adopted, capture_output=True,
                           text=True, check=True).stdout.strip()

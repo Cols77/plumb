@@ -6,16 +6,16 @@ import json
 
 import pytest
 
-from plumb import debug
-from plumb.evaluate import issues
+from iaso import debug
+from iaso.evaluate import issues
 
-ISSUE = {"when": "t", "command": "plumb brief", "expected": "a brief", "got": "boom",
+ISSUE = {"when": "t", "command": "iaso brief", "expected": "a brief", "got": "boom",
          "context": "starting"}
 
 
 def scratch_with(tmp_path, rows):
     scratch = tmp_path / "scratch"
-    (scratch / ".plumb").mkdir(parents=True)
+    (scratch / ".iaso").mkdir(parents=True)
     (scratch / issues.ISSUES_FILE).write_text(
         "".join(json.dumps(r) + "\n" for r in rows) + "not json\n", encoding="utf-8")
     return scratch
@@ -51,7 +51,7 @@ def test_no_file_leaves_the_accumulated_file_alone(tmp_path):
 def test_open_cases_writes_an_eval_issue_case(tmp_path):
     ids = issues.open_cases(tmp_path, [ISSUE])
     row = json.loads(debug._case_path(tmp_path, ids[0]).read_text("utf-8"))
-    assert (row["kind"], row["target"]) == ("eval-issue", "plumb brief")
+    assert (row["kind"], row["target"]) == ("eval-issue", "iaso brief")
     assert row["detail"] == "expected: a brief; got: boom"
     assert row["log"] == "starting"
 

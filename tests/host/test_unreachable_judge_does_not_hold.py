@@ -13,11 +13,11 @@ import pytest
 from fakes import FakeVerify
 from host.test_intent_change_gate import SESSION, records  # noqa: F401
 
-from plumb.api import open_core
-from plumb.contracts import JobError, JobResult
-from plumb.hosts.claude_code import pretool, prompt
-from plumb.judgment import JudgmentUnavailable
-from plumb.understand import cmd_clarify, files, gate, judge, queue
+from iaso.api import open_core
+from iaso.contracts import JobError, JobResult
+from iaso.hosts.claude_code import pretool, prompt
+from iaso.judgment import JudgmentUnavailable
+from iaso.understand import cmd_clarify, files, gate, judge, queue
 
 pytestmark = pytest.mark.sr("SR-378")
 

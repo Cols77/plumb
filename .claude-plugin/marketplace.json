@@ -1,17 +1,17 @@
 {
-  "name": "plumb",
+  "name": "iaso",
   "owner": {
     "name": "Colin AUBE"
   },
-  "description": "plumb, as a Claude Code plugin",
+  "description": "iaso, as a Claude Code plugin",
   "allowCrossMarketplaceDependenciesOn": [
     "diagram-mod"
   ],
   "plugins": [
     {
-      "name": "plumb",
+      "name": "iaso",
       "source": "./plugin",
-      "version": "0.1.1495",
+      "version": "0.1.1534",
       "description": "Keep a coding agent's work aligned with what you asked for: your intent, the requirements and examples it becomes, and the checks that hold the code to them.",
       "author": {
         "name": "Colin AUBE"

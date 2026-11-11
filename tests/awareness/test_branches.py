@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 
 from awareness.gitrepo import commit_all, make_repo, requirement, run_git
-from plumb import awareness
-from plumb.api import open_core
-from plumb.awareness import publish as pub
-from plumb.awareness import scan
+from iaso import awareness
+from iaso.api import open_core
+from iaso.awareness import publish as pub
+from iaso.awareness import scan
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -32,7 +32,7 @@ def _branch(main: Path, name: str, record: str, statement: str) -> None:
 def _working_on(main: Path, *records: str) -> None:
     for record in records:
         requirement(main, record, f"thing {record[-1]}", "main's own edit")
-    pub.publish(open_core(main), [f".plumb/requirements/{r}.md" for r in records])
+    pub.publish(open_core(main), [f".iaso/requirements/{r}.md" for r in records])
 
 
 def _counting(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
@@ -54,7 +54,7 @@ def test_branch_without_worktree_reported_at_session_start(tmp_path: Path) -> No
     _branch(main, "feat-y", "SR-007", "feat-y's version")
     _working_on(main, "SR-007")
     assert awareness.brief_lines(open_core(main)) == [
-        'plumb: SR-007 "thing 7" is also being changed on branch feat-y']
+        'iaso: SR-007 "thing 7" is also being changed on branch feat-y']
 
 
 @pytest.mark.sr("SR-258")
@@ -75,7 +75,7 @@ def test_scan_capped_by_branch_max(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     main = _repo(tmp_path)
     for n in range(1, 5):
         _branch(main, f"b{n}", f"SR-00{n}", f"b{n}'s version")
-    (main / ".plumb" / "config.yaml").write_text("awareness: {branch_max: 2, branch_scan_ms: 600000}\n",
+    (main / ".iaso" / "config.yaml").write_text("awareness: {branch_max: 2, branch_scan_ms: 600000}\n",
                                                  encoding="utf-8")
     monkeypatch.setattr(scan, "COLD_SCAN_S", 600.0)  # the count under test, not the time cap, ends the scan
     calls = _counting(monkeypatch)
@@ -99,7 +99,7 @@ def test_scan_capped_by_deadline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     calls = _counting(monkeypatch)
     scan.refresh_branches(open_core(main), deadline=Spent())
     assert [c for c in calls if c[:2] == ["git", "diff"]] == []
-    errors = (main / ".plumb" / "session" / "errors.log").read_text(encoding="utf-8")
+    errors = (main / ".iaso" / "session" / "errors.log").read_text(encoding="utf-8")
     assert "awareness skipped (budget)" in errors
 
 

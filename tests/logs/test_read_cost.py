@@ -15,16 +15,16 @@ from loadbound import assert_within
 from logutil import legacy_entry
 
 from logs.gitrepo import add_worktree, commit_all, make_repo, run_git
-from plumb import log
-from plumb.normalize import canonical_json
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.normalize import canonical_json
+from iaso.paths import IasoPaths
 
 pytestmark = pytest.mark.sr("SR-232")
 
 KINDS = ("approval", "calibration", "mod-hello", "waiver", "revocation")   # shared kinds only: init now ignores the local ones
 
 
-def populate(paths: PlumbPaths, n: int, start: int = 0) -> None:
+def populate(paths: IasoPaths, n: int, start: int = 0) -> None:
     """``n`` chained event entries written as migrated entry files."""
     prev = None
     for i in range(start, start + n):
@@ -40,7 +40,7 @@ def populate(paths: PlumbPaths, n: int, start: int = 0) -> None:
         prev = raw["digest"]
 
 
-def _timed(paths: PlumbPaths) -> tuple[float, int]:
+def _timed(paths: IasoPaths) -> tuple[float, int]:
     start = time.perf_counter()
     count = sum(1 for _ in log.read(paths, "events"))
     return time.perf_counter() - start, count
@@ -53,17 +53,17 @@ def test_read_cost(tmp_path: Path) -> None:
     fresh clone (git's objects packed, as from a remote). Warm: one listing per kind plus
     the cache."""
     main = make_repo(tmp_path / "main")
-    populate(PlumbPaths(main), 2000)
+    populate(IasoPaths(main), 2000)
     commit_all(main, "2000 events")
-    assert _timed(PlumbPaths(main))[1] == 2000  # the main worktree's own sessions
-    paths = PlumbPaths(add_worktree(main, tmp_path / "wt", "wt"))
+    assert _timed(IasoPaths(main))[1] == 2000  # the main worktree's own sessions
+    paths = IasoPaths(add_worktree(main, tmp_path / "wt", "wt"))
     assert not paths.log_pack("events").exists()
     cold, count = _timed(paths)
     assert count == 2000
     assert_within(cold, 1.0, "cold read in a fresh worktree (s)")
     clone = tmp_path / "clone"
     run_git(tmp_path, "clone", "-q", main.as_uri(), str(clone))
-    cold, count = _timed(PlumbPaths(clone))
+    cold, count = _timed(IasoPaths(clone))
     assert count == 2000
     assert_within(cold, 1.0, "cold read in a fresh clone (s)")
     warm = min(_timed(paths)[0] for _ in range(10))  # best of 10: other processes share the CPU

@@ -1,4 +1,4 @@
-"""``plumb turn start`` never drops the owner's message when the brief reaches the watchdog
+"""``iaso turn start`` never drops the owner's message when the brief reaches the watchdog
 (audit round 3, R13 Q4).
 
 The CLI-only fallback runs the session brief and the prompt event in one process; the
@@ -28,8 +28,8 @@ pytestmark = pytest.mark.sr("SR-282")
 SCRIPT = r"""
 import sys, time
 from pathlib import Path
-import plumb.hosts.claude_code.hookio as hookio
-import plumb.hosts.claude_code.session_start as session_start
+import iaso.hosts.claude_code.hookio as hookio
+import iaso.hosts.claude_code.session_start as session_start
 
 real_run_hook, real_handle = hookio.run_hook, session_start.handle
 
@@ -45,7 +45,7 @@ def slow_brief(ctx, **kwargs):
 
 hookio.run_hook = run_hook
 session_start.handle = slow_brief
-from plumb.cli import main
+from iaso.cli import main
 sys.exit(main(sys.argv[1:]))
 """
 
@@ -56,7 +56,7 @@ def project(repo: Path, write_record) -> Path:
 
 
 def _turn_start(repo: Path, words: str, *extra: str, stdin: bool = True) -> str:
-    env = {k: v for k, v in os.environ.items() if k != "PLUMB_AGENT_SESSION"}
+    env = {k: v for k, v in os.environ.items() if k != "IASO_AGENT_SESSION"}
     result = subprocess.run([sys.executable, "-c", SCRIPT, "turn", "start", "--session",
                              "c9", "--root", str(repo), *extra],
                             input=words.encode("utf-8") if stdin else b"", cwd=repo,
@@ -66,7 +66,7 @@ def _turn_start(repo: Path, words: str, *extra: str, stdin: bool = True) -> str:
 
 
 def _prompts(repo: Path) -> list[dict]:
-    path = repo / ".plumb" / "session" / "prompts.jsonl"
+    path = repo / ".iaso" / "session" / "prompts.jsonl"
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text("utf-8").splitlines() if line]
@@ -76,12 +76,12 @@ def _assert_logged(repo: Path, words: str, count: int) -> None:
     prompts = _prompts(repo)
     assert len(prompts) == count
     assert prompts[-1]["text"] == words and prompts[-1]["via"] == "turn"
-    turn = json.loads((repo / ".plumb" / "session" / "c9" / "turn.json").read_text("utf-8"))
+    turn = json.loads((repo / ".iaso" / "session" / "c9" / "turn.json").read_text("utf-8"))
     assert turn["prompt_digest"] == prompts[-1]["digest"]
 
 
 def _watchdog_fired(repo: Path) -> bool:
-    log = repo / ".plumb" / "session" / "errors.log"
+    log = repo / ".iaso" / "session" / "errors.log"
     return log.exists() and "watchdog: hard limit" in log.read_text("utf-8")
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from verify_helpers import write
 
-from plumb.verify.runner import run_pytest
+from iaso.verify.runner import run_pytest
 
 
 @pytest.fixture

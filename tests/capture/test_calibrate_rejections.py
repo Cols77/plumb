@@ -12,9 +12,9 @@ import pytest
 from capture_helpers import JevStub, record_text, use_jev
 from jev_fixtures import default_noul, owner_decisions
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.capture.calibrate import calibrate, labelled_set
+from iaso import approvals
+from iaso.api import open_core
+from iaso.capture.calibrate import calibrate, labelled_set
 
 pytestmark = pytest.mark.sr("SR-215")
 
@@ -28,7 +28,7 @@ def stub():
 
 def _log(root: Path, text: str) -> str:
     digest = approvals.prompt_digest(text)
-    prompts = root / ".plumb" / "session" / "prompts.jsonl"
+    prompts = root / ".iaso" / "session" / "prompts.jsonl"
     prompts.parent.mkdir(parents=True, exist_ok=True)
     with prompts.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"digest": digest, "session": "s1",
@@ -45,8 +45,8 @@ def _propose(repo: Path, write_record, record_id: str, readback: str) -> None:
 def _reject(repo: Path, record_id: str, reason: str, words: str | None = None) -> None:
     """The rejection as the worker logs it from the reader's reading of the owner's message
     (the agent-run relay that used to log it no longer exists, SR-101 EX-9)."""
-    from plumb.capture.calibrate import snapshot
-    from plumb.normalize import sha256_text
+    from iaso.capture.calibrate import snapshot
+    from iaso.normalize import sha256_text
 
     words = words or f"{record_id}: that is not what I asked"
     core = open_core(repo)

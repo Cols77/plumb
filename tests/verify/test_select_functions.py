@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 from verify_helpers import SR_TEXT, make_project, write
 
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.verify import open_verify
-from plumb.verify.funcmap import FuncMap
-from plumb.verify.select import select_tests
-from plumb.verify.testmap import build_map
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.verify import open_verify
+from iaso.verify.funcmap import FuncMap
+from iaso.verify.select import select_tests
+from iaso.verify.testmap import build_map
 
 CORE = "src/pkg/core.py"
 ENV = "env-1"
@@ -148,13 +148,13 @@ def test_module_level_change_uses_the_closure(project: Path) -> None:
 
 @pytest.mark.sr("SR-255")
 def test_cli_lines(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from plumb.verify.cli import cmd_select
+    from iaso.verify.cli import cmd_select
 
     core = open_core(project)
     core.add_link("SR-001", "implemented_by", Target(path=CORE))
     _record(core, {EXEC_NODES[0]: ["alpha"]}, env=open_verify(core).env_key()).close()
     write(project, CORE, CORE_TEXT + "\n\ndef gamma(x):\n    return x\n")
-    assert cmd_select("plumb tests select", [CORE, "--root", str(project), "--budget", "1000"]) == 0
+    assert cmd_select("iaso tests select", [CORE, "--root", str(project), "--budget", "1000"]) == 0
     out = capsys.readouterr().out
     assert "no recorded test executes gamma" in out
     assert "tests/test_mod.py::test_add  (linked)" in out
@@ -168,7 +168,7 @@ def test_coverage_off_is_todays_selection(project: Path) -> None:
     write(project, CORE, CORE_TEXT.replace("x + 1", "1 + x"))
     on = open_verify(open_core(project)).select([CORE], budget_s=1000)
     assert set(EXEC_NODES) <= set(on.nodes)
-    write(project, ".plumb/config.yaml", "verify:\n  flaky_rerun: false\n  coverage: off\n")
+    write(project, ".iaso/config.yaml", "verify:\n  flaky_rerun: false\n  coverage: off\n")
     off = open_verify(open_core(project)).select([CORE], budget_s=1000)
     reference = select_tests(open_core(project), build_map(open_core(project)), [CORE],
                              budget_s=1000)

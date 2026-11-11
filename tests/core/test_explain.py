@@ -1,4 +1,4 @@
-"""``plumb explain <anything>``: plain words, a path or an ID resolve to the records and their
+"""``iaso explain <anything>``: plain words, a path or an ID resolve to the records and their
 upward chain in the owner's terms (ruling R9; ``why`` is an alias)."""
 
 from __future__ import annotations
@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb import cli
-from plumb.api import open_core
-from plumb.contracts import Target
+from iaso import cli
+from iaso.api import open_core
+from iaso.contracts import Target
 
 pytestmark = pytest.mark.sr("SR-203")
 

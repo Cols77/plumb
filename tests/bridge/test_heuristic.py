@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from plumb.api import open_core
-from plumb.contracts import JudgmentBackend, Link, LinkState, Pin, Target
-from plumb.judgment import JudgmentUnavailable, get_backend
+from iaso.api import open_core
+from iaso.contracts import JudgmentBackend, Link, LinkState, Pin, Target
+from iaso.judgment import JudgmentUnavailable, get_backend
 
 pytestmark = [pytest.mark.sr("SR-245"), pytest.mark.sr("SR-225")]
 
@@ -43,12 +43,12 @@ def _state(path: str) -> LinkState:
 
 
 def _set_backend(repo: Path, name: str) -> None:
-    (repo / ".plumb" / "config.yaml").write_text(f"judgment:\n  backend: {name}\n",
+    (repo / ".iaso" / "config.yaml").write_text(f"judgment:\n  backend: {name}\n",
                                                 encoding="utf-8")
 
 
 def test_no_judge_configured_raises_an_error_naming_the_setting(repo: Path) -> None:
-    (repo / ".plumb" / "config.yaml").write_text("", encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text("", encoding="utf-8")
     with pytest.raises(JudgmentUnavailable) as caught:
         get_backend(open_core(repo), hook=True)
     assert "judgment.backend" in str(caught.value)
@@ -68,7 +68,7 @@ def test_jev_without_adapter_raises_naming_jev(repo: Path, monkeypatch) -> None:
     import sys
 
     _set_backend(repo, "jev")
-    monkeypatch.setitem(sys.modules, "plumb.judgment.jev", None)
+    monkeypatch.setitem(sys.modules, "iaso.judgment.jev", None)
     with pytest.raises(JudgmentUnavailable) as caught:
         get_backend(open_core(repo), hook=True)
     assert caught.value.judge == "JEV"
@@ -86,7 +86,7 @@ def test_disabled_backend_is_unsure(repo: Path, sr004) -> None:
 
 
 def test_fake_backend_returns_canned_answers(repo: Path, sr004, monkeypatch) -> None:
-    import plumb.judgment as judgment
+    import iaso.judgment as judgment
 
     _set_backend(repo, "fake")
     monkeypatch.setitem(judgment.FAKE_ANSWERS, ("intent-change", "SR-004"), ("change", 0.97))
@@ -96,9 +96,9 @@ def test_fake_backend_returns_canned_answers(repo: Path, sr004, monkeypatch) -> 
 
 
 def test_unavailable_backend_raises_the_error_on_every_call(repo: Path, sr004) -> None:
-    from plumb.judgment import optional_backend
+    from iaso.judgment import optional_backend
 
-    (repo / ".plumb" / "config.yaml").write_text("", encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text("", encoding="utf-8")
     backend = optional_backend(open_core(repo), hook=True)
     assert backend.name == "unavailable"
     with pytest.raises(JudgmentUnavailable):
@@ -111,4 +111,4 @@ def test_the_heuristic_module_is_gone() -> None:
     import importlib
 
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("plumb.judgment.heuristic")
+        importlib.import_module("iaso.judgment.heuristic")

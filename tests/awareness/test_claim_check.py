@@ -1,8 +1,8 @@
 """R17: the early intent-conflict check runs wherever a branch's claim is written, not only
-in ``plumb capture`` (SR-081 EX-11). Another branch claiming the same record at another
+in ``iaso capture`` (SR-081 EX-11). Another branch claiming the same record at another
 version raises the decision once and shows its card, so the owner's "keep feat-x's" is
 recorded whatever tool wrote the record. One test per entry point that writes a claim: a
-direct edit then the stop hook, ``plumb new`` then the stop hook, capture, and the clarify
+direct edit then the stop hook, ``iaso new`` then the stop hook, capture, and the clarify
 read-back followed by an edit (and its card answered before any edit)."""
 
 from __future__ import annotations
@@ -18,10 +18,10 @@ import pytest
 
 from awareness.gitrepo import add_worktree, requirement
 from awareness.scenario import change, setup
-from plumb import cli
-from plumb.api import open_core
-from plumb.hosts.claude_code import stop
-from plumb.understand.summary import ASK_OWNER
+from iaso import cli
+from iaso.api import open_core
+from iaso.hosts.claude_code import stop
+from iaso.understand.summary import ASK_OWNER
 
 pytestmark = pytest.mark.sr("SR-259")
 THEIRS = "A relay pins the stated group, named by its title."
@@ -40,7 +40,7 @@ def _lanes(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _start_turn(root: Path, session: str = "s1") -> None:
-    path = root / ".plumb" / "session" / session / "turn.json"
+    path = root / ".iaso" / "session" / session / "turn.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"turn_start": time.time() - 0.5,
                                 "prompt_digest": "sha256:" + "a" * 64, "asked": {}}),
@@ -62,14 +62,14 @@ def _stop(root: Path, hook_input: Any, *, active: bool = False) -> str:
 def agent_channel(root: Path, session: str = "s1") -> str:
     """SR-266, SR-295: what the stop queued for the agent (the cards in full, each the owner
     must settle tagged for the agent to ask), taken once."""
-    path = root / ".plumb" / "session" / session / "agent_notes.json"
+    path = root / ".iaso" / "session" / session / "agent_notes.json"
     notes = json.loads(path.read_text("utf-8")) if path.exists() else []
     path.unlink(missing_ok=True)
     return "\n\n".join(str(n) for n in notes)
 
 
 def _turn(root: Path, hook_input: Any) -> tuple[list[str], str]:
-    """The stop hook's two passes: the owner's plumb lines (SR-265, SR-363: never the card
+    """The stop hook's two passes: the owner's iaso lines (SR-265, SR-363: never the card
     nor a count of it) and the agent's channel of the last pass (the card in full)."""
     lines = [_stop(root, hook_input)]
     first = agent_channel(root)
@@ -118,12 +118,12 @@ def test_direct_edit_then_stop_hook(tmp_path: Path, hook_input: Any) -> None:
     _assert_asked_and_answered(mine, lines, cards, "SR-005")
 
 
-def test_plumb_new_then_stop_hook(tmp_path: Path, hook_input: Any,
+def test_iaso_new_then_stop_hook(tmp_path: Path, hook_input: Any,
                                   monkeypatch: pytest.MonkeyPatch) -> None:
-    """``plumb new`` writes a requirement in FEAT-002, which feat-x claims; the backend
+    """``iaso new`` writes a requirement in FEAT-002, which feat-x claims; the backend
     judges it contradictory: the stop hook raises the decision and shows the card."""
-    import plumb.judgment as judgment
-    from plumb.contracts import Judgment
+    import iaso.judgment as judgment
+    from iaso.contracts import Judgment
 
     class Contradicts:
         name = "jev"

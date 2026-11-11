@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 
 from awareness.gitrepo import add_worktree, commit_all, make_repo, requirement
-from plumb.api import open_core
-from plumb.awareness import publish as pub
+from iaso.api import open_core
+from iaso.awareness import publish as pub
 
 pytestmark = pytest.mark.sr("SR-258")
 
@@ -30,7 +30,7 @@ def _setup(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _target(path: str):  # noqa: ANN202
-    from plumb.contracts import Target
+    from iaso.contracts import Target
 
     return Target(path=path)
 
@@ -87,7 +87,7 @@ def test_committed_part_recomputed_only_when_head_moved(tmp_path: Path,
 
 def test_default_branch_has_no_committed_part(tmp_path: Path) -> None:
     main, _other = _setup(tmp_path)
-    data = pub.publish(open_core(main), [".plumb/requirements/SR-001.md"])
+    data = pub.publish(open_core(main), [".iaso/requirements/SR-001.md"])
     assert data is not None and data["committed"] == []
     assert data["records"]["SR-001"]["how"] == "edited"
 
@@ -95,19 +95,19 @@ def test_default_branch_has_no_committed_part(tmp_path: Path) -> None:
 def test_note_edit_appends_path_without_index(tmp_path: Path,
                                               monkeypatch: pytest.MonkeyPatch) -> None:
     _main, other = _setup(tmp_path)
-    import plumb.api
+    import iaso.api
 
     def no_index(*a, **k):  # noqa: ANN002, ANN003, ANN202
         raise AssertionError("note_edit opened the record index")
 
-    monkeypatch.setattr(plumb.api, "open_core", no_index)
+    monkeypatch.setattr(iaso.api, "open_core", no_index)
     monkeypatch.setattr(subprocess, "run", no_index)
     pub.note_edit(other, "src/relay.py")
     pub.note_edit(other, "src/relay.py")
-    pub.note_edit(other, ".plumb/requirements/SR-001.md")
+    pub.note_edit(other, ".iaso/requirements/SR-001.md")
     data = pub.read_changing(pub.changing_path(other))
     assert data is not None
-    assert data["pending"] == [".plumb/requirements/SR-001.md", "src/relay.py"]
+    assert data["pending"] == [".iaso/requirements/SR-001.md", "src/relay.py"]
 
 
 def test_write_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

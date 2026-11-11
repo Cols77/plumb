@@ -16,8 +16,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "capture"))
 from capture_helpers import JevStub, use_jev  # noqa: E402
 
-from plumb.api import open_core  # noqa: E402
-from plumb.understand import judge, read, verdict  # noqa: E402
+from iaso.api import open_core  # noqa: E402
+from iaso.understand import judge, read, verdict  # noqa: E402
 from understand import test_judge_cascade  # noqa: E402
 from understand.fakes import FakeDispatcher, as_worker  # noqa: E402
 from understand.test_judge_cascade import StubJev, configure, fast_track_on  # noqa: E402
@@ -164,7 +164,7 @@ def test_ex6_the_owner_saying_an_approved_record_is_wrong_reverses_it(
     write(world, applied)
     core = open_core(world)
     assert core.status(["SR-001"])["SR-001"].confirmation == "proposed"
-    from plumb import words
+    from iaso import words
 
     [entry] = [e for e in core.events() if e.kind == "revocation"]
     assert entry.payload["by"] == "owner-words"

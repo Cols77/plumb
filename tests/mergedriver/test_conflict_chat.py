@@ -1,4 +1,4 @@
-"""SR-170 (DEC-057): a conflict answered in chat is read by plumb, never relayed."""
+"""SR-170 (DEC-057): a conflict answered in chat is read by iaso, never relayed."""
 
 from __future__ import annotations
 
@@ -18,13 +18,13 @@ from mergedriver.mdhelpers import (
     record,
     shown,
 )
-from plumb import cli
-from plumb.api import open_core
-from plumb.normalize import sha256_text
-from plumb.understand import read
+from iaso import cli
+from iaso.api import open_core
+from iaso.normalize import sha256_text
+from iaso.understand import read
 
 pytestmark = pytest.mark.sr("SR-211")
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 SESSION = "test-session"     # mdhelpers.log_prompt's
 
 
@@ -46,7 +46,7 @@ def _reply(repo: Path, words: str, said: str, change: str | None,
         read.apply(core, job, {"entries": [entry]})
 
 
-def test_ex1_a_clear_pick_in_chat_is_applied_by_plumb(repo: Path) -> None:
+def test_ex1_a_clear_pick_in_chat_is_applied_by_iaso(repo: Path) -> None:
     conflicted(repo)
     shown(repo)
     _reply(repo, "keep feat-x's version", "change", "Keep feat-x's version", "Keep the other")

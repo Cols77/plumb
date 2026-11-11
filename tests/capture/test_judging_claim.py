@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from capture_helpers import log_prompt, record_text
 
-from plumb.api import open_core
-from plumb.understand.claim import _Prompts, claim
+from iaso.api import open_core
+from iaso.understand.claim import _Prompts, claim
 
 LONG = ("I want multiply next to add. Keep it small, and do not touch the old exporter "
         "while you are there.")
@@ -79,8 +79,8 @@ def test_requirement_premise_is_its_intents_premise(repo: Path, write_record) ->
 
 
 def test_calibration_judges_the_same_claim(repo: Path, write_record) -> None:
-    from plumb.approvals import approve
-    from plumb.capture.calibrate import labelled_set
+    from iaso.approvals import approve
+    from iaso.capture.calibrate import labelled_set
 
     intent(write_record, repo)
     approve(open_core(repo), ["INT-001"])

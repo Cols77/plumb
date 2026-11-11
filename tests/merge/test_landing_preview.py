@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 from merge_helpers import commit, git, project, repin_all, write
 
-from plumb import approvals
-from plumb.api import open_core
-from plumb.boundary import merge_report, render
-from plumb.present import owner_text
+from iaso import approvals
+from iaso.api import open_core
+from iaso.boundary import merge_report, render
+from iaso.present import owner_text
 
 pytestmark = pytest.mark.sr("SR-260")
 
@@ -41,7 +41,7 @@ def test_a_branch_checked_against_main_previews_the_proofs_its_landing_owes(repo
 
 def test_only_changed_behaviour_owes_a_proof(repo: Path) -> None:
     """Owner 2026-11-08, "Only changed behaviour": SR-001's code changed, so it owes its
-    proof; SR-002 is only named, by a commit touching nothing outside .plumb/, so it does not."""
+    proof; SR-002 is only named, by a commit touching nothing outside .iaso/, so it does not."""
     project(repo)
     approvals.approve(open_core(repo), ["SR-001", "SR-002", "INT-001"])
     commit(repo, "project")
@@ -49,7 +49,7 @@ def test_only_changed_behaviour_owes_a_proof(repo: Path) -> None:
     write(repo, "src/pkg/mod.py", "def add(a, b):\n    return b + a\n")
     repin_all(repo)
     commit(repo, "reorder add\n\nSR: SR-001")
-    write(repo, ".plumb/log/note.json", "{}\n")
+    write(repo, ".iaso/log/note.json", "{}\n")
     commit(repo, "a log entry naming a requirement\n\nSR: SR-002")
     report = merge_report(open_core(repo), "main", run_full=False)
     assert [p["id"] for p in report.proofs] == ["SR-001"]
@@ -72,7 +72,7 @@ def test_a_question_the_landing_holds_on_travels_with_its_options(repo: Path) ->
              "options": [{"label": "A (Recommended)", "description": "a"},
                          {"label": "B", "description": "b"}],
              "records": [{"id": "SR-001", "hash": open_core(repo).index()["SR-001"].hash}]}
-    old = repo / ".plumb" / "session" / "old"
+    old = repo / ".iaso" / "session" / "old"
     old.mkdir(parents=True)
     (old / "judge_questions.json").write_text(json.dumps([asked]), encoding="utf-8")
     [row] = merge_report(open_core(repo), "main", run_full=False).questions
@@ -82,8 +82,8 @@ def test_a_question_the_landing_holds_on_travels_with_its_options(repo: Path) ->
 
 def test_a_flag_the_judge_left_standing_is_asked_and_the_owners_needed_ends_it(
         repo: Path) -> None:
-    from plumb.understand import testchange
-    from plumb.understand.judge import answers_by_key
+    from iaso.understand import testchange
+    from iaso.understand.judge import answers_by_key
 
     project(repo)
     core = open_core(repo)

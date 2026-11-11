@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from plumb.api import open_core
-from plumb.understand import evalcompare, evalrun
-from plumb.understand.evalcompare import CompareError, Verdict
+from iaso.api import open_core
+from iaso.understand import evalcompare, evalrun
+from iaso.understand.evalcompare import CompareError, Verdict
 
 
 def _item(n: int, expected: str) -> dict[str, Any]:
@@ -119,7 +119,7 @@ def test_jev_judge_maps_no_to_not_supported() -> None:
 
 
 def test_jev_choice_judge_keeps_the_verdict_and_scores_supported() -> None:
-    from plumb.judgment.model import JudgmentAnswer
+    from iaso.judgment.model import JudgmentAnswer
 
     asked: list[Any] = []
 

@@ -1,7 +1,7 @@
-"""Read and tamper with plumb's logs in tests, whatever their format (SP6 plan 3.2 item 7).
+"""Read and tamper with iaso's logs in tests, whatever their format (SP6 plan 3.2 item 7).
 
 Tests never open ``events.jsonl`` or ``evidence.jsonl`` themselves: they go through these
-helpers, so the log format (one file per entry under ``.plumb/log/<kind>/``, plus the legacy
+helpers, so the log format (one file per entry under ``.iaso/log/<kind>/``, plus the legacy
 JSONL lines during the transition) changes in one place.
 """
 
@@ -12,16 +12,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from plumb import log
-from plumb.paths import PlumbPaths
+from iaso import log
+from iaso.paths import IasoPaths
 
 
 def entries(root: Path, stream: str) -> list[dict[str, Any]]:
     """Every entry of ``stream`` as a dict (``v``, ``kind``, ``at``, ``marker``, ``payload``,
-    ``prev``, ``digest``, ``name``), in the order plumb reads them."""
+    ``prev``, ``digest``, ``name``), in the order iaso reads them."""
     return [{"v": log.SCHEMA, "kind": e.kind, "at": e.at, "marker": e.marker,
              "payload": dict(e.payload), "prev": e.prev, "digest": e.digest, "name": e.name}
-            for e in log.read(PlumbPaths(root), stream)]  # type: ignore[arg-type]
+            for e in log.read(IasoPaths(root), stream)]  # type: ignore[arg-type]
 
 
 def kinds(root: Path, stream: str = "events") -> list[str]:
@@ -30,7 +30,7 @@ def kinds(root: Path, stream: str = "events") -> list[str]:
 
 def _location(root: Path, name: str) -> tuple[Path, int | None]:
     """The file holding entry ``name`` and, for a legacy line, its 1-based line number."""
-    paths = PlumbPaths(root)
+    paths = IasoPaths(root)
     if "/" in name:
         return paths.log_dir / name, None
     file_name, _, number = name.rpartition(":")
@@ -80,9 +80,9 @@ def delete(root: Path, stream: str, index: int) -> str:
 
 def write_legacy(root: Path, stream: str, raws: list[dict[str, Any]]) -> None:
     """Append raw entries as legacy JSONL lines (the format before SP6)."""
-    from plumb.normalize import canonical_json
+    from iaso.normalize import canonical_json
 
-    path = PlumbPaths(root).log_path(stream)
+    path = IasoPaths(root).log_path(stream)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("ab") as handle:
         for raw in raws:
@@ -99,8 +99,8 @@ def legacy_entry(kind: str, payload: dict[str, Any], prev: str | None,
 
 
 def entry_files(root: Path) -> list[str]:
-    """``kind/file`` of every entry file under ``.plumb/log/``."""
-    base = PlumbPaths(root).log_dir
+    """``kind/file`` of every entry file under ``.iaso/log/``."""
+    base = IasoPaths(root).log_dir
     return sorted(p.relative_to(base).as_posix() for p in base.glob("*/*.json"))
 
 
@@ -116,9 +116,9 @@ def legacy_relay(root: Path, ids: list[str], digest: str, quote: str, *,
     The relay no longer exists (SR-101 EX-9), but the entries it wrote stay in the log, and the
     surfaces that show, count, re-check and label them keep working. Tests of those surfaces
     write such an entry here instead of running the relay."""
-    from plumb.api import open_core
-    from plumb.approvals import approval_items
-    from plumb.normalize import sha256_text
+    from iaso.api import open_core
+    from iaso.approvals import approval_items
+    from iaso.normalize import sha256_text
 
     core = open_core(root)
     if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:

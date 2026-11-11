@@ -15,14 +15,14 @@ from mergedriver.mdhelpers import (
     install_driver,
     make_repo,
     parse,
-    plumb,
+    iaso,
     record,
     run_git,
     write_record,
 )
-from plumb.api import open_core
+from iaso.api import open_core
 
-SR = ".plumb/requirements/SR-005.md"
+SR = ".iaso/requirements/SR-005.md"
 
 
 def _two_sides(tmp_path: Path, **base_fields) -> tuple[Path, Path]:
@@ -57,7 +57,7 @@ def test_non_overlapping_changes_merge_clean(tmp_path: Path) -> None:
 @pytest.mark.sr("SR-256")
 def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
     """SR-076 EX-1: both statements kept, labels main and feat-x, unconfirmed, merged."""
-    from plumb.approvals import approve
+    from iaso.approvals import approve
 
     root, other = _two_sides(tmp_path)
     approve(open_core(root), ["SR-005"])
@@ -70,7 +70,7 @@ def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
                                examples=[ex(1)]))
     commit_all(other, "theirs")
     merged = run_git(root, "merge", "--no-edit", "feat-x")
-    assert "/plumb conflicts" in merged.stderr + merged.stdout
+    assert "/iaso conflicts" in merged.stderr + merged.stdout
     assert run_git(root, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False).returncode
     data, _ = parse((root / SR).read_text(encoding="utf-8"))
     block = data["conflict"]
@@ -79,7 +79,7 @@ def test_content_conflict_becomes_ic(tmp_path: Path) -> None:
     assert block["fields"]["statement"]["theirs"].endswith("by its title.")
     core = open_core(root)
     assert core.status(["SR-005"])["SR-005"].confirmation != "confirmed"
-    shown = plumb(root, "show", "IC-001")
+    shown = iaso(root, "show", "IC-001")
     assert shown.returncode == 0 and "Conflict IC-001 on \"relay checks\"" in shown.stdout
 
 
@@ -102,7 +102,7 @@ def test_rebase_uses_the_same_driver(tmp_path: Path) -> None:
 def test_driver_under_300_ms(tmp_path: Path) -> None:
     """sp6 7.2: the driver itself (parse, merge, write) stays under 300 ms per file; the
     process start of a cold interpreter is measured separately and only bounded loosely."""
-    from plumb.mergedriver import merge_texts
+    from iaso.mergedriver import merge_texts
 
     base = record(statement="a", examples=[ex(i) for i in range(1, 30)])
     ours = record(statement="b", examples=[ex(i) for i in range(1, 31)])
@@ -124,6 +124,6 @@ def _timed(root: Path, paths: list[str]) -> float:
     import subprocess
 
     start = time.perf_counter()
-    subprocess.run([sys.executable, "-m", "plumb", "merge-driver", *paths, SR, "main",
+    subprocess.run([sys.executable, "-m", "iaso", "merge-driver", *paths, SR, "main",
                     "feat-x"], cwd=root, capture_output=True, check=True)
     return time.perf_counter() - start

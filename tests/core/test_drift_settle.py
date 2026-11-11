@@ -11,10 +11,10 @@ from types import SimpleNamespace
 import pytest
 
 from core.stale_asked import asked
-from plumb import links, stale
-from plumb.api import open_core
-from plumb.contracts import Target
-from plumb.understand import repin
+from iaso import links, stale
+from iaso.api import open_core
+from iaso.contracts import Target
+from iaso.understand import repin
 
 pytestmark = pytest.mark.sr("SR-198")
 
@@ -163,7 +163,7 @@ def test_ex3_a_contradiction_with_an_unconfirmed_record_files_no_card(
 @pytest.mark.sr("SR-245")
 def test_sr174_an_http_error_from_the_judge_is_waiting_not_unresolved(
         project: Path, monkeypatch) -> None:
-    from plumb.contracts import DispatchError
+    from iaso.contracts import DispatchError
 
     class Broken:
         name = "api"

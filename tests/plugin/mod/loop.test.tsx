@@ -22,7 +22,7 @@ async function strip(ui: any): Promise<string | undefined> {
   return parts.join('  ') + (stopped ? ` · ${stopped.text}` : '')
 }
 
-const LOOP = `${ROOT}/.plumb/session/${SESSION}/intent/aaaaaaaaaaaa.json`
+const LOOP = `${ROOT}/.iaso/session/${SESSION}/intent/aaaaaaaaaaaa.json`
 
 function loop(step: string, tasks: unknown = null, stopped: string | null = null): string {
   return JSON.stringify({ digest: 'sha256:' + 'a'.repeat(64), intent: 'INT-001', opened_at: '2026-10-11T11:00:00Z',
@@ -34,7 +34,7 @@ async function bandWith($: any, on: any, surface: (typeof SURFACES)[number], fil
   if (file !== null) w.files[LOOP] = file
   install(on, w)
   await $.session.start(START)
-  return { w, ui: await $.ui.mount({ plugin: 'plumb', surface, ...BAND }) }
+  return { w, ui: await $.ui.mount({ plugin: 'iaso', surface, ...BAND }) }
 }
 
 for (const surface of SURFACES) {
@@ -76,17 +76,17 @@ for (const surface of SURFACES) {
       await $.turn.complete(TURN_DONE)
       expect(await ui.find({ key: 'step:clarify' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
-      expect(await ui.find({ type: 'Text', text: /^plumb / })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^iaso / })).toBeDefined()
       await ui.unmount()
     })
 
     test('SR-291 EX-5: no loop open: one line with the long job\'s progress (SR-272)', async ($, on) => {
       const w = world()
-      w.files[`${ROOT}/.plumb/session/${SESSION}/progress`] = JSON.stringify({ state: 'running', step: 'judging the backlog', done: 10, total: 160 })
+      w.files[`${ROOT}/.iaso/session/${SESSION}/progress`] = JSON.stringify({ state: 'running', step: 'judging the backlog', done: 10, total: 160 })
       install(on, w)
       await $.session.start(START)
-      const ui = await $.ui.mount({ plugin: 'plumb', surface, ...BAND })
-      expect(await ui.find({ type: 'Text', text: 'plumb ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: 'iaso ● 2 await you · judging the backlog · 10/160' })).toBeDefined()
       expect(await ui.find({ key: 'step:clarify' })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: TASK })).toBeUndefined()
       await ui.unmount()
@@ -108,7 +108,7 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
-    test("SR-291 EX-8: a phase's gate failed: the bar names the phase, no agents of plumb's own", async ($, on) => {
+    test("SR-291 EX-8: a phase's gate failed: the bar names the phase, no agents of iaso's own", async ($, on) => {
       const { ui } = await bandWith($, on, surface,
         loop('build', { label: 'colours gate failed', done: 2, total: 4, started_at: '2026-10-11T11:48:05Z' }))
       expect((await ui.find({ type: 'Text', text: /^build · / }))?.text).toBe('build · slice 2/4 · colours gate failed')
@@ -118,22 +118,22 @@ for (const surface of SURFACES) {
   })
 }
 
-test('SR-291: the bar moves within the turn, read again after the agent runs plumb intent progress', async ($, on) => {
+test('SR-291: the bar moves within the turn, read again after the agent runs iaso intent progress', async ($, on) => {
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: '' }) as any)
   const { w, ui } = await bandWith($, on, 'terminal',
     loop('clarify', { label: 'clarifying', done: 1, total: 4, started_at: '2026-10-11T11:59:00Z' }))
   w.files[LOOP] = loop('clarify', { label: 'clarifying', done: 2, total: 4, started_at: '2026-10-11T11:59:00Z' })
-  await $.tool.call({ tool: 'Bash', command: 'plumb intent progress --task clarifying --done 2 --total 4' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'iaso intent progress --task clarifying --done 2 --total 4' } as any)
   expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('clarifying · 2/4')
   await ui.unmount()
 })
 
-test('SR-291 / SR-294: plumb intent progress in the PowerShell tool moves the bar within the turn', async ($, on) => {
+test('SR-291 / SR-294: iaso intent progress in the PowerShell tool moves the bar within the turn', async ($, on) => {
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: '' }) as any)
   const { w, ui } = await bandWith($, on, 'terminal',
     loop('clarify', { label: 'clarifying', done: 1, total: 4, started_at: '2026-10-11T11:59:00Z' }))
   w.files[LOOP] = loop('clarify', { label: 'clarifying', done: 3, total: 4, started_at: '2026-10-11T11:59:00Z' })
-  await $.tool.call({ tool: 'PowerShell', command: 'plumb intent progress --task clarifying --done 3 --total 4' } as any)
+  await $.tool.call({ tool: 'PowerShell', command: 'iaso intent progress --task clarifying --done 3 --total 4' } as any)
   expect((await ui.find({ type: 'Text', text: TASK }))?.text).toBe('clarifying · 3/4')
   await ui.unmount()
 })
@@ -143,7 +143,7 @@ test("SR-291 EX-7: a workflow's agent moves the bar with no tool event in the ow
   w.files[LOOP] = loop('build', { label: 'colours gate passed', done: 1, total: 4, started_at: '2026-10-11T11:48:05Z' })
   const clock = install(on, w)
   await $.session.start(START)
-  const ui = await $.ui.mount({ plugin: 'plumb', surface: 'terminal', ...BAND })
+  const ui = await $.ui.mount({ plugin: 'iaso', surface: 'terminal', ...BAND })
   w.files[LOOP] = loop('build', { label: 'colours gate passed', done: 2, total: 4, started_at: '2026-10-11T11:48:05Z' })
   await clock.advance(2000) // the band's period (POLL_MS in register.tsx)
   expect((await ui.find({ type: 'Text', text: /^build · / }))?.text).toBe('build · slice 2/4 · colours gate passed')
@@ -196,12 +196,12 @@ for (const surface of SURFACES) {
           message: null, reopen: false, send: true, tasks: { done: 3, total: 4, left: ['the colours slice'] },
           steps: [{ name: 'clarify', mark: 'done', gate: 'passed', findings: 2, left: ['a', 'b'] }, { name: 'plan', mark: 'done', gate: 'passed', findings: 2, left: ['c', 'd'] },
             { name: 'build', mark: 'current', gate: 'open', findings: 0, left: [] }, { name: 'proven', mark: 'todo', gate: 'to come', findings: 0, left: [] }] }],
-          live: 1, idle: 0, stamp: `${ROOT}/.git/plumb-loops.stamp`, counts: { intent: { live: 1, idle: 0 }, debug: { live: 0, idle: 0 }, evaluate: { live: 0, idle: 0 } } } }
+          live: 1, idle: 0, stamp: `${ROOT}/.git/iaso-loops.stamp`, counts: { intent: { live: 1, idle: 0 }, debug: { live: 0, idle: 0 }, evaluate: { live: 0, idle: 0 } } } }
         : base(a, v)
       await ui.press({ key: 'step:build' })
-      expect(w.opens.map(o => o.id)).toEqual(['plumb-pane'])
-      const view = await $.ui.mount({ plugin: 'plumb', surface, component: 'Pane' as const, requestId: 'plumb-pane',
-        props: { title: 'plumb', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } } } as any)
+      expect(w.opens.map(o => o.id)).toEqual(['iaso-pane'])
+      const view = await $.ui.mount({ plugin: 'iaso', surface, component: 'Pane' as const, requestId: 'iaso-pane',
+        props: { title: 'iaso', bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 } } } as any)
       expect((await view.find({ type: 'Text', text: /this loop/ }))?.props.bold).toBe(true) // expanded
       expect(await view.find({ type: 'Text', text: /gate.*open/ })).toBeDefined()
       expect(await view.find({ type: 'Text', text: /3 of 4/ })).toBeDefined()
