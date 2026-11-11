@@ -172,7 +172,7 @@ def repair_messages(root: Path) -> list[str]:
 
     root = Path(root)
     log, session = root / ".iaso" / "log", root / ".iaso" / "session"
-    tracked = set(_git(root, "ls-files", "-z", ".iaso/log").stdout.split("\0"))
+    tracked = set(_git(root, "ls-files", "-z", log.relative_to(root).as_posix()).stdout.split("\0"))
     known: set[str] = set()   # every digest the (never rewritten) session files hold
     back: dict[str, str] = {}  # a remapped message digest -> its own, from the session's message texts
     for p in session.rglob("*") if session.is_dir() else ():
