@@ -42,7 +42,7 @@ READ_ONLY = "Read,Grep,Glob"       # SR-388: the diagnosis and the review get no
 
 @dataclass
 class Outcome:
-    state: str                  # fixed | landed | owner | held | reported | refused
+    state: str                  # fixed | landed | owner | held | reported | refused | waiting
     branch: str = ""
     detail: str = ""
     line: str = ""              # a line to say once (the judge could not be reached)
@@ -104,6 +104,11 @@ def landed(root: Path, branch: str) -> bool:
     return subprocess.run(["git", "merge-base", "--is-ancestor", f"refs/heads/{branch}",
                            "HEAD"], cwd=root, capture_output=True).returncode == 0
 
+
+# The environment failed, not the case: such an error is no round, makes no report and leaves
+# no work copy; the case stays open and runs again when the cause is gone.
+INFRA = re.compile(r"hit your .{0,30}limit|claude command was not found|No response from API"
+                   r"|No space left on device|Errno 28|claude is not available", re.I)
 
 FLOOR_GB = 5   # SR-402: refuse a new work copy below this free space (fixed; a setting if asked)
 
@@ -381,6 +386,12 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
         debug.resolve(root, [case["id"]])
         return Outcome("landed", branch, f"already landed: {branch}")
+    import shutil
+
+    if shutil.which("claude") is None and fixer is None:   # no work copy for a missing command
+        return Outcome("waiting", branch, "the claude command was not found on this machine; "
+                       "the case stays open and runs again when it is found")
+    made = not (state_dir(root) / "wt" / f"debug-{_slug(case['id'])}").exists()
     try:
         wt, branch = _worktree(root, case["id"])
     except DiskShort as exc:
@@ -446,6 +457,12 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                         state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
                                              session, case)
                 except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
+                    if INFRA.search(str(exc)) or getattr(exc, "errno", 0) == 28:
+                        if made and not _own_commits(root, branch) and not _changed(wt):
+                            _git(root, "worktree", "remove", "--force", str(wt), check=False)
+                        return Outcome("waiting", branch, f"{exc}; not counted as a round, "
+                                       "the case stays open and runs again when it is gone",
+                                       rounds=tried)
                     state, why = "fail", f"{type(exc).__name__}: {exc}"
                 if state == "owner":
                     end = "owner"
