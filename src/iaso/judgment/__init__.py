@@ -1,7 +1,7 @@
 """Optional, advisory judgment (spec 8.2): ``get_backend`` and ``get_cascade``.
 
 Parts of iaso that need no judgment work without any judgment service. ``judgment.backend``
-in ``.iaso/config.yaml`` picks the judge: ``jev`` (needs a key outside the repository),
+in ``config.yaml`` in the records folder picks the judge: ``jev`` (needs a key outside the repository),
 ``disabled`` or ``fake`` (tests). There is no rule-based stand-in (INT-029): with no judge
 configured, or a judge that has no key, times out or fails, judging raises
 ``JudgmentUnavailable`` naming the judge and the cause. Judgments order, filter and annotate;
@@ -11,6 +11,8 @@ Kept import-light: the prompt hook calls ``get_backend`` every turn.
 """
 
 from __future__ import annotations
+
+from iaso.paths import state_dir
 
 import json
 import time
@@ -57,10 +59,10 @@ def _config(core: Any) -> Any:
 def notice_once(root: Path, key: str, text: str, *, now: float | None = None) -> str | None:
     """``text`` the first time ``key`` is seen in this session window, else None.
 
-    Kept in the gitignored ``.iaso/session/judgment_notices.json``; a notice repeats after
+    Kept in the gitignored ``session/judgment_notices.json``; a notice repeats after
     ``NOTICE_WINDOW_S`` (a working session), never on every turn.
     """
-    path = Path(root) / ".iaso" / "session" / "judgment_notices.json"
+    path = state_dir(Path(root)) / "session" / "judgment_notices.json"
     now = time.time() if now is None else now
     try:
         seen = json.loads(path.read_text(encoding="utf-8"))
@@ -237,7 +239,7 @@ def cause_code(cause: str) -> str:
 
 
 def _judges(root: Path) -> tuple[Path, dict[str, Any]]:
-    path = Path(root) / ".iaso" / "session" / "judges.json"
+    path = state_dir(Path(root)) / "session" / "judges.json"
     try:
         held = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -258,7 +260,7 @@ def _keep(path: Path, held: Mapping[str, Any]) -> None:
 
 def judge_down(root: Path, judge: str, cause: str, *, code: str = "", detail: str = "",
                slot: str = "", now: float | None = None) -> None:
-    """SR-359 EX-1: note in ``.iaso/session/judges.json`` that ``judge`` cannot settle a
+    """SR-359 EX-1: note in ``session/judges.json`` that ``judge`` cannot settle a
     record and why, for the band's red line, until ``judge_up``. ``slot`` (the judge by
     default) is where it is kept: the model judge keeps one slot whatever its label, so a
     changed model replaces its line. ``checked`` is when the judge was last found down, for
@@ -401,6 +403,6 @@ def get_backend(core: Any, *, hook: bool) -> Any:
         return open_jev(core, config, hook=hook, thresholds=thresholds)
     if not name:
         raise JudgmentUnavailable("no judge", "judgment.backend is not set in "
-                                  ".iaso/config.yaml; set it to jev", code="not-configured")
+                                  "the records folder's config.yaml; set it to jev", code="not-configured")
     raise JudgmentUnavailable("no judge", f"judgment.backend is {name!r}, which is not a "
                               "judge; set judgment.backend to jev", code="not-configured")

@@ -255,7 +255,7 @@ def test_check_that_cannot_run_writes_one_line_in_adopted_project_only(tmp_path:
     bare = git_repo(tmp_path / "bare")
     env = env_with(IASO_HOME=str(tmp_path / "home"), CLAUDE_PROJECT_DIR=str(bare))
     run_hook("prompt", bare, hook_data("prompt"), env)
-    assert not (bare / ".iaso").exists()
+    assert not (bare / ".iaso").exists() and not (bare / ".iaso").exists()
 
 
 @pytest.mark.sr("SR-354")
@@ -276,4 +276,4 @@ def test_hook_whose_code_cannot_load_writes_one_line_in_adopted_project_only(
     bare = git_repo(tmp_path / "bare")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(bare))
     assert cli.run("hook", ["question-answer"]) == 0
-    assert not (bare / ".iaso").exists()
+    assert not (bare / ".iaso").exists() and not (bare / ".iaso").exists()

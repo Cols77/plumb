@@ -9,6 +9,8 @@ of the three interruption triggers (spec 6.5); otherwise the agent is told not t
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from pathlib import Path
 
@@ -32,7 +34,7 @@ class HostAgentCascade:
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
-        self.queue = self.root / ".iaso" / "session" / "escalations.jsonl"
+        self.queue = state_dir(self.root) / "session" / "escalations.jsonl"
 
     def escalate(self, request: EscalationRequest) -> None:
         judgment = request.judgment

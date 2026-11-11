@@ -7,6 +7,8 @@ beyond the standard library: each route imports only the module it needs, and
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import sys
 import time
 
@@ -50,7 +52,7 @@ def _cannot_run(root: str | None, event: str, why: str) -> None:
         adopted = find_hook_root({}, root)
         if adopted is None:
             return
-        path = adopted / ".iaso" / "session" / "errors.log"
+        path = state_dir(adopted) / "session" / "errors.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         line = " ".join(f"{stamp} iaso hook {event}: {why}".split())

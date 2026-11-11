@@ -1,7 +1,7 @@
 """``iaso merge-driver BASE OURS THEIRS PATH [OURS_LABEL THEIRS_LABEL]`` (sp6 7.2).
 
 git calls it for a record file both sides changed (``merge=iaso-record`` in
-``.iaso/.gitattributes``), in the top directory of the worktree, while it holds the index
+``.gitattributes`` in the records folder), in the top directory of the worktree, while it holds the index
 lock: it reads the three temporary files, writes the result to ``OURS`` and exits 0 (merged,
 possibly carrying an intent conflict) or 1 (git must stop: an add/add of one ID, a side
 that is not a record and did not merge as text, or a record whose open intent conflict a
@@ -14,6 +14,8 @@ never the record index. git runs only to reserve an ``IC`` ID (and, with a git o
 """
 
 from __future__ import annotations
+
+from iaso.paths import state_dir
 
 import json
 import os
@@ -68,7 +70,7 @@ def _numbers(text: str) -> set[int]:
 def known_ics(root: Path) -> set[int]:
     """Every IC number this worktree knows: open conflict blocks in record files, resolved
     ones in the log (both log layouts) and the last one this worktree handed out."""
-    iaso = Path(root) / ".iaso"
+    iaso = state_dir(Path(root))
     found: set[int] = set()
     for dirname in RECORD_DIRS:
         directory = iaso / dirname
@@ -107,7 +109,7 @@ def _remember(root: Path, ic: str) -> None:
     match = _IC.search(ic)
     if match is None:
         return
-    cache = Path(root) / ".iaso" / "cache"
+    cache = state_dir(Path(root)) / "cache"
     try:
         cache.mkdir(parents=True, exist_ok=True)
         tmp = cache / f".{CACHE}.{os.getpid()}.tmp"

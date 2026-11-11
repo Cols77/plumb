@@ -10,6 +10,8 @@ those paths change. Other worktrees read it; nothing here ever writes outside th
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import os
 import time
@@ -27,7 +29,7 @@ GIT_TIMEOUT_S = 2.0
 
 
 def changing_path(root: Path) -> Path:
-    return Path(root) / ".iaso" / "cache" / CHANGING
+    return state_dir(Path(root)) / "cache" / CHANGING
 
 
 def read_changing(path: Path) -> dict[str, Any] | None:
@@ -71,7 +73,7 @@ def _default_branch(core: Any) -> str:
     value = getattr(section, "default_base", None) if section is not None else None
     if isinstance(value, str) and value.strip():
         return value.strip()
-    root = Path(core.root) / ".iaso"
+    root = state_dir(Path(core.root))
     try:
         config = root / "config.yaml"
         stat = config.stat()
@@ -183,7 +185,7 @@ def contains(root: Path, head: str | None, default_tip: str | None, *,
         return False
     if head == default_tip:
         return True
-    cache = Path(root) / ".iaso" / "cache" / LANDED
+    cache = state_dir(Path(root)) / "cache" / LANDED
     try:
         known = json.loads(cache.read_text(encoding="utf-8"))
     except (OSError, ValueError):

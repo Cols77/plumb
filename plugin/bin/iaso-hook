@@ -121,8 +121,9 @@ gitroot=
 d=$s
 while [ -n "$d" ]; do
   # iaso's own home (~/.iaso: env/, current.json) is never a repository's records
-  if { [ -f "$d/.iaso/config.yaml" ] || [ -d "$d/.iaso/requirements" ]; } &&
-     [ ! -d "$d/.iaso/env" ] && [ ! -f "$d/.iaso/current.json" ]; then
+  sd=.iaso
+  if { [ -f "$d/$sd/config.yaml" ] || [ -d "$d/$sd/requirements" ]; } &&
+     [ ! -d "$d/$sd/env" ] && [ ! -f "$d/$sd/current.json" ]; then
     root=$d
     break
   fi
@@ -202,7 +203,7 @@ if [ "$event" = pre-tool ]; then
     *'"agent_id"'*) ;;
     *)
       field "$input" session_id
-      [ -z "$v" ] || { read_file "$root/.iaso/session/$v/inbox.jsonl"; [ -z "$f" ] || pending=1; } ;;
+      [ -z "$v" ] || { read_file "$root/$sd/session/$v/inbox.jsonl"; [ -z "$f" ] || pending=1; } ;;
   esac
   case $tool in
     Edit|Write|MultiEdit|NotebookEdit)
@@ -241,7 +242,7 @@ if [ "$event" = pre-tool ]; then
             *) exit 0 ;;
           esac ;;
       esac
-      read_file "$root/.iaso/config.yaml"
+      read_file "$root/$sd/config.yaml"
       case $f in
         *guard_main:*false*) exit 0 ;;
       esac ;;
@@ -358,8 +359,8 @@ else
 fi
 
 error_line() {  # one line in this adopted project's .iaso/session/errors.log (SR-354 EX-2)
-  mkdir -p "$root/.iaso/session" 2>/dev/null &&
-    printf '%s\n' "iaso hook $event: $1" >> "$root/.iaso/session/errors.log" 2>/dev/null
+  mkdir -p "$root/$sd/session" 2>/dev/null &&
+    printf '%s\n' "iaso hook $event: $1" >> "$root/$sd/session/errors.log" 2>/dev/null
   return 0
 }
 

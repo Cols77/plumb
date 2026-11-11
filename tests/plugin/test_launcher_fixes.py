@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from iaso.paths import state_dir
 from iaso.present import owner_text
 
 from .helpers import (
@@ -201,7 +202,7 @@ def test_stale_lock_taken_over_when_find_is_not_posix(tmp_path: Path) -> None:
 # SR-121: the gate under the .iaso/ found by the walk, not silenced by a deny rule -------------
 
 def _closed_gate(root: Path) -> None:
-    gate = root / ".iaso" / "session" / "s1" / "gate"
+    gate = state_dir(root) / "session" / "s1" / "gate"
     gate.parent.mkdir(parents=True, exist_ok=True)
     gate.write_text('{"state": "closed", "reason": "the reminders"}', encoding="utf-8")
 
@@ -285,7 +286,8 @@ def test_gate_script_alone_keeps_the_project_folder() -> None:
     working folder, is where the gate is read."""
     text = (Path(__file__).resolve().parents[2] / "src" / "iaso" / "hosts" / "claude_code"
             / "templates" / "gate.sh").read_text(encoding="utf-8")
-    assert '"${IASO_ROOT:-${CLAUDE_PROJECT_DIR:-.}}/.iaso/session/$session/gate"' in text
+    assert 'r="${IASO_ROOT:-${CLAUDE_PROJECT_DIR:-.}}"' in text
+    assert 'file="$r/$sd/session/$session/gate"' in text
 
 
 @pytest.mark.sr("SR-226")

@@ -12,11 +12,14 @@ import re
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+
+from iaso.paths import state_dir
 from typing import Any
 
 from iaso.present import owner_text
 
-RECORD_FILE = re.compile(r"^\.iaso/(?:intents|requirements|decisions|features|ncs)/[^/]+\.md$")
+RECORD_FILE = re.compile(
+    r"^\.iaso/(?:intents|requirements|decisions|features|ncs)/[^/]+\.md$")
 
 
 def _git(root: Path, *args: str) -> str | None:
@@ -30,7 +33,8 @@ def _git(root: Path, *args: str) -> str | None:
 
 def unmerged_stages(root: Path) -> dict[str, set[int]]:
     """``{record path: {stages}}`` of the record files git left unmerged."""
-    out = _git(Path(root), "ls-files", "-u", "-z", "--", ".iaso/")
+    out = _git(Path(root), "ls-files", "-u", "-z", "--",
+               f"{state_dir(Path(root)).name}/")
     stages: dict[str, set[int]] = {}
     for item in (out or "").split("\0"):
         if "\t" not in item:

@@ -5,6 +5,8 @@ side by side, and records each verdict through ``proof.record_verdict`` (the onl
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import json
 import os
@@ -103,7 +105,7 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
     """SR-397 EX-7: one fresh session (no ``--resume``) in a folder outside the repository."""
     root = Path(root)
     stamp = time.strftime("%Y%m%dT%H%M%S")
-    run_dir = runmod._new_run_dir(runs_dir or root / ".iaso" / "eval" / "runs",
+    run_dir = runmod._new_run_dir(runs_dir or state_dir(root) / "eval" / "runs",
                                   f"{stamp}-proof-{name}")
     binary = binary or shutil.which("claude")
     if binary is None:
@@ -112,7 +114,9 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
     workspace = Path(tempfile.mkdtemp(prefix="iaso-proof-"))
     try:
         before = _fingerprint(root)
-        env = dict(os.environ)
+        from iaso.background import child_env
+
+        env = child_env()   # no hook GIT_DIR: the evaluator's git stays in its workspace
         if (root / "src" / "iaso").is_dir():   # the case and the scratch hooks run the tree
             env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(root / "src"),
                                                               env.get("PYTHONPATH", "")]))

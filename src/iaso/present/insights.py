@@ -13,6 +13,8 @@ library only at import: each builder imports what it needs.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -69,7 +71,7 @@ def _questions_line(core: Any) -> Line | None:
     """A question waiting on a record this checkout's branch changes (SR-374, SR-361)."""
     from iaso.understand import judge
 
-    sessions = Path(core.root) / ".iaso" / "session"
+    sessions = state_dir(Path(core.root)) / "session"
     ours = None
     for path in sorted(sessions.glob("*/judge_questions.json")):
         try:
@@ -88,7 +90,7 @@ def _questions_line(core: Any) -> Line | None:
 def changed_lines(core: Any, *, mark: bool) -> list[Line]:
     """The records new or changed since the last session brief (``brief_seen.json``); with
     ``mark`` the current hashes become the reference. Nothing on a first brief."""
-    path = Path(core.root) / ".iaso" / "session" / BRIEF_SEEN
+    path = state_dir(Path(core.root)) / "session" / BRIEF_SEEN
     try:
         before = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

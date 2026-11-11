@@ -60,6 +60,7 @@ def source(tmp_path: Path) -> Path:
     _git(root, "config", "user.email", "t@example.com")
     _git(root, "config", "user.name", "T")
     _git(root, "config", "core.autocrlf", "false")
+    (root / ".iaso").mkdir()   # an old repository, as tests/conftest.py's repo (SR-431)
     init_repo(root)
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "setup")

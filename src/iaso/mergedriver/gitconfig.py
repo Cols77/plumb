@@ -1,6 +1,6 @@
 """The record merge driver's installation (sp6 7.1, SR-075).
 
-- ``.iaso/.gitattributes`` gains ``<dir>/*.md merge=iaso-record`` for each record
+- ``.gitattributes`` in the records folder gains ``<dir>/*.md merge=iaso-record`` for each record
   directory, once each; other lines are kept. The file is committed, so every clone shares
   the attribute.
 - The repository's git config (shared by every worktree of the clone) gains
@@ -12,6 +12,8 @@ A clone where the driver is not configured falls back to git's text merge for re
 """
 
 from __future__ import annotations
+
+from iaso.paths import state_dir
 
 import subprocess
 from pathlib import Path
@@ -50,7 +52,7 @@ def _in_git(root: Path) -> bool:
 
 
 def _attr_path(root: Path) -> Path:
-    return Path(root) / ".iaso" / ".gitattributes"
+    return state_dir(Path(root)) / ".gitattributes"
 
 
 def _attr_lines(root: Path) -> list[str]:
@@ -80,7 +82,7 @@ def install(root: Path, launcher: str, *, dry_run: bool = False) -> list[str]:
             text = (text + "\n" if text else "") + "\n".join(missing) + "\n"
             path.write_text(text, encoding="utf-8", newline="\n")
         lines.append(("iaso: would write" if dry_run else "iaso: wrote")
-                     + " .iaso/.gitattributes (record files merge field by field)")
+                     + f" {state_dir(root).name}/.gitattributes (record files merge field by field)")
     if not _in_git(root):
         lines.append("iaso: not a git repository; the record merge driver is not configured")
         return lines
@@ -111,7 +113,7 @@ def uninstall(root: Path, *, dry_run: bool = False) -> list[str]:
             else:
                 path.unlink()
         lines.append(("iaso: would remove" if dry_run else "iaso: removed")
-                     + " the record merge lines of .iaso/.gitattributes")
+                     + f" the record merge lines of {state_dir(root).name}/.gitattributes")
     if _in_git(root):
         present = [key for key in KEYS if _config(root, key) is not None]
         if present and not dry_run:

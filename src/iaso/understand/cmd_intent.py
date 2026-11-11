@@ -22,6 +22,8 @@ confirms them.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import argparse
 import json
 import os
@@ -76,7 +78,7 @@ def reset_head(root: Path, session: str) -> None:
     for stale in (files.session_dir(root, session) / INTENT_FILE,
                   files.progress_path(root, session)):
         stale.unlink(missing_ok=True)
-    status_path = Path(root) / ".iaso" / "session" / "status.json"
+    status_path = state_dir(Path(root)) / "session" / "status.json"
     status = files.read_json(status_path)
     if isinstance(status, dict) and status.get("intent_summary"):
         files.write_json_atomic(status_path, {**status, "intent_summary": ""})
@@ -98,7 +100,7 @@ def open_loop(root: Path, session: str, digest: str, at: str = "") -> Path:
 
 def loops(root: Path, session: str | None = None) -> list[tuple[Path, dict[str, Any]]]:
     """Every loop state file (of one session, or all), newest opened last."""
-    folder = Path(root) / ".iaso" / "session"
+    folder = state_dir(Path(root)) / "session"
     found = []
     for path in sorted(folder.glob(f"{session or '*'}/intent/*.json")):
         data = files.read_json(path)

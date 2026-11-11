@@ -310,7 +310,7 @@
   "name": "sr128-fixes-for-this-issue",
   "inputs": {
    "message": {
-    "digest": "sha256:2fc3978e83561f1736262513b911dd351e6698d7b66c85b6633d71929b954476",
+    "digest": "sha256:0bd55ffa1f3084f52a21a0361cf613d479a45488e5ec0606728e35d289a9b209",
     "text": "I need several things to be modified. First of all these modifications should be done in a worktree, and it should be merged at the end of the execution. Also there is a parallel session going on that is probably doing modifications in parallel, you should warn it to make sure that proper worktrees are used if there's a risk of conflict. Then, I wish to capture those issues earlier. Instead of saying: this is merged, it should work, we need claude code and iaso to actually show the user it is working. The way it is shown should be relevant to what has been modified. This proof should be identified and planned through the execution of the modification. Then I'd like to understand in the previous session what went wrong with iaso that led to the fact that we still have this issue. And of course I need you to apply the proposed fixes. You can add the relevant steps to the ongoing workflow."
    },
    "touched": [],
@@ -351,7 +351,7 @@
   "name": "sr128-issue-from-another-chat",
   "inputs": {
    "message": {
-    "digest": "sha256:59d56f663e6871c0da5146c919e93900eee3d1984cd04708fd42573898d103a8",
+    "digest": "sha256:a7306fa600d23ee156cfe62850ecfd646f7988c5da1f135d3bade2f5fed7c4b9",
     "text": "How come don't you know what I'm refering to. That's the issue we detected in that chat, the one that prevents mods UI to be active. The fact that you're not able to understand that is another issue in iaso that makes it disfunctional. It should be able to understand that. THere's probably a design issue that prevents that."
    },
    "touched": [],

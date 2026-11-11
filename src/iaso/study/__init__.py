@@ -20,6 +20,8 @@ chooses nothing (DEC-154).
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import ast
 import json
 import os
@@ -41,11 +43,11 @@ _SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,79}")
 
 
 def folder(root: Path) -> Path:
-    return Path(root) / ".iaso" / "studies"
+    return state_dir(Path(root)) / "studies"
 
 
 def picture_path(root: Path) -> Path:
-    return Path(root) / ".iaso" / "understanding.md"
+    return state_dir(Path(root)) / "understanding.md"
 
 
 def _write(path: Path, text: str) -> None:

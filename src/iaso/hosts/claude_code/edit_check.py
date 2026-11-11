@@ -70,7 +70,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
     if edited is None:
         return None
     root, rel = edited
-    if rel.startswith(".iaso/session/") or rel.startswith(".iaso/cache/"):
+    if rel.startswith((".iaso/session/", ".iaso/cache/")):
         return None
     from iaso import stale
 

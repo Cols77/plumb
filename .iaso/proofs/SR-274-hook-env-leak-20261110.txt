@@ -1,0 +1,10 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/colin/coding/iaso/.iaso/wt/debug-report-2680054f
+configfile: pyproject.toml
+plugins: xdist-3.8.0
+collected 6 items
+
+tests/core/test_hook_env_leak.py ......                                  [100%]
+
+============================== 6 passed in 0.25s ===============================

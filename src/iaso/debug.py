@@ -20,8 +20,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from iaso.paths import state_dir
+
 LINE = "iaso: debug: {n} cases, {resolved} resolved, {open} still in debugging"
-STORE = (".iaso", "cache", "debug")
+STORE = ("cache", "debug")  # under the records folder
 DANGLING = "its target no longer exists, so there is nothing to repin to: relink it"
 OWN_KINDS = frozenset({"landing-step", "validate"})   # DEC-316: iaso's own, at a landing
 READY_REPIN = ("iaso: the repins of {branch} ({detail}) are committed, tests passed: ready to "
@@ -41,14 +43,14 @@ BACK_ELSEWHERE = ("iaso: the iaso defect you hit came back in another session ({
                   "{detail}): the case is reopened there with its history ({n} earlier); "
                   "iaso debug lists it")
 LANDED = "landed, not proven"
-REGISTER = (".iaso", "known-issues.json")
+REGISTER = ("known-issues.json",)  # under the records folder
 RECENT_DAYS = 14
 RETRY = {"hook-error": "what ran the {target} hook", "landing-step": "the landing's {target} step",
          "validate": "iaso validate", "report": "what you flagged", "job-failed": "the job"}
 
 
 def _case_path(root: Path | str, case_id: str) -> Path:
-    return Path(root).joinpath(*STORE, re.sub(r"[^\w.-]", "_", case_id) + ".json")
+    return state_dir(Path(root)).joinpath(*STORE, re.sub(r"[^\w.-]", "_", case_id) + ".json")
 
 
 def _same(text: str) -> str:
@@ -115,7 +117,7 @@ def _write_case(root: Path | str, row: dict[str, Any], queue: bool = False) -> s
 def known_issues(root: Path | str) -> list[dict[str, Any]]:
     """SR-357: the register of known issues (``.iaso/known-issues.json``); none when absent."""
     try:   # JSON, not YAML: the session-start hook never imports yaml (HC2)
-        data = json.loads(Path(root).joinpath(*REGISTER).read_text("utf-8"))
+        data = json.loads(state_dir(Path(root)).joinpath(*REGISTER).read_text("utf-8"))
     except (OSError, ValueError):
         return []
     rows = data.get("issues") if isinstance(data, dict) else None
@@ -199,7 +201,7 @@ def _queue_fix(root: Path | str, case_id: str) -> None:
 
 def all_cases(root: Path | str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for path in sorted(Path(root).joinpath(*STORE).glob("*.json")):
+    for path in sorted(state_dir(Path(root)).joinpath(*STORE).glob("*.json")):
         try:
             row = json.loads(path.read_text("utf-8"))
         except (OSError, ValueError):

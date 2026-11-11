@@ -25,6 +25,8 @@ question), the band's study line names that study and the question waits until i
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from pathlib import Path
 from typing import Any, TextIO
@@ -229,7 +231,7 @@ def _proof_files(core, session: str) -> list[tuple[Path, Path]]:
     own = proof.questions_path(core.root, session)
     found = [(Path(core.root), own)] if own.exists() else []
     for root in (Path(core.root), *log.sibling_roots(core.paths)):
-        found += [(root, path) for path in sorted((root / ".iaso" / "session").glob(
+        found += [(root, path) for path in sorted((state_dir(root) / "session").glob(
             f"*/{proof.QUESTIONS_FILE}")) if path != own]
     return found
 

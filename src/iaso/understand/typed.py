@@ -23,7 +23,7 @@ _ID = re.compile(r"^(?:(?:INT|SR|DEC|FEAT)-\d+|NC-\d+)$")
 # SR-120: under the Claude Code plugin the command is namespaced, so the owner types /iaso or
 # /iaso:iaso. Every parser of a typed command (here, clarify's go, the owner's auto-approve
 # switch) starts with this one prefix and then whitespace, so
-# /iasoing and /iaso:other never match.
+# /wiring and /iaso:other never match.
 PREFIX = r"/iaso(?::iaso)?"
 _PREFIX_HEAD = re.compile(r"^" + PREFIX + r"(?=[ \t])")
 _HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)

@@ -268,7 +268,7 @@ def find_prompt(core: Core, given: str) -> Mapping[str, Any]:
         if digest.removeprefix("sha256:").startswith(wanted):
             matches[digest] = entry  # the latest entry of each digest wins
     if not matches:
-        raise Refused(f"prompt {given} is not in the prompt log (.iaso/session/prompts.jsonl)")
+        raise Refused(f"prompt {given} is not in the prompt log (session/prompts.jsonl in the records folder)")
     if len(matches) > 1:
         raise Refused(f"prompt digest prefix {given} is ambiguous; give more digits")
     digest, entry = next(iter(matches.items()))

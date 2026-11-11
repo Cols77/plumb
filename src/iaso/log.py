@@ -21,6 +21,8 @@ committed. Every entry records the session marker in force.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import heapq
 import json
 import os
@@ -85,8 +87,9 @@ OWNER_TEXT_FIELDS: dict[str, tuple[str, ...]] = {
     "escalation-declined": ("quote",),   # the relayed decline; the owner's own has none
     "config": ("quote",),                # the typed /iaso auto-approve command
 }
-# SR-376: telemetry. The live entry files are ignored by git (.iaso/.gitignore); the landing
-# moves every one older than the landing into the kind's tracked segment, liveness not consulted.
+# SR-376: telemetry. The live entry files are ignored by git (the records folder's .gitignore);
+# the landing moves every one older than the landing into the kind's tracked segment, liveness
+# not consulted.
 TELEMETRY_KINDS = frozenset({"judgment"})
 LOCAL_KINDS = frozenset({
     "verdict", "trial", "card-press", "card-settled", "card-withdrawn", "gate", "read-entry",
@@ -130,7 +133,7 @@ def worker_token_problem(root: Path | str, session: str | None, by: str) -> str 
     token = os.environ.get("IASO_WORKER")
     if not token:
         return f"{what} is written by the worker only (no worker token)"
-    base = Path(root) / ".iaso" / "session"
+    base = state_dir(Path(root)) / "session"
     locks = [base / session / "worker.lock"] if session else sorted(base.glob("*/worker.lock"))
     for lock in locks:
         try:
@@ -1127,7 +1130,7 @@ def tracked_names(root: Path) -> set[str]:
     """The committed entry files (``kind/file``) of the log, as ``git ls-files`` lists them."""
     import subprocess
 
-    prefix = ".iaso/log/"
+    prefix = f"{state_dir(root).name}/log/"
     out = subprocess.run(["git", "ls-files", "--", prefix], cwd=root, capture_output=True,
                          text=True, encoding="utf-8", errors="replace", check=True).stdout
     return {p[len(prefix):] for p in out.split("\n") if p.startswith(prefix)}
@@ -1138,7 +1141,8 @@ def shared_uncommitted(root: Path) -> list[str]:
     them (local kinds are ignored by git, so they never appear)."""
     import subprocess
 
-    out = subprocess.run(["git", "ls-files", "-o", "--exclude-standard", "-z", "--", ".iaso/log"],
+    rel = f"{state_dir(root).name}/log"
+    out = subprocess.run(["git", "ls-files", "-o", "--exclude-standard", "-z", "--", rel],
                          cwd=root, capture_output=True, text=True, encoding="utf-8",
                          errors="replace", check=True).stdout
     return sorted(p for p in out.split(chr(0)) if p.count("/") >= 3
@@ -1152,7 +1156,7 @@ def committable(root: Path, paths: Iterable[str]) -> list[str]:
     local path kept is a tracked file that is gone from disk (its removal adds no content).
     Every path outside the log and every shared kind's path, the judgment segment included, is
     kept. Only the log code knows where the log lives (DEC-195, EX-15)."""
-    prefix = ".iaso/log/"
+    prefix = f"{state_dir(root).name}/log/"
     paths = list(paths)
     local = {p for p in paths if p.startswith(prefix) and p.count("/") >= 3
              and p.split("/")[2] in LOCAL_KINDS}
@@ -1165,15 +1169,16 @@ def untracked_telemetry_out(root: Path, paths: Iterable[str]) -> list[str]:
     """``paths`` without the telemetry entry files git does not track (ignored: naming them
     would fail ``git add`` and ``git commit``)."""
     paths = list(paths)
+    prefix = f"{state_dir(root).name}/log/"
 
     def loose(p: str) -> bool:
         parts = p.split("/")
-        return (len(parts) == 4 and p.startswith(".iaso/log/") and parts[2] in TELEMETRY_KINDS
+        return (len(parts) == 4 and p.startswith(prefix) and parts[2] in TELEMETRY_KINDS
                 and parts[3] != SEGMENT)
 
     if not any(loose(p) for p in paths):
         return paths
-    known = {".iaso/log/" + n for n in tracked_names(root)}
+    known = {prefix + n for n in tracked_names(root)}
     return [p for p in paths if p in known or not loose(p)]
 
 
@@ -1181,7 +1186,7 @@ def stage(root: Path, changed: Iterable[str]) -> None:
     """``git add -A`` of the paths ``archive`` returned (segments written, files removed).
     Nothing else is staged."""
     # a local kind's entry is never staged (SR-321, SR-287 EX-16), nor an ignored telemetry file
-    changed = [c for c in changed if not (c.startswith(".iaso/log/")
+    changed = [c for c in changed if not (c.startswith(f"{state_dir(root).name}/log/")
                                           and c.split("/")[2] in LOCAL_KINDS)]
     changed = untracked_telemetry_out(root, changed)
     if not changed:

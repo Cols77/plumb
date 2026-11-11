@@ -131,7 +131,8 @@ def _differs_from_index(root: Any) -> bool:
               _git(root, "ls-files", "--others", "--exclude-standard", "-z")]
     if None in listed:
         return True
-    return any(path and not path.startswith(".iaso/") and not _CACHE_PARTS & set(path.split("/"))
+    return any(path and not path.startswith(".iaso/")
+               and not _CACHE_PARTS & set(path.split("/"))
                for out in listed for path in str(out).split("\0"))
 
 

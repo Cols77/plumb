@@ -10,6 +10,8 @@ Nothing is reinstalled or pushed."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import os
 import subprocess
@@ -56,7 +58,7 @@ def _plugin(root: Path | str) -> str:
             return os.environ[name]
     from iaso import stale
 
-    host = Path(root) / ".iaso" / "session" / stale.current_session(root) / "host.json"
+    host = state_dir(Path(root)) / "session" / stale.current_session(root) / "host.json"
     return str(_read(host).get("plugin") or "")
 
 

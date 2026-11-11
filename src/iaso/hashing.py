@@ -12,6 +12,8 @@ so its link dangles. Directories, globs and line numbers are never ends (concept
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import ast
 import contextlib
 import functools
@@ -203,7 +205,7 @@ def target_path(target: Target) -> str | None:
 
 
 def _cache_file(root: Path) -> Path:
-    return Path(root) / ".iaso" / "cache" / "hashes.json"
+    return state_dir(Path(root)) / "cache" / "hashes.json"
 
 
 @contextlib.contextmanager

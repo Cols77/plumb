@@ -6,6 +6,8 @@ YAML is imported only on a cache miss: the parsed config is cached as JSON in
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import dataclasses
 import json
 from collections.abc import Mapping
@@ -314,7 +316,7 @@ def config_from_mapping(data: Mapping[str, Any] | None) -> Config:
 
 def load_config(root: Path) -> Config:
     """Config for ``root``; defaults when ``.iaso/config.yaml`` is absent."""
-    iaso_dir = Path(root) / ".iaso"
+    iaso_dir = state_dir(Path(root))
     path = iaso_dir / "config.yaml"
     try:
         stat = path.stat()

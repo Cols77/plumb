@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from iaso import __version__
 
@@ -83,7 +84,7 @@ Keep agent work aligned with the owner's intent.
   ui           open the local browser issue workspace (--demo for an isolated example)
 
 records and integrity:
-  init         adopt this repository (.iaso/)
+  init         adopt this repository (make its records folder)
   show         print records in full (read-back, examples, assumptions, alternatives)
   link         add a hash-pinned link between a record and a record, file or test
   unlink       remove a link (--note why); the links after it move down by one
@@ -251,6 +252,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     import importlib
 
+    from iaso.convert import convert_if_old
+
+    root = args[args.index("--root") + 1] if "--root" in args[:-1] else "."
+    convert_if_old(Path(root))   # an old-name project is converted first (SR-432)
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:

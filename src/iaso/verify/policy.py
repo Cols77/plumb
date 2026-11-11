@@ -78,10 +78,12 @@ def range_digest(root: Any, fork: str) -> str:
     from iaso.normalize import file_digest, sha256_bytes
 
     out = subprocess.run(["git", "diff", fork, "--no-color", "--no-ext-diff", "--", ".",
-                          ":(exclude).iaso"], cwd=root, capture_output=True, timeout=30,
+                          ":(exclude).iaso"], cwd=root, capture_output=True,
+                         timeout=30,
                          stdin=subprocess.DEVNULL)
     others = subprocess.run(["git", "ls-files", "--others", "--exclude-standard", "-z", "--",
-                             ".", ":(exclude).iaso"], cwd=root, capture_output=True,
+                             ".", ":(exclude).iaso"], cwd=root,
+                            capture_output=True,
                             timeout=30, stdin=subprocess.DEVNULL)
     parts = [out.stdout.replace(b"\r\n", b"\n")]
     for rel in sorted(p for p in others.stdout.decode("utf-8", "replace").split("\0") if p):

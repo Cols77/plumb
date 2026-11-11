@@ -40,7 +40,7 @@ def test_claude_dir_untouched(tmp_path: Path, plugin_home: Path,
                               capsys: pytest.CaptureFixture[str]) -> None:
     root = git_repo(tmp_path / "repo")
     out = _init(root, capsys)
-    assert (root / ".iaso" / "config.yaml").is_file()
+    assert (root / ".iaso" / "config.yaml").is_file()   # a new repository (SR-431)
     assert not (root / ".claude").exists()
     assert not (root / "CLAUDE.md").exists()
     assert out.strip() == owner_text.INIT_DONE

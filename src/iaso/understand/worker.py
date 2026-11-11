@@ -169,10 +169,9 @@ def start_detached(root: Path, session: str) -> None:
             return None
         from iaso.background import popen_options
 
-        options = popen_options(root)   # no console window for it or what it runs
-        env ={k: v for k, v in os.environ.items() if k not in ("IASO_WORKER", "IASO_JOB")}
+        options = popen_options(root, drop=("IASO_WORKER", "IASO_JOB"))  # no console window
         subprocess.Popen([sys.executable, "-m", "iaso", "understand", "worker", "--session",
-                          session, "--root", str(root)], env=env, **options)
+                          session, "--root", str(root)], **options)
     except OSError:
         return None
     return None

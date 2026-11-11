@@ -1,8 +1,8 @@
 <!-- iaso:begin -->
 ## iaso
 
-- Records of the owner's intent live in `.iaso/` (INT, SR, DEC, FEAT, NC); the test map is
-  `.iaso/test_map.txt`.
+- Records of the owner's intent live in `.iaso/` (an old records folder is kept) (INT, SR,
+  DEC, FEAT, NC); the test map is `.iaso/test_map.txt`.
 - Formalize each request that changes the system into proposed records linked to the code it
   changes, for the judge to validate: an SR with given/when/then examples (edge cases too),
   linked `implemented_by` the code it changes. Ask the owner to read nothing back; it never

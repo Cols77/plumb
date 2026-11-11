@@ -13,6 +13,8 @@ under the verify fingerprint, so a warm start builds no test map.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import os
 import time
 from pathlib import Path
@@ -120,7 +122,7 @@ def auto_approve_off(core: Any) -> str | None:
 
     if latest(core.events()) is None and not core.config.auto_approve.enabled:
         return "off"
-    last = read_json(Path(core.root) / ".iaso" / "session" / "status.json")
+    last = read_json(state_dir(Path(core.root)) / "session" / "status.json")
     known = last.get("auto_approve") if isinstance(last, dict) else None
     return known if known in ("on", "off", "suspended") else None
 

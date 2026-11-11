@@ -20,6 +20,8 @@ Imports stay light: hooks call this every turn.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import io
 import json
 import os
@@ -191,7 +193,7 @@ def turn_main(argv: list[str]) -> int:
     use_utf8_stdio()
     session = safe_session_id(_session(opts))
     base = {"session_id": session, "cwd": str(root)}
-    state_dir = root / ".iaso" / "session" / session
+    session_dir = state_dir(root) / "session" / session
     if rest[0] == "start":
         path = opts.get("--prompt-file")
         try:
@@ -200,12 +202,12 @@ def turn_main(argv: list[str]) -> int:
         except OSError as exc:
             sys.stderr.write(f"iaso: cannot read the prompt: {exc}\n")
             text = ""
-        first = not (state_dir / "turn.json").exists()  # the session's first turn
+        first = not (session_dir / "turn.json").exists()  # the session's first turn
         if first:  # a new conversation: forget what earlier hooks injected (as the brief)
             try:
                 from iaso.present.delta import reset
 
-                reset(root / ".iaso" / "session", session)
+                reset(state_dir(root) / "session", session)
             except Exception:  # noqa: BLE001 - never block the turn on session state
                 pass
         # The owner's message first: it is logged and the turn started (turn.json) before
@@ -218,13 +220,13 @@ def turn_main(argv: list[str]) -> int:
                       root=str(root))
         return 0
     # turn end: at most one block per turn, never on a second `turn end` of the same turn
-    turn = read_json(state_dir / "turn.json")
+    turn = read_json(session_dir / "turn.json")
     digest = turn.get("prompt_digest") if isinstance(turn, dict) else None
-    ended = read_json(state_dir / "turn-end.json")
+    ended = read_json(session_dir / "turn-end.json")
     active = bool(digest) and isinstance(ended, dict) and ended.get("prompt_digest") == digest
     try:
-        state_dir.mkdir(parents=True, exist_ok=True)
-        (state_dir / "turn-end.json").write_text(json.dumps({"prompt_digest": digest}),
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "turn-end.json").write_text(json.dumps({"prompt_digest": digest}),
                                                  encoding="utf-8")
     except OSError:
         pass

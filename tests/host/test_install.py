@@ -130,7 +130,7 @@ def test_skill_about_20_lines_names_test_map(repo: Path, no_claims) -> None:
     assert skill.startswith("---\nname: iaso-records\n")  # SR-120: /iaso is the command
     body = skill.split("---", 2)[2].strip().splitlines()
     # the context and the question rules (SR-248; SR-362 added three; SR-379 made it their home)
-    assert 12 <= len(body) <= 46
+    assert 12 <= len(body) <= 47
     assert ".iaso/test_map.txt" in skill
     assert "uv run --no-sync iaso tests run --changed" in skill
     assert "never" in skill.lower() and "iaso approve" in skill

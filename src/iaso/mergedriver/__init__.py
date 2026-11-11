@@ -1,7 +1,7 @@
 """The record merge driver and intent conflicts (sp6 7, 8, 10; SR-075 to SR-077).
 
 - ``merge_texts``: one record file merged field by field against the merge base (pure);
-- ``install``, ``uninstall``, ``status``: the ``.iaso/.gitattributes`` lines and the git
+- ``install``, ``uninstall``, ``status``: the ``.gitattributes`` in the records folder lines and the git
   config keys that make git call ``iaso merge-driver`` for record files;
 - ``open_conflicts``, ``conflict_card``, ``stated_entries``: the intent conflicts the driver wrote into record
   files, as the owner's cards.

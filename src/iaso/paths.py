@@ -5,12 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def state_dir(root: Path) -> Path:
+    """``<root>/.iaso``: the only records folder iaso supports (an old project is converted, SR-432)."""
+    return Path(root) / ".iaso"
+
+
 def holds_records(candidate: Path) -> bool:
-    """Whether ``candidate/.iaso`` is a repository's records folder. iaso's own home
-    (``~/.iaso``: the plugin's environments under ``env/`` and ``current.json``) never is,
-    whatever else was left in it, so a folder under the user's home is never taken for an
-    adopted repository."""
-    iaso = Path(candidate) / ".iaso"
+    """Whether ``candidate``'s ``.iaso/`` is a repository's. iaso's own home (``~/.iaso``: the
+    plugin's environments under ``env/`` and ``current.json``) never is, whatever else was
+    left in it, so a folder under the user's home is never taken for an adopted repository."""
+    iaso = state_dir(candidate)
     if not iaso.is_dir():
         return False
     return not ((iaso / "env").is_dir() or (iaso / "current.json").is_file())
@@ -30,11 +34,11 @@ def find_root(start: Path) -> Path:
 
 
 class IasoPaths:
-    """Every path iaso reads or writes under ``<root>/.iaso``."""
+    """Every path iaso reads or writes under its records folder (``state_dir``)."""
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
-        p = self.root / ".iaso"
+        p = state_dir(self.root)
         self.iaso = p
         self.config = p / "config.yaml"
         self.claims = p / "claims.yaml"
@@ -67,7 +71,7 @@ class IasoPaths:
         except (OSError, IndexError):  # not a worktree: ``.git`` is a folder, or absent
             return logs
         if gitdir.parent.name == "worktrees":
-            main = gitdir.parent.parent.parent / ".iaso" / "session" / "prompts.jsonl"
+            main = state_dir(gitdir.parent.parent.parent) / "session" / "prompts.jsonl"
             if main.resolve() != self.prompts.resolve():
                 logs.insert(0, main)
         return logs

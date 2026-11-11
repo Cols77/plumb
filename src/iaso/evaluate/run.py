@@ -3,6 +3,8 @@ working through the task's requests one turn each, the scripted owner answering 
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import os
 import shutil
@@ -44,8 +46,11 @@ class RunResult:
 
 
 def _git(cwd: Path, *args: str) -> None:
+    # a hook's GIT_DIR would point git init at the host repository instead
+    from iaso.background import child_env
+
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True,
-                   encoding="utf-8")
+                   encoding="utf-8", env=child_env())
 
 
 def _name_the_judge(scratch: Path, host: Path | None) -> None:
@@ -139,9 +144,13 @@ def _claude_call(binary: str, scratch: Path, message: str, *, model: str, sessio
             *(["--resume", session_id] if session_id else []),
             "--allowedTools", *ALLOWED_TOOLS, *tools]
     # eval-52810e26: ``claude -p`` has no question tool; the launching session's
-    # CLAUDE_CODE_SESSION_ATTENDED would make iaso's hooks send the agent after it
+    # CLAUDE_CODE_SESSION_ATTENDED would make iaso's hooks send the agent after it. Nor the git
+    # hook variables: the agent's git in the scratch folder stays there (report-2680054f).
+    from iaso.background import GIT_HOOK_VARS
+
     env = {k: v for k, v in (os.environ if env is None else env).items()
-           if k not in ("IASO_JOB", "IASO_WORKER", "CLAUDE_CODE_SESSION_ATTENDED")}
+           if k not in ("IASO_JOB", "IASO_WORKER", "CLAUDE_CODE_SESSION_ATTENDED")
+           and k not in GIT_HOOK_VARS}
     # the agent's shell finds the iaso command of the interpreter running the benchmark
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     if tools:   # iaso's hooks: a question tool is present although nobody attends (DEC-407)
@@ -201,7 +210,7 @@ def _run_task(root: Path, task: Any, home: Path, *, model: str, owner: Any,
     limits = {**NO_LIMITS, **(limits or {})}
     run_cap_s = limits["minutes"] * 60 if limits["minutes"] else None
     root = Path(root)
-    run_dir = _new_run_dir(runs_dir or root / ".iaso" / "eval" / "runs",
+    run_dir = _new_run_dir(runs_dir or state_dir(root) / "eval" / "runs",
                            f"{time.strftime('%Y%m%dT%H%M%S')}-{task.name}-{model}")
     scratch = scratch_repo(home, host=root)
     transcript: list[Turn] = []
@@ -241,7 +250,7 @@ def _run_task(root: Path, task: Any, home: Path, *, model: str, owner: Any,
         if state["out_of_time"]:
             break
     issues = issues_mod.collect(scratch, run_dir, root, run_dir.name, task.name, model)
-    shutil.copytree(scratch / ".iaso", run_dir / "iaso", dirs_exist_ok=True)
+    shutil.copytree(state_dir(scratch), run_dir / "iaso", dirs_exist_ok=True)
     (run_dir / "transcript.jsonl").write_text(
         "".join(json.dumps(asdict(t), ensure_ascii=False) + "\n" for t in transcript),
         encoding="utf-8")

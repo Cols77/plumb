@@ -58,7 +58,7 @@ def test_no_backend_says_no_judgment_available(repo: Path) -> None:
     core = open_core(repo)
     card = conflict_card(core, open_conflicts(core)[0])
     assert ("  Compatible? judging unavailable: no judge: judgment.backend is not set in "
-            ".iaso/config.yaml; set it to jev") in card
+            "the records folder's config.yaml; set it to jev") in card
     assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
                      "--root", str(repo)]) == 0
     assert open_conflicts(open_core(repo)) == ()

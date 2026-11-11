@@ -34,12 +34,12 @@ def claims_lines(claims: dict[str, Any]) -> list[tuple[str, str]]:
         rows.append((f"undeclared path {item['path']} in {str(item['commit'])[:12]} "
                      f"(claims {', '.join(item.get('claims') or [])})",
                      f"iaso link {sr} implemented_by {item['path']}, or an NC-backed "
-                     "baseline entry in .iaso/claims.yaml"))
+                     "baseline entry in claims.yaml (records folder)"))
     for sha in claims.get("unclaimed_commits") or []:
         rows.append((f"no SR: trailer on {str(sha)[:12]} (require_trailer: true)",
                      "reword the commit with an 'SR: SR-###' trailer"))
     for problem in claims.get("problems") or []:
-        rows.append((f"claims.yaml: {problem}", "fix .iaso/claims.yaml"))
+        rows.append((f"claims.yaml: {problem}", "fix claims.yaml in the records folder"))
     return rows
 
 

@@ -57,7 +57,7 @@ const steps = [
     title: 'Merge main in',
     task: [
       'Pin main first: M=$(git rev-parse main). Then run git merge main in the worktree.',
-      'If it conflicts, resolve each code conflict keeping both sides intent. A conflict in a record file (under .iaso/), or one you cannot settle without the owner, is a question: say what each side wants, choose nothing.',
+      'If it conflicts, resolve each code conflict keeping both sides intent. A conflict in a record file (in the records folder), or one you cannot settle without the owner, is a question: say what each side wants, choose nothing.',
       'Return ok true when the merge is complete and the tree is clean; finding names the pinned M and the files the merge moved.',
     ],
   },

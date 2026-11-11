@@ -40,6 +40,8 @@ words), never "this request's version": every branch reads the one answer the sa
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import copy
 import json
 import os
@@ -111,7 +113,7 @@ def _git(root: Path, *args: str, stdin: bytes | None = None) -> tuple[int, bytes
 
 
 def _cache_path(root: Path, name: str = CACHE) -> Path:
-    return Path(root) / ".iaso" / "cache" / name
+    return state_dir(Path(root)) / "cache" / name
 
 
 def _read_json(path: Path) -> Any:
@@ -728,7 +730,7 @@ def _changed_since_fork(core: Any, head: str, default_tip: str
     except Exception:  # noqa: BLE001 - fall back on iaso's own directory
         dirs = []
     code, out = _git(root, "diff", "--name-only", "--no-renames", "-z", base, default_tip,
-                     "--", *(dirs or [".iaso"]))
+                     "--", *(dirs or [core.paths.iaso.name]))
     if code != 0:
         return None
     paths = [p for p in out.decode("utf-8", "replace").split("\0") if p.endswith(".md")]

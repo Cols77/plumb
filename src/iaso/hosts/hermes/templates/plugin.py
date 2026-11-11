@@ -16,6 +16,8 @@ certify provenance for every synthetic or scheduled turn.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import hashlib
 import os
@@ -33,7 +35,7 @@ def _project_root() -> Path | None:
         plugin = Path(__file__).resolve()
         root = plugin.parents[3]
         expected = root / ".hermes" / "plugins" / "iaso" / "plugin.py"
-        return root if plugin == expected and (root / ".iaso").is_dir() else None
+        return root if plugin == expected and (state_dir(root)).is_dir() else None
     except (OSError, IndexError, RuntimeError):
         return None
 
@@ -56,7 +58,7 @@ def _adopted_root() -> Path | None:
     if root is None:
         return None
     try:
-        return root if (root / ".iaso").is_dir() else None
+        return root if (state_dir(root)).is_dir() else None
     except OSError:
         return None
 

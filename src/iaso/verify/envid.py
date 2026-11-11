@@ -8,6 +8,8 @@ not part of this build; payloads omit the ``identity`` key.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import platform
 import sys
 from pathlib import Path
@@ -42,7 +44,7 @@ def platform_name(root: Path | None = None) -> str:
     import json
 
     key = f"{sys.executable}|{sys.version}"
-    cache = Path(root) / ".iaso" / "cache" / "platform.json" if root is not None else None
+    cache = state_dir(Path(root)) / "cache" / "platform.json" if root is not None else None
     if cache is not None:
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))

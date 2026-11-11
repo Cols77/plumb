@@ -145,7 +145,7 @@ def base_config(core: Core, fork: str) -> Any:
     """The config at the merge base (defaults when it had no ``.iaso/config.yaml``)."""
     from iaso.config import Config, config_from_mapping
 
-    text = _show(core, fork, ".iaso/config.yaml")
+    text = _show(core, fork, f"{core.paths.iaso.name}/config.yaml")
     if text is None:
         return Config()
     import yaml
@@ -237,16 +237,13 @@ def required_records(core: Core, touched: Sequence[str]) -> list[str]:
 
 def _base_lines(core: Core, commit: str, stream: str) -> list[str]:
     """The legacy JSONL lines of ``stream`` at ``commit`` (the format before SP6)."""
-    rel = f"./.iaso/log/{stream}.jsonl"
+    rel = f"./{core.paths.iaso.name}/log/{stream}.jsonl"
     result = subprocess.run(["git", "show", f"{commit}:{rel}"], cwd=core.root,
                             capture_output=True)
     if result.returncode != 0:
         return []
     return [line.strip() for line in result.stdout.decode("utf-8", "replace").splitlines()
             if line.strip()]
-
-
-_LOG_PREFIX = ".iaso/log/"
 
 
 def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]]:
@@ -263,13 +260,14 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
     from iaso import log
 
     fork = _git(core, "merge-base", base, "HEAD").strip()
+    prefix = f"{core.paths.iaso.name}/log/"
     problems: list[str] = []
     diff = _git(core, "diff", "--relative", "--name-status", "--no-renames", "-z", fork,
-                "--", _LOG_PREFIX)
+                "--", prefix)
     fields = [f for f in diff.split("\0") if f]
     gone: set[str] = set()
     for status, path in zip(fields[0::2], fields[1::2], strict=False):
-        name = path[len(_LOG_PREFIX):] if path.startswith(_LOG_PREFIX) else path
+        name = path[len(prefix):] if path.startswith(prefix) else path
         if "/" not in name or not name.endswith(".json"):
             continue  # the legacy files are checked line by line below
         if status[:1] in ("M", "T"):
@@ -283,10 +281,10 @@ def log_integrity(core: Core, base: str) -> tuple[list[str], dict[str, set[str]]
                 continue
             problems.append(f"{path}: entry deleted since merge-base {fork[:12]}")
             gone.add(name)
-    listed = _git(core, "ls-tree", "-r", "--name-only", "-z", fork, "--", _LOG_PREFIX,
+    listed = _git(core, "ls-tree", "-r", "--name-only", "-z", fork, "--", prefix,
                   check=False)
-    at_fork = {p[len(_LOG_PREFIX):] for p in listed.split("\0")
-               if p.startswith(_LOG_PREFIX) and p.endswith(".json")}
+    at_fork = {p[len(prefix):] for p in listed.split("\0")
+               if p.startswith(prefix) and p.endswith(".json")}
     base_digests: dict[str, set[str]] = {}
     for stream in ("events", "evidence"):
         path = core.paths.log_path(stream)

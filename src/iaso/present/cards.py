@@ -5,6 +5,8 @@ conflict's answer words, and the intent a session works on (sp5 4.1; SR-061).
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -152,7 +154,7 @@ def awaiting_lines(core: Any, statuses: Mapping[str, Any]) -> list[str]:
     from iaso.present import owner_text
 
     asked: list[Mapping[str, Any]] = []
-    sessions = Path(core.root) / ".iaso" / "session"
+    sessions = state_dir(Path(core.root)) / "session"
     # judge.QUESTIONS_FILE, named here so the session start never imports the judge
     for path in sorted(sessions.glob("*/judge_questions.json")):
         try:

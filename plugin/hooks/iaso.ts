@@ -50,14 +50,18 @@ async function readJson(io: Io, path: string): Promise<any> {
   }
 }
 
+/** The records folder name: only `.iaso` is supported (SR-432). */
+const stateOf = (_root: string): string => '.iaso'
+
 /** The repository iaso adopted: the session's root or the nearest folder above it with .iaso,
- * never iaso's own home (a .iaso holding env/ or current.json, as paths.holds_records) and
+ * never iaso's own home (an .iaso holding env/ or current.json, as paths.holds_records) and
  * never above the git root (a folder holding .git). */
 export async function findRoot(io: Io): Promise<string | null> {
   let dir: string | null = await io.root()
   for (let depth = 0; dir !== null && depth < 64; depth += 1) {
-    if (await io.exists(join(dir, '.iaso'))
-      && !(await io.exists(join(dir, '.iaso', 'env'))) && !(await io.exists(join(dir, '.iaso', 'current.json')))) return dir
+    const sd = '.iaso'
+    if (await io.exists(join(dir, sd))
+      && !(await io.exists(join(dir, sd, 'env'))) && !(await io.exists(join(dir, sd, 'current.json')))) return dir
     if (await io.exists(join(dir, '.git'))) return null
     const up = parent(dir)
     dir = up === dir ? null : up
@@ -66,7 +70,7 @@ export async function findRoot(io: Io): Promise<string | null> {
 }
 
 export function sessionDir(root: string, session: string): string {
-  return join(root, '.iaso', 'session', session)
+  return join(root, stateOf(root), 'session', session)
 }
 
 /** The interpreter that runs iaso: the one the session-start hook ran with (host.json, written
@@ -226,7 +230,7 @@ export const NO_KNOWN: IasoKnown = { seen: '', open: 0, issues: [] }
 /** The known problems register and its issues' case files as they are now (files only, no
  * process): what moved since `seen` sends the band back to iaso (SR-367). */
 export async function knownSeen(io: Io, link: IasoLink): Promise<string> {
-  const path = join(link.root, '.iaso', 'known-issues.json')
+  const path = join(link.root, stateOf(link.root), 'known-issues.json')
   let text = ''
   let ids: string[] = []
   try {
@@ -238,7 +242,7 @@ export async function knownSeen(io: Io, link: IasoLink): Promise<string> {
   }
   const cases = await Promise.all(ids.map(async id => {
     // the case file's name, as debug._case_path makes it
-    const file = join(link.root, '.iaso', 'cache', 'debug', `${id.replace(/[^\w.-]/g, '_')}.json`)
+    const file = join(link.root, stateOf(link.root), 'cache', 'debug', `${id.replace(/[^\w.-]/g, '_')}.json`)
     return (await io.exists(file)) ? io.read(file).catch(() => '') : ''
   }))
   return [text, ...cases].join('\n')
@@ -398,7 +402,7 @@ type StudyFile = { title: string; slug: string; status: string; why: string; rec
 
 /** Every study file in `.iaso/studies`, oldest first by file name. */
 async function studyFiles(io: Io, link: IasoLink): Promise<StudyFile[]> {
-  const folder = join(link.root, '.iaso', 'studies')
+  const folder = join(link.root, stateOf(link.root), 'studies')
   let names: string[] = []
   const found: StudyFile[] = []
   try {
@@ -457,13 +461,13 @@ async function sessionName(io: Io, session: string): Promise<string> {
 
 /** The band's first line: iaso's status card (status.json) and SP8's progress, if running. */
 export async function readStatus(io: Io, link: IasoLink): Promise<IasoStatus> {
-  const status = await readJson(io, join(link.root, '.iaso', 'session', 'status.json'))
+  const status = await readJson(io, join(link.root, stateOf(link.root), 'session', 'status.json'))
   const progress = await readJson(io, join(sessionDir(link.root, link.session), 'progress'))
   // SR-336 EX-2: the study the owner chose to read before answering its questions
   const first = await readJson(io, join(sessionDir(link.root, link.session), 'study_first.json'))
   // SR-358: this session's plugin against iaso's local and repository main; SR-359: the judges that cannot settle
   const build = await readJson(io, join(sessionDir(link.root, link.session), 'build.json'))
-  const judges = await readJson(io, join(link.root, '.iaso', 'session', 'judges.json'))
+  const judges = await readJson(io, join(link.root, stateOf(link.root), 'session', 'judges.json'))
   const down = (judges?.down && typeof judges.down === 'object' ? Object.entries(judges.down) as [string, any][] : [])
     .filter(([, d]) => d?.line)
   const buildLines: string[] = Array.isArray(build?.lines) ? build.lines.map(String) : []

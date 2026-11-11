@@ -15,7 +15,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-016",
+        "digest": "sha256:a57b1225cb8250e1bc468b0238bfbbc3e5e70937d39e273e476d13914d895505",
         "text": "Each prompt you inject relevant records with state, examples and covering tests? isnt there a smarter way to do this? Isnt the risk to bloat the context way too fast with redundant tokens? / Iaso why file|ID seems not very user friendly, don't forget the user don't necessarily know the code ... All the commands should be designed to handle this properly / and fix the /iaso why bug"
        }
       ],
@@ -55,7 +55,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-013",
+        "digest": "sha256:64eb0d9a282b3994c4e06cb2b0bdc6d4eb979a299d3703d07aca0c5092f3eb10",
         "text": "consider stopping developments on pi-agent-factory if it takes too much RAM"
        }
       ],
@@ -94,7 +94,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-004",
+        "digest": "sha256:8cece5e32be6ae73c08679a21fb934f681786d4d9f54499581b32f8a4b5a421f",
         "text": "Don't you think that we'd need planning features still? how do you ensure that people defining their system will have their intent succesfully translated? / C"
        }
       ],
@@ -130,7 +130,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-006",
+        "digest": "sha256:a320a54b1246b46ddb9d39854e32d13d8218c8c04093ae6d93cf2ce94315dfb7",
         "text": "B. can be the way to go but be careful about loosing some important features, for example the hash is important for staleness detection. / Keep list looks fine"
        }
       ],
@@ -166,7 +166,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-007",
+        "digest": "sha256:9c192e2f0a40232a55c7552f327b1fb85ffb28b0b951d1700f519f072b6b0cf2",
         "text": "B. I guess the CLI / lib can be re-used from pi-agent-factory?"
        }
       ],
@@ -202,7 +202,7 @@
      "premise": {
       "messages": [
        {
-        "digest": "sha256:frozen-message-INT-008",
+        "digest": "sha256:559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd",
         "text": "A"
        }
       ],

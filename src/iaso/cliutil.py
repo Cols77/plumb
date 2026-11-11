@@ -18,7 +18,7 @@ EXIT_MERGE_WAITS = 4
 def add_common(parser: Any) -> None:
     """Add ``--root`` and ``--json`` to an argparse parser."""
     parser.add_argument("--root", default=None, help="repository root (default: walk up to "
-                        "the first directory holding .iaso/, else .git)")
+                        "the first directory holding .iaso/ or the old records folder, else .git)")
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="machine-readable output")
 

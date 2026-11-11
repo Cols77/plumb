@@ -6,6 +6,8 @@ confirms anything."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import time
 from collections import Counter
@@ -29,7 +31,7 @@ def write_cases(core: Any, sha: str, cases: Sequence[Mapping[str, Any]]) -> None
     keys = ("id", "kind", "target", "detail", "state")
     rows = [{k: str(c.get(k) or ("open" if k == "state" else "")) for k in keys} for c in cases]
     if rows:
-        files.write_json_atomic(Path(core.root) / ".iaso" / "cache" / "debug" / f"{sha}.json",
+        files.write_json_atomic(state_dir(Path(core.root)) / "cache" / "debug" / f"{sha}.json",
                                 rows)
 
 
@@ -63,7 +65,7 @@ def open_cases(root: Path) -> tuple[list[dict[str, Any]], int]:
     """``(open cases, resolved count)`` of the debug files that still hold an open case, each
     case id once: every landing writes its own file and repeats the cases still open."""
     rows: dict[str, dict[str, Any]] = {}
-    for path in sorted((Path(root) / ".iaso" / "cache" / "debug").glob("*.json")):
+    for path in sorted((state_dir(Path(root)) / "cache" / "debug").glob("*.json")):
         found = files.read_json(path)
         if isinstance(found, list) and any(r.get("state") == "open" for r in found):
             for r in found:
@@ -78,7 +80,7 @@ def open_cases(root: Path) -> tuple[list[dict[str, Any]], int]:
 def resolve_cases(root: Path, ids: Sequence[str]) -> int:
     """Mark the cases ``ids`` resolved in every debug file (SR-300 EX-2); how many changed."""
     changed = 0
-    for path in (Path(root) / ".iaso" / "cache" / "debug").glob("*.json"):
+    for path in (state_dir(Path(root)) / "cache" / "debug").glob("*.json"):
         rows = files.read_json(path)
         if not isinstance(rows, list):
             continue

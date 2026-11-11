@@ -63,6 +63,8 @@ iaso.mergeHold=false commit`` (or ``... rebase --continue``) bypasses that one.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -399,7 +401,7 @@ def unstaged_iaso(root: Path) -> list[str]:
     being committed, which ``git status`` reads). Ignored files (cache, session) are not
     listed. One git call, taking no lock."""
     out = _git(Path(root), "--no-optional-locks", "status", "--porcelain=v1", "-z",
-               "--untracked-files=all", "--", ".iaso") or ""
+               "--untracked-files=all", "--", state_dir(Path(root)).name) or ""
     items = out.split("\0")
     found: list[str] = []
     i = 0
@@ -531,8 +533,8 @@ def _merge_check(core: Any, base: str, heads: Sequence[tuple[str, str]], *,
             if load_policy(root).require_trailer:
                 for unclaimed in result.get("unclaimed_commits") or []:
                     undeclared.append({"commit": str(unclaimed), "path": None, "claims": []})
-            claims_errors += [f"  .iaso/claims.yaml: {p}" for p in result.get("problems") or ()
-                              if f"  .iaso/claims.yaml: {p}" not in claims_errors]
+            claims_errors += [f"  claims.yaml: {p}" for p in result.get("problems") or ()
+                              if f"  claims.yaml: {p}" not in claims_errors]
         except Exception as exc:  # noqa: BLE001 - listed like the report's (gates.claims_gate)
             claims_errors.append(f"  the claims check could not read {base}..{sha}: {exc}")
 
@@ -590,7 +592,7 @@ def open_questions_on(core: Any, required: Sequence[str]) -> list[dict[str, Any]
     index = core.index()
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for path in sorted((Path(core.root) / ".iaso" / "session").glob("*/judge_questions.json")):
+    for path in sorted((state_dir(Path(core.root)) / "session").glob("*/judge_questions.json")):
         try:
             from iaso.understand import judge
 
@@ -777,7 +779,7 @@ def _deleted_entries(root: Path, base: str) -> list[str]:
     from iaso import log
 
     out = _git(root, "diff", "--name-only", "-z", "--diff-filter=D", base, "--",
-               ".iaso/log") or ""
+               f"{state_dir(root).name}/log") or ""
     gone = []
     for path in filter(None, out.split("\0")):
         parts = path.split("/")
@@ -789,7 +791,7 @@ def _deleted_entries(root: Path, base: str) -> list[str]:
         kind = path.split("/")[2]
         if kind not in kept:
             try:
-                lines = (root / ".iaso" / "log" / kind / log.SEGMENT).read_bytes().splitlines()
+                lines = (state_dir(root) / "log" / kind / log.SEGMENT).read_bytes().splitlines()
             except OSError:
                 lines = []
             kept[kind] = {m for m in (_digest_of(line) for line in lines) if m}

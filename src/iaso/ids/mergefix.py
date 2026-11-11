@@ -119,7 +119,7 @@ def _held_ids(core: Any, ctx: _Context) -> list[str]:
     held = list(core.index())
     if ctx.theirs:
         listed = _out(Path(core.root), "ls-tree", "-r", "--name-only", ctx.theirs, "--",
-                      ".iaso/")
+                      f"{core.paths.iaso.name}/")
         for name in (listed or "").splitlines():
             stem = Path(name).stem
             if split(stem) is not None:
@@ -143,7 +143,7 @@ def _assign(core: Any, plans: list[_Plan], held: Sequence[str], dry_run: bool) -
         for plan in plans:
             plan.new = ids.reserve(core.paths, plan.kind, local=held)[0]
     for plan in plans:
-        plan.new_path = f".iaso/{DIRS[plan.new.split('-')[0]]}/{plan.new}.md"
+        plan.new_path = f"{core.paths.iaso.name}/{DIRS[plan.new.split('-')[0]]}/{plan.new}.md"
 
 
 def _candidates(root: Path, ctx: _Context, skip: set[str]) -> list[str]:
@@ -155,7 +155,8 @@ def _candidates(root: Path, ctx: _Context, skip: set[str]) -> list[str]:
     for path in listed.stdout.decode("utf-8", "replace").split("\0"):
         if not path or path in skip:
             continue
-        if _collision.RECORD_PATH.match(path) or path == ".iaso/claims.yaml" or \
+        if _collision.RECORD_PATH.match(path) or \
+                path == ".iaso/claims.yaml" or \
                 path.endswith(".py"):
             out.append(path)
     return out
@@ -432,7 +433,7 @@ def _apply(core: Any, ctx: _Context, plans: list[_Plan], remaining: list[Collisi
             "old_hash": plan.old_hash, "new_hash": plan.new_hash,
             "approvals": plan.approvals, "commits": plan.commits, "map": dict(mapping)})
     if ctx.merging:
-        _git(root, "add", "-A", "--", *sorted(staged), ".iaso/log")
+        _git(root, "add", "-A", "--", *sorted(staged), f"{core.paths.iaso.name}/log")
     core.store.invalidate()
     left = tuple(remaining) + _collision.collisions(core)
     return MergeFixResult(

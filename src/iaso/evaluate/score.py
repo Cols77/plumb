@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import re
 import shutil
 import subprocess
@@ -46,8 +48,8 @@ def trail(scratch: Path, transcript: list[Any], issues: list[dict[str, Any]],
           unanswered: int) -> dict[str, Any]:
     """What iaso's records and log show of the run."""
     scratch = Path(scratch)
-    records = sum(1 for d in RECORD_DIRS if (scratch / ".iaso" / d).is_dir()
-                  for f in (scratch / ".iaso" / d).iterdir() if f.is_file())
+    records = sum(1 for d in RECORD_DIRS if (state_dir(scratch) / d).is_dir()
+                  for f in (state_dir(scratch) / d).iterdir() if f.is_file())
     answered = sum(1 for t in transcript if t.source == "scripted-owner")
     failed = [t.text for t in transcript if t.role == "agent" and t.source == "error"]
     gates = proofs = stale = 0

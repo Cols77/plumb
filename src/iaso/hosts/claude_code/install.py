@@ -163,7 +163,7 @@ def deny_rules(launcher: Launcher) -> list[str]:
         prefixes.append(launcher.agent_prefix)
     rules = [f"Bash({prefix} {command}:*)" for command in GUARDED for prefix in prefixes]
     rules.append(f"Bash(*{MARKER_NAME}*)")
-    rules += [f"{tool}(.iaso/log/**)" for tool in ("Edit", "Write", "MultiEdit")]
+    rules += [f"{tool}({d}/log/**)" for tool in ("Edit", "Write", "MultiEdit") for d in (".iaso",)]
     return rules
 
 

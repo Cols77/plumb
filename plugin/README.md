@@ -2,7 +2,7 @@
 
 iaso keeps a coding agent's work aligned with what you asked for. It records your intent, the
 requirements and given/when/then examples it becomes, and the decisions made along the way as
-small Markdown files under `.iaso/` in your repository, pins each requirement to its code and
+small Markdown files under `.iaso/` (an old records folder is kept) in your repository, pins each requirement to its code and
 tests by content hash, and checks in the background, every turn, that the code still holds to
 them. It speaks up only when something needs you: a request that contradicts what you
 confirmed, a decision that matters, or a test that passed before and now fails.

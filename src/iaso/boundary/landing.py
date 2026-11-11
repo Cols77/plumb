@@ -12,6 +12,8 @@ and ask the owner about until the owner confirmed them."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import os
 import re
@@ -39,7 +41,7 @@ def _git(root: Path, *args: str) -> str:
 
 
 def marker(root: Path, head: str) -> Path:
-    return Path(root) / ".iaso" / "cache" / "landed" / f"{head}.json"
+    return state_dir(Path(root)) / "cache" / "landed" / f"{head}.json"
 
 
 # --------------------------------------------------------------------------- post-merge proofs
@@ -52,7 +54,7 @@ def restore_owner_words(root: Path, before: str, head: str) -> list[str]:
     is written back from ``before`` as the untracked file it now is. Returns their paths."""
     from iaso.log import OWNER_WORDS_KINDS
 
-    folders = [f".iaso/log/{kind}/" for kind in sorted(OWNER_WORDS_KINDS)]
+    folders = [f"{state_dir(root).name}/log/{kind}/" for kind in sorted(OWNER_WORDS_KINDS)]
     gone = _git(root, "diff", "--name-only", "--diff-filter=D", "-z", before, head,
                 "--", *folders).split("\0")
     restored: list[str] = []
@@ -171,12 +173,13 @@ def inflight_paths(root: Path) -> set[str]:
 
 def inflight_ids(paths: Iterable[str]) -> set[str]:
     """The record ids whose files ``paths`` (``inflight_paths``) name: records not landed."""
-    return {Path(p).stem for p in paths if p.startswith(".iaso/") and _ID.match(Path(p).stem)}
+    return {Path(p).stem for p in paths
+            if p.startswith(".iaso/") and _ID.match(Path(p).stem)}
 
 
 def _landed_decisions(core: Any, before: str, head: str) -> list[Any]:
     changed = set(_git(core.root, "diff", "--name-only", before, head, "--",
-                       ".iaso").split("\n"))
+                       core.paths.iaso.name).split("\n"))
     return [r for r in core.index().values()
             if r.kind == "decision" and r.path in changed and r.fields.get("tidy")]
 
@@ -434,7 +437,7 @@ def _commit(root: Path, removed: list[str], archived: list[str], head: str) -> N
     owner's other staged work stays staged."""
     from iaso import log
 
-    spec = root / ".iaso" / "cache" / f"landing-{head[:12]}.paths"
+    spec = state_dir(root) / "cache" / f"landing-{head[:12]}.paths"
     spec.parent.mkdir(parents=True, exist_ok=True)
     message = f"iaso: tidy after the landing of {head[:12]}" + chr(10) * 2 + "SR: SR-296"
     paths = log.committable(root, [*removed, *archived])  # the log code picks its own paths
@@ -540,7 +543,7 @@ def idle_debug_copies(root: Path) -> tuple[list[tuple[Path, str, int]], list[str
     from iaso import debug, log, selfdebug
 
     root = Path(root).resolve()
-    wt_dir = root / ".iaso" / "wt"
+    wt_dir = state_dir(root) / "wt"
     open_slugs = {selfdebug._slug(c["id"]) for c in debug.open_cases(root)}
     idle: list[tuple[Path, str, int]] = []
     kept: list[str] = []
@@ -592,7 +595,7 @@ def ended_sessions(root: Path, session: str) -> list[str]:
     core = open_core(root)
     own = files.session_dir(root, session).name
     gone: list[str] = []
-    for folder in sorted((Path(root) / ".iaso" / "session").glob("*/ended.json")):
+    for folder in sorted((state_dir(Path(root)) / "session").glob("*/ended.json")):
         folder = folder.parent
         if folder.name == own or judge.unanswered(core, folder.name):
             continue
@@ -712,7 +715,7 @@ def lines(root: Path, workflow: str = "") -> list[tuple[str, str]]:
     (SR-300) with how many were resolved; ``workflow`` names the shipped workflow (SR-385)."""
     from iaso.understand import summary
 
-    folder = Path(root) / ".iaso" / "cache" / "landed"
+    folder = state_dir(Path(root)) / "cache" / "landed"
     out: list[tuple[str, str]] = []
     try:
         latest = max(folder.glob("*.json"), key=lambda p: p.stat().st_mtime)

@@ -250,8 +250,9 @@ def instruction_block(argv: Sequence[str], host: str, *, hooks: bool) -> str:
     return "\n".join([
         "## iaso",
         "",
-        "- Records of the owner's intent live in `.iaso/` (INT, SR, DEC, FEAT, NC); the test",
-        "  map is `.iaso/test_map.txt`.",
+        "- Records of the owner's intent live in `.iaso/` (an old records folder is kept) "
+        "(INT, SR,",
+        "  DEC, FEAT, NC); the test map is `.iaso/test_map.txt`.",
         "- Formalize each request that changes the system into proposed records linked to "
         "the code",
         "  it changes, for the judge to validate, with `" + iaso + " capture`; ask the owner "

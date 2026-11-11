@@ -6,6 +6,8 @@ Reads one JSON file and recomputes nothing. Standard library only.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import os
 import sys
@@ -82,7 +84,7 @@ def _progress_parts(root: Path, session: str | None, data: Any) -> tuple[str, st
         shell = shown(root, None)
         worker = shown(root, session) if session else ""
         flag = ""
-        if session and (root / ".iaso" / "session" / session / "failures.json").exists():
+        if session and (state_dir(root) / "session" / session / "failures.json").exists():
             from iaso.progress import failure_flag
 
             flag = failure_flag(root, session)
@@ -128,7 +130,7 @@ def main(*, root: Path | str | None = None, stdin: TextIO | None = None,
         data = None
         if found is not None:
             try:
-                data = json.loads((found / ".iaso" / "session" / "status.json")
+                data = json.loads((state_dir(found) / "session" / "status.json")
                                   .read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 data = None

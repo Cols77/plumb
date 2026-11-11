@@ -85,6 +85,8 @@ def proof_problems(fields: Mapping[str, object]) -> list[str]:
 def validate(core: Core) -> list[Finding]:
     findings: list[Finding] = []
 
+    rec = core.paths.iaso.name  # the records folder in use
+
     def add(severity: str, code: str, subject: str, message: str) -> None:
         findings.append(Finding(severity, code, subject, message))
 
@@ -186,19 +188,19 @@ def validate(core: Core) -> list[Finding]:
     except Exception:  # noqa: BLE001 - an optional lane never fails validate
         state = None
     if state is not None and state.mirror_mismatch:
-        add("warning", "auto-approve-mirror", ".iaso/config.yaml",
+        add("warning", "auto-approve-mirror", f"{rec}/config.yaml",
             "auto_approve says enabled, but no owner config event turned it on: it is off "
             "(iaso config auto-approve on, in the owner's own terminal)")
 
     # logs and approvals
     for stream in ("events", "evidence"):
         for problem in log.verify_chain(core.paths, stream):
-            add("error", "log", f".iaso/log ({stream})", problem)
+            add("error", "log", f"{rec}/log ({stream})", problem)
     legacy = log.legacy_count(core.paths)
     if legacy:  # SP6 6.5: a warning, never a hold
         from iaso.present.owner_text import LEGACY_LOG
 
-        add("warning", "legacy-log", ".iaso/log", LEGACY_LOG.format(n=legacy))
+        add("warning", "legacy-log", f"{rec}/log", LEGACY_LOG.format(n=legacy))
     for entry, problem in checked(core):
         if problem:
             named = [str(r.get("id")) for r in entry.payload.get("records") or []

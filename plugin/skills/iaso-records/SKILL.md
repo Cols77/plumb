@@ -7,8 +7,9 @@ Run iaso as `iaso`. The owner's intent lives in files; read it before acting.
   (`ask` with iaso's judge's questions, or `ready`; every state:
   ../iaso-clarify/references/clarify-states.md). After `/iaso clarify <words>`, also run it
   before reading code: it collects the request's check. Terms: references/glossary.md.
-- `.iaso/` holds INT (the owner's words), SR (given/when/then examples), DEC, FEAT and NC:
-  `iaso brief` (intent now), `show <ID>` (examples, tests), `explain <words>` (why it is).
+- `.iaso/` holds INT (the owner's words), SR (given/when/then
+  examples), DEC, FEAT and NC: `iaso brief` (intent now), `show <ID>` (examples, tests),
+  `explain <words>` (why it is).
 - Before editing a file, grep `.iaso/test_map.txt` for it (no map: run `iaso tests map`);
   the tests listed cover it. Never rewrite a confirmed example's acceptance test to make it
   pass. When the stop hook asks, run the command it names (`iaso tests run --changed`).

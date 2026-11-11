@@ -7,6 +7,8 @@ about. The prompt hook closes it (``close``); only iaso opens it (``open``), eac
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -89,7 +91,7 @@ def problems(core: Any) -> list[str]:
     """Gate files that read open for a message with no ``gate`` entry opening it."""
     if core is None:
         return []
-    folder = Path(core.root) / ".iaso" / "session"
+    folder = state_dir(Path(core.root)) / "session"
     out: list[str] = []
     if not folder.is_dir():
         return out

@@ -8,6 +8,8 @@ change stamp every writer of a loop moves, so a panel can poll one small file.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import argparse
 import json
 import os
@@ -94,7 +96,7 @@ def session_root(roots: list[Path], session: str, agents: Mapping[str, Any] | No
     if held:
         return max(held, key=lambda r: len(r.resolve().parts))
     hosted = [(p.stat().st_mtime, r) for r in roots
-              if (p := r / ".iaso" / "session" / session / "host.json").is_file()]
+              if (p := state_dir(r) / "session" / session / "host.json").is_file()]
     return max(hosted, key=lambda item: item[0])[1] if hosted else default
 
 
@@ -105,7 +107,7 @@ def owner_entries(roots: list[Path], session: str) -> list[Mapping[str, Any]]:
     seen: dict[str, Mapping[str, Any]] = {}
     for root in roots:
         try:
-            lines = (root / ".iaso" / "session" / "prompts.jsonl").read_text(
+            lines = (state_dir(root) / "session" / "prompts.jsonl").read_text(
                 encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
@@ -131,7 +133,7 @@ def _readback(checkout: Path, intent: str) -> str:
     from iaso.model import split_frontmatter
 
     try:
-        front, _ = split_frontmatter((checkout / ".iaso" / "intents" / f"{intent}.md")
+        front, _ = split_frontmatter((state_dir(checkout) / "intents" / f"{intent}.md")
                                      .read_text(encoding="utf-8"))
         return " ".join(str((yaml.safe_load(front) or {}).get("readback") or "").split())
     except (OSError, ValueError):
@@ -149,7 +151,7 @@ def _last(data: Mapping[str, Any]) -> str:
 
 def _recent(root: Path | None, session: str, now: datetime) -> bool:
     """No `claude agents`: the session folder's direct entries were written lately."""
-    folder = (root or Path()) / ".iaso" / "session" / session
+    folder = state_dir((root or Path())) / "session" / session
     try:
         newest = max(p.stat().st_mtime for p in folder.iterdir())
     except (OSError, ValueError):
@@ -164,7 +166,7 @@ PENDING_S = 300       # a reopened loop waits this long for the new session's ad
 def _opening(root: Path, session: str, now: datetime) -> bool:
     """A window was opened lately for the loop of ``session`` and has not taken it over yet."""
     try:
-        at = json.loads((root / ".iaso" / "session" / session / PENDING).read_text("utf-8"))["at"]
+        at = json.loads((state_dir(root) / "session" / session / PENDING).read_text("utf-8"))["at"]
         return 0 <= now.timestamp() - datetime.fromisoformat(at).timestamp() <= PENDING_S
     except (OSError, ValueError, KeyError, TypeError):
         return False
@@ -317,7 +319,7 @@ def owner_answers(root: Path, session: str) -> list[tuple[str, str]]:
     the log of every checkout (the agent's question is never read)."""
     out = set()
     for w in checkouts(root):   # only the answer files: the whole log of each checkout takes minutes
-        for path in (w.path / ".iaso" / "log" / "question-answer").glob("*.json"):
+        for path in (state_dir(w.path) / "log" / "question-answer").glob("*.json"):
             try:
                 e = json.loads(path.read_text("utf-8"))
                 p = e["payload"]
@@ -466,7 +468,7 @@ def _checkout_for(root: Path, row: Mapping[str, Any]) -> tuple[Path, list[list[s
     held = next((w.path for w in found if w.branch == branch), None)
     if held is not None:
         return held, [], []
-    path = here.path / ".iaso" / "wt" / f"intent-{slug}"
+    path = state_dir(here.path) / "wt" / f"intent-{slug}"
     known = subprocess.run(["git", "rev-parse", "--verify", "-q", branch], cwd=here.path,
                            capture_output=True).returncode == 0
     make = ["worktree", "add", *([str(path), branch] if known else ["-b", branch, str(path)])]
@@ -477,13 +479,13 @@ def _checkout_for(root: Path, row: Mapping[str, Any]) -> tuple[Path, list[list[s
 def _exclude_worktrees(main: Path) -> None:
     """A repository adopted before ``.iaso/wt/`` was ignored: keep the worktrees out of its
     status (``.git/info/exclude``), so a later ``git add -A`` cannot stage one as a gitlink."""
-    probe = subprocess.run(["git", "check-ignore", "-q", ".iaso/wt/x"], cwd=main)
+    probe = subprocess.run(["git", "check-ignore", "-q", f"{state_dir(main).name}/wt/x"], cwd=main)
     if probe.returncode == 1:
         exclude = Path(_git(main, "rev-parse", "--git-path", "info/exclude").strip())
         exclude = exclude if exclude.is_absolute() else main / exclude
         exclude.parent.mkdir(parents=True, exist_ok=True)
         with exclude.open("a", encoding="utf-8") as handle:
-            handle.write("/.iaso/wt/\n")
+            handle.write(f"/{state_dir(main).name}/wt/\n")
 
 
 def raise_window(title: str, *, which: Any = shutil.which, run: Any = subprocess.run,
@@ -573,7 +575,7 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
     except subprocess.CalledProcessError:
         opened = False
     if opened:
-        marker = Path(row["root"]) / ".iaso" / "session" / row["session"] / PENDING
+        marker = state_dir(Path(row["root"])) / "session" / row["session"] / PENDING
         marker.write_text(json.dumps({"at": datetime.now(timezone.utc).isoformat()}), "utf-8")
         return {"opened": True, "command": command, "line": f"opened a new session for {row['goal']}"}
     by_hand = [_quote(["git", *s]) for s in make] + [_quote(["cd", str(cwd)]), _quote(command)]
@@ -630,7 +632,7 @@ def _lines(path: Path) -> list[dict[str, Any]]:
 def append_inbox(root: Path, session: str, entry: Mapping[str, Any]) -> None:
     """Queue a message for ``session`` at its own root: one append, never read back by the
     panel (SR-395); owner words stay out of git (``session/`` is ignored)."""
-    folder = Path(root) / ".iaso" / "session" / session
+    folder = state_dir(Path(root)) / "session" / session
     folder.mkdir(parents=True, exist_ok=True)
     fd = os.open(folder / INBOX, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
     try:
@@ -643,7 +645,7 @@ def append_inbox(root: Path, session: str, entry: Mapping[str, Any]) -> None:
 def take_inbox(root: Path, session: str) -> list[dict[str, Any]]:
     """The messages waiting for ``session``, each handed out once: the file is renamed first, so
     one appended meanwhile lands in a new file and waits for the next take."""
-    folder = Path(root) / ".iaso" / "session" / session
+    folder = state_dir(Path(root)) / "session" / session
     taking = folder / f"inbox.taking-{os.getpid()}"
     try:
         os.replace(folder / INBOX, taking)
@@ -667,7 +669,7 @@ def message_label(got: list[Mapping[str, Any]]) -> str:
 
 def message_state(root: Path | None, session: str, loop: str) -> dict[str, str] | None:
     """The newest message to ``loop`` of ``session``: sent (not read yet) or delivered."""
-    folder = (root or Path()) / ".iaso" / "session" / session
+    folder = state_dir((root or Path())) / "session" / session
     read = {str(m.get("id")) for m in _lines(folder / DELIVERED)}
     mine = [m for m in (*_lines(folder / DELIVERED), *_lines(folder / INBOX))
             if m.get("loop") == loop]

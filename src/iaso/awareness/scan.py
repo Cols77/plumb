@@ -26,6 +26,8 @@ the error log, never to the owner.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import json
 import os
@@ -86,7 +88,7 @@ def _raw_hash(path: Path) -> str | None:
 
 def _from_worktree(core: Any, wt: gitfiles.Worktree, mine: set[str], max_age_s: float,
                    now: float, default_tip: str | None = None) -> list[Overlap]:
-    path = wt.path / ".iaso" / "cache" / CHANGING
+    path = state_dir(wt.path) / "cache" / CHANGING
     try:
         mtime = path.stat().st_mtime
     except OSError:
@@ -160,7 +162,7 @@ def learn_landed(core: Any, *, deadline: Any = None) -> None:
         if _expired(deadline):
             skipped(root, "merged worktrees")
             return
-        data = read_changing(wt.path / ".iaso" / "cache" / CHANGING)
+        data = read_changing(state_dir(wt.path) / "cache" / CHANGING)
         if data is not None:
             landed(root, data, default_tip, allow_git=True)
             if moved_since(data, wt.branch, wt.head):
@@ -171,7 +173,7 @@ def learn_landed(core: Any, *, deadline: Any = None) -> None:
 
 
 def branch_cache_path(root: Path) -> Path:
-    return Path(root) / ".iaso" / "cache" / BRANCH_CACHE
+    return state_dir(Path(root)) / "cache" / BRANCH_CACHE
 
 
 def read_branch_cache(root: Path) -> dict[str, Any]:

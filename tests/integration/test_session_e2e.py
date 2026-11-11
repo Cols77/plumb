@@ -99,10 +99,15 @@ def _driver():
 
 
 @pytest.fixture
-def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch) -> Path:
-    # hooks run `iaso` from PATH, as an installed tool would
-    monkeypatch.setenv("PATH", str(Path(sys.executable).parent) + os.pathsep
-                       + os.environ.get("PATH", ""))
+def adopted(repo: Path, write_record, monkeypatch: pytest.MonkeyPatch, tmp_path_factory) -> Path:
+    # hooks run `iaso` from PATH, as an installed tool would: a shim for this interpreter and
+    # source, so the test does not depend on how the venv was installed
+    shim_dir = tmp_path_factory.mktemp("shim")
+    shim = shim_dir / "iaso"
+    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m iaso "$@"\n', encoding="utf-8")
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", str(shim_dir) + os.pathsep + str(Path(sys.executable).parent)
+                       + os.pathsep + os.environ.get("PATH", ""))
     for rel, text in FILES.items():
         path = repo / rel
         path.parent.mkdir(parents=True, exist_ok=True)

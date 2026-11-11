@@ -78,6 +78,7 @@ def make_repo(path: Path) -> Path:
     run_git(path, "config", "user.email", "test@example.com")
     run_git(path, "config", "user.name", "Test")
     run_git(path, "config", "core.autocrlf", "false")
+    (path / ".iaso").mkdir()   # an old repository, as tests/conftest.py's repo (SR-431)
     init_repo(path)
     (path / "README.md").write_text("test repo\n", encoding="utf-8")
     commit_all(path, "initial")

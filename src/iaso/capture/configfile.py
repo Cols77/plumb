@@ -6,6 +6,8 @@ commented template included, stays byte for byte.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -57,7 +59,7 @@ def update_section(root: Path, section: str, changes: Mapping[str, Any], *,
     (``{"jev": ["base_url"]}`` removes ``section.jev.base_url``)."""
     import yaml
 
-    path = Path(root) / ".iaso" / "config.yaml"
+    path = state_dir(Path(root)) / "config.yaml"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:

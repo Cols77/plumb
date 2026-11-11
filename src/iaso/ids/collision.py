@@ -27,8 +27,10 @@ from pathlib import Path
 from typing import Any
 
 from iaso.contracts import Collision
+from iaso.paths import state_dir
 
-RECORD_PATH = re.compile(r"^\.iaso/(intents|requirements|decisions|features|ncs)/[^/]+\.md$")
+RECORD_PATH = re.compile(
+    r"^\.iaso/(intents|requirements|decisions|features|ncs)/[^/]+\.md$")
 _DUPLICATE = re.compile(r"^duplicate id (\S+): (.+) and (.+)$")
 _TITLE = re.compile(r"^title:\s*(.*)$", re.MULTILINE)
 _ID_LINE = re.compile(r"^id:\s*['\"]?([A-Z]+-\d+)", re.MULTILINE)
@@ -79,7 +81,7 @@ def id_of(text: str | None, path: str) -> str:
 
 def unmerged_add_add(root: Path) -> list[Collision]:
     """Record paths both sides added (stages 2 and 3 without 1) holding two records."""
-    result = git(root, "ls-files", "-u", "-z", "--", ".iaso/")
+    result = git(root, "ls-files", "-u", "-z", "--", f"{state_dir(root).name}/")
     if result.returncode != 0 or not result.stdout:
         return []
     stages: dict[str, dict[int, str]] = {}
@@ -145,7 +147,7 @@ def kept_first(root: Path, paths: list[str]) -> list[str]:
 def _added(root: Path, fork: str, tip: str) -> set[str]:
     """Record paths ``tip`` added since ``fork``."""
     result = git(root, "diff", "--name-only", "--diff-filter=A", "--no-renames", "-z", fork,
-                 tip, "--", ".iaso/")
+                 tip, "--", f"{state_dir(root).name}/")
     return {p for p in result.stdout.decode("utf-8", "replace").split("\0")
             if RECORD_PATH.match(p)}
 
@@ -260,7 +262,7 @@ def preview(core: Any, ref: str) -> tuple[Collision, ...]:
 
     def added(tip: str) -> set[str]:
         result = git(root, "diff", "--name-only", "--diff-filter=A", "-z", fork, tip, "--",
-                     ".iaso/")
+                     f"{state_dir(root).name}/")
         return {p for p in result.stdout.decode("utf-8", "replace").split("\0")
                 if RECORD_PATH.match(p)}
 

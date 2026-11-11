@@ -15,6 +15,8 @@ Standard library only at import time: hooks start with minimal imports.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
@@ -113,7 +115,7 @@ def status_line(root: Path) -> str:
     """The one-line status card from ``.iaso/session/status.json`` (recomputes nothing)."""
     from iaso.hosts.claude_code.statusline import render
 
-    return render(read_json(root / ".iaso" / "session" / "status.json"))
+    return render(read_json(state_dir(root) / "session" / "status.json"))
 
 
 def _lines(text: str) -> tuple[str, ...]:

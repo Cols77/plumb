@@ -11,6 +11,8 @@ Commands: ``iaso trailers check-msg <file>``, ``iaso trailers install-hook``,
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import re
 import subprocess
 import sys
@@ -54,7 +56,7 @@ class ClaimsPolicy:
 
 
 def load_policy(root: Path) -> ClaimsPolicy:
-    path = Path(root) / ".iaso" / "claims.yaml"
+    path = state_dir(Path(root)) / "claims.yaml"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -134,7 +136,7 @@ def exempting_glob(policy: ClaimsPolicy, path: str) -> str | None:
 def check_msg(root: Path, message: str) -> tuple[int, list[str]]:
     """``(exit code, lines)`` for one commit message (spec 5.9)."""
     root = Path(root)
-    if not (root / ".iaso").is_dir():
+    if not (state_dir(root)).is_dir():
         return 0, [NOT_INITIALIZED]
     policy = load_policy(root)
     ids = parse_sr_trailer(message)

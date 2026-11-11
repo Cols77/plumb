@@ -32,6 +32,7 @@ def make_repo(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     run_git(path, "init", "-q", "-b", "main")
     _configure(path)
+    (path / ".iaso").mkdir()   # an old repository, as tests/conftest.py's repo (SR-431)
     init_repo(path)
     (path / "README.md").write_text("test repo\n", encoding="utf-8")
     commit_all(path, "initial")
@@ -71,7 +72,7 @@ KIND_DIRS = {"INT": "intents", "SR": "requirements", "DEC": "decisions", "FEAT":
 
 
 def write(root: Path, record_id: str, title: str, **fields: object) -> Path:
-    path = root / ".iaso" / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
+    path = (root / ".iaso" if (root / ".iaso").exists() or not (root / ".iaso").exists() else root / ".iaso") / KIND_DIRS[record_id.split("-")[0]] / f"{record_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(record_text(record_id, title, **fields).encode("utf-8"))
     return path

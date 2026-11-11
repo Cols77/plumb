@@ -8,6 +8,8 @@ committed)."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import importlib.util
 import json
 import os
@@ -35,7 +37,7 @@ def path(root: Path, slug: str, clip: str, suffix: str) -> Path:
 
 
 def frames_dir(root: Path, slug: str, clip: str) -> Path:
-    return Path(root) / ".iaso" / "cache" / "studies" / slug / clip
+    return state_dir(Path(root)) / "cache" / "studies" / slug / clip
 
 
 def _words(text: Any) -> int:

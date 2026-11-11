@@ -3,12 +3,12 @@
 Phase 3 of `2026-10-26-review-resolution.md`, step 1: each hook run 10 times warm and 10
 times cold on this repository (the `intent/int-114` worktree, after the stop hook's inline
 work was cut to the next action), with `IASO_HOOK_PROFILE=1`. Cold means the hash and log
-caches in `.iaso/cache/*.json` removed before the run. Worker processes were not started
+caches in `the records folder/cache/*.json` removed before the run. Worker processes were not started
 (the hook's own inline work only). The in-process time runs from the hook's start
 (`iaso hook` entry), the clock its soft budget and hard limit use; the wall time adds
 Python's start. `pre-tool` runs outside `run_hook` (no budget), so its row is wall time.
 
-Conditions: the logs are **not** compacted (243 MB under `.iaso/log`, a 33 MB events cache
+Conditions: the logs are **not** compacted (243 MB under `the records folder/log`, a 33 MB events cache
 and a 49 MB evidence cache), and other sessions kept the machine busy throughout (the test
 suite's load guard reported 5 minutes of busy CPU in the same hour). Both inflate the cold
 rows; SR-375 EX-1 assumes the logs compacted.

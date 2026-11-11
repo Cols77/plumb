@@ -14,6 +14,8 @@ Standard library only, so the post-edit fast path stays cheap.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import contextlib
 import json
 import os
@@ -143,11 +145,11 @@ class HookContext:
 
     @property
     def iaso_dir(self) -> Path:
-        return self.root / ".iaso"
+        return state_dir(self.root)
 
     @property
     def session_dir(self) -> Path:
-        return self.root / ".iaso" / "session"
+        return state_dir(self.root) / "session"
 
 
 def use_utf8_stdio() -> None:
@@ -220,7 +222,7 @@ def log_error(root: Path | None, name: str, detail: str) -> None:
     if root is None:
         return
     try:
-        path = root / ".iaso" / "session" / "errors.log"
+        path = state_dir(root) / "session" / "errors.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         with path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -243,7 +245,7 @@ def write_profile(root: Path | None, name: str, ctx: HookContext | None, start: 
              "total_ms": round((time.monotonic() - start) * 1000, 1),
              "steps": list(ctx.steps) if ctx is not None else [], "cut": cut}
     try:
-        path = root / ".iaso" / "session" / PROFILE_FILE
+        path = state_dir(root) / "session" / PROFILE_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry) + "\n")
@@ -484,7 +486,7 @@ def hard_limit_s(root: Path) -> float:
         # the post-edit fast path stays standard library only (SR-011): the config is parsed
         # only when config.yaml sets the key (a commented-out default does not count)
         if not re.search(r"^\s*hard_limit_s\s*:",
-                         (root / ".iaso" / "config.yaml").read_text(encoding="utf-8"), re.M):
+                         (state_dir(root) / "config.yaml").read_text(encoding="utf-8"), re.M):
             return HARD_LIMIT_S
         from iaso.config import load_config
 

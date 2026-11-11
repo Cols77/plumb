@@ -7,6 +7,7 @@ words; say in their terms what holds the merge, never paste the hook's output as
 - "merge <branch>" into the main branch: `git merge --no-ff <branch>`. Never a fast-forward:
   the post-merge hook puts the main branch back when a fast-forward brings in what the quick
   check holds, and says so.
+- In an old repository, `git add` the old records folder wherever `git add .iaso` appears.
 - "finish the merge" (a merge held by the quick merge check, no test run): `git add .iaso`
   (their choices and confirmations made during the merge), then
   `iaso merge-check --hook pre-merge-commit`; when it passes,

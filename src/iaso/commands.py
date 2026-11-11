@@ -499,6 +499,7 @@ def cmd_status(command: str, argv: list[str]) -> int:
     conf = data["confirmation"]
     links = data["links"]
     lines = [
+        "IASO status",
         f"records: {kinds}",
         f"requirements: {req['total']} total, {req['confirmed']} confirmed, "
         f"{req['covered']} covered"

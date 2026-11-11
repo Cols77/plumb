@@ -468,7 +468,8 @@ def stage_choice(core: Any, *record_paths: str) -> None:
     root = core.root
     if git_operation(root) is None:
         return
-    paths = [*record_paths] + [rel for rel in (".iaso/log",) if (root / rel).exists()]
+    logs = f"{core.paths.iaso.name}/log"
+    paths = [*record_paths] + ([logs] if (root / logs).exists() else [])
     if not paths:
         return
     try:

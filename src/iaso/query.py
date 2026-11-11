@@ -89,7 +89,8 @@ def brief_lines(core: Core, max_lines: int = 30, *, show_all: bool = False) -> l
     def of_kind(kind: str) -> list[Record]:
         return [r for _, r in sorted(live.items()) if r.kind == kind]
 
-    header = "iaso brief (records in .iaso/, test map in .iaso/test_map.txt)"
+    sd = core.paths.iaso.name
+    header = f"iaso brief (records in {sd}/, test map in {sd}/test_map.txt)"
     features = []
     for feature in of_kind("feature"):
         members = {str(s) for s in feature.fields.get("requirements") or []}

@@ -22,6 +22,8 @@ would start past the soft budget is skipped and named in the status line."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import os
 import re
@@ -42,8 +44,7 @@ from iaso.hosts.claude_code.hookio import (
 from iaso.hosts.claude_code.providers import LAZY, verify_api
 from iaso.trace import is_code_path
 
-IGNORED_PREFIXES = (".iaso/session/", ".iaso/cache/", ".iaso/log/", ".iaso/view/",
-                    ".git/")
+IGNORED_PREFIXES = (".iaso/session/", ".iaso/cache/", ".iaso/log/", ".iaso/view/", ".git/")
 IGNORED_FILES = (".iaso/test_map.txt",)
 GIT_TIMEOUT_S = 5.0  # a slice of the soft budget: under load git status alone can take 0.6 s
 STOP_GRACE_S = 1.0  # past the hard limit, only while the read-back is not yet kept (R1)
@@ -580,7 +581,7 @@ def queue_notes(ctx: HookContext, notes: Sequence[str]) -> None:
 def note_skipped(root: Path, skipped: Sequence[str]) -> None:
     """A step skipped by the budget is named in the status line (``status.json``'s
     ``skipped``), never in the owner's text (cards only)."""
-    path = Path(root) / ".iaso" / "session" / "status.json"
+    path = state_dir(Path(root)) / "session" / "status.json"
     data = read_json(path)
     if not isinstance(data, dict):
         data = {}

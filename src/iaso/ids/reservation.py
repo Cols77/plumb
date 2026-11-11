@@ -18,7 +18,7 @@ from typing import Any
 
 from iaso.contracts import IdState
 from iaso.ids import ref as _ref
-from iaso.paths import IasoPaths
+from iaso.paths import IasoPaths, state_dir
 
 PREFIX = {"intent": "INT", "requirement": "SR", "decision": "DEC", "feature": "FEAT",
           "nc": "NC", "conflict": "IC"}
@@ -105,7 +105,8 @@ def branch_tips_high(root: Path) -> dict[str, int]:
         return {}
     out: dict[str, int] = {}
     for tip in dict.fromkeys(tips.stdout.decode().split()):
-        listed = _ref.git(root, "ls-tree", "-r", "--name-only", "-z", tip, "--", ".iaso/")
+        listed = _ref.git(root, "ls-tree", "-r", "--name-only", "-z", tip, "--",
+                             f"{state_dir(root).name}/")
         if listed.returncode != 0:
             continue
         for name in listed.stdout.decode("utf-8", "replace").split("\0"):

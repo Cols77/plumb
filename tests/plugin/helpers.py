@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from iaso.paths import state_dir
+
 REPO = Path(__file__).resolve().parents[2]
 PLUGIN = REPO / "plugin"
 HOOK = PLUGIN / "bin" / "iaso-hook"
@@ -120,7 +122,7 @@ def git_repo(root: Path) -> Path:
 def guard_off(root: Path) -> None:
     """SR-384: these tests drive the real hooks on a repository that sits on its default branch;
     the main-checkout guard has its own tests (tests/host/test_main_guard.py)."""
-    config = Path(root) / ".iaso" / "config.yaml"
+    config = state_dir(Path(root)) / "config.yaml"
     text = config.read_text(encoding="utf-8") if config.exists() else ""
     if "guard_main" not in text:
         config.parent.mkdir(parents=True, exist_ok=True)

@@ -327,7 +327,7 @@ def _paths(tool_input: Mapping[str, Any]) -> Iterable[str]:
 
 def _under_log(path: str) -> bool:
     norm = "/" + path.replace("\\", "/")
-    return "/.iaso/log/" in norm or norm.endswith("/.iaso/log")
+    return any(f"/{d}/log/" in norm or norm.endswith(f"/{d}/log") for d in (".iaso",))
 
 
 def denied(tool: str, tool_input: Mapping[str, Any] | None) -> str | None:

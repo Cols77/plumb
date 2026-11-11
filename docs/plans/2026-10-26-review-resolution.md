@@ -45,7 +45,7 @@ passes.
 ## Phase 2: the logs stay small (SR-376)
 
 Files: `src/iaso/log.py`, `src/iaso/understand/tidy.py`, `src/iaso/boundary/landing.py`,
-`.iaso/.gitignore`, `src/iaso/contracts.py`, `src/iaso/stale.py`,
+`the records folder/.gitignore`, `src/iaso/contracts.py`, `src/iaso/stale.py`,
 `src/iaso/understand/summary.py`, `tests/logs/`.
 
 1. `log.py`: the kind table marks `judgment` as telemetry (compact whole at a landing: every
@@ -53,8 +53,8 @@ Files: `src/iaso/log.py`, `src/iaso/understand/tidy.py`, `src/iaso/boundary/land
    the `offer` kind is removed from the table, its writers (`mod/offers.py`, the browser
    service) stop writing it now (the files themselves go in phase 5).
 2. `tidy.py` / `landing.py`: the landing's compaction applies the telemetry rule.
-3. `.iaso/.gitignore`: `log/judgment/*.json` (the `archive.jsonl` segment stays tracked).
-   One-off: `git rm -r --cached .iaso/log/judgment/*.json` and one compaction run on main,
+3. `the records folder/.gitignore`: `log/judgment/*.json` (the `archive.jsonl` segment stays tracked).
+   One-off: `git rm -r --cached the-records-folder/log/judgment/*.json` and one compaction run on main,
    both in the landing commit (SR-329: judgment becomes a local kind, DEC-388).
 4. Tests (`tests/logs/test_telemetry_kinds.py`):
    - `test_judgment_compacts_whole_at_landing` (EX-1).
@@ -75,7 +75,7 @@ Files: `src/iaso/config.py`, `src/iaso/hosts/claude_code/hookio.py`,
 (hook timeouts), `tests/host/`.
 
 1. Profile first (owner, 2026-10-26, DEC-394 supersedes DEC-373): add step timing to
-   `hookio` (each named step's duration, written to `.iaso/session/hook-timing.jsonl` when
+   `hookio` (each named step's duration, written to `the records folder/session/hook-timing.jsonl` when
    `IASO_HOOK_PROFILE=1`, off by default). After steps 3 and 4 below, run each hook 10 times
    on this repository (session-start, prompt, pre-tool, edit-check, stop; warm and cold
    cache) and write the table to `docs/plans/2026-10-26-hook-profile.md`. Then set
@@ -141,7 +141,7 @@ tests, `tests/capture/test_triage*.py`, `test_set_approval.py`. Edit `src/iaso/c
 (routes and help), `src/iaso/hosts/cli.py` (no Pi), `src/iaso/stale.py` and
 `src/iaso/present/*` (freeze filter), `pyproject.toml`, `src/iaso/study/video.py`,
 `plugin/hooks/register.tsx` (`roomCard`), `src/iaso/mod/cli.py` (`room --card`),
-`README.md`, `docs/hosts.md` (Pi section), `.iaso/config.yaml` (freeze list).
+`README.md`, `docs/hosts.md` (Pi section), `the records folder/config.yaml` (freeze list).
 
 1. Before deleting: `iaso unlink <link> --note "retired with <part>"` for every link capture
    listed (SR-205, SR-238, SR-283 Pi examples, SR-285); `triage`'s `_Prompts`,
@@ -149,7 +149,7 @@ tests, `tests/capture/test_triage*.py`, `test_set_approval.py`. Edit `src/iaso/c
    `escalated_ids`, `escalated_sets`, `set_ids`, `current_set_hash`; `confirm.py` keeps
    refusing `via: button` and `by: import` approvals with one line (trust boundary).
 2. Freeze: `config.yaml` gains `freeze: [paths...]` (Codex and Hermes adapters and tests,
-   `evaluate/` and `tests/evaluate`, `.iaso/eval`); `stale`, `drift`, the brief and the
+   `evaluate/` and `tests/evaluate`, `the records folder/eval`); `stale`, `drift`, the brief and the
    merge check skip frozen paths; the session marker `IASO_AGENT_SESSION=codex|hermes`
    wakes that host's paths (EX-3). The benchmark's records (INT-105, SR-344 to SR-349) are
    marked frozen in their frontmatter and excluded from "waiting on a judge".

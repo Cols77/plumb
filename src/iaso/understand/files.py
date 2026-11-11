@@ -3,6 +3,8 @@ job id. One writer per file is named in the plan; this module only knows the sha
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import json
 import os
@@ -28,7 +30,7 @@ CLI_SESSION = "cli"
 
 
 def session_dir(root: Path, session: str) -> Path:
-    return Path(root) / ".iaso" / "session" / (_SAFE.sub("-", session).strip("-") or "default")
+    return state_dir(Path(root)) / "session" / (_SAFE.sub("-", session).strip("-") or "default")
 
 
 def jobs_dir(root: Path, session: str) -> Path:

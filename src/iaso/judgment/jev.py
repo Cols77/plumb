@@ -304,7 +304,7 @@ class JevBackend:
         """False once a call failed: the rest of this process raises the same error."""
         return self._down is None
 
-    # -- iasoing
+    # -- wiring
     def _ask(self, questions: Sequence[tuple[str, JudgmentQuestion]], prefix: str,
              paths: Sequence[str] = ()) -> JudgmentRecord:
         from iaso.judgment import JudgmentUnavailable

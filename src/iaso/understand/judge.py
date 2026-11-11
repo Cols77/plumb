@@ -27,6 +27,8 @@ for calibration (SR-252 EX-4). It returns the log entries: the worker writes the
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 import re
 from collections.abc import Collection, Mapping, Sequence
@@ -520,7 +522,7 @@ def unanswered_anywhere(core: Any) -> list[Mapping[str, Any]]:
     """Every session folder's unanswered judge questions, once per key: an answer given in a
     live session settles a question an ended session or the CLI ("cli") filed."""
     answered, out = _answered_keys(core), {}
-    for path in sorted((Path(core.root) / ".iaso" / "session").glob(f"*/{QUESTIONS_FILE}")):
+    for path in sorted((state_dir(Path(core.root)) / "session").glob(f"*/{QUESTIONS_FILE}")):
         for q in _logged_questions(core.root, path.parent.name):
             if q.get("key") not in answered:
                 out.setdefault(q.get("key"), q)
@@ -530,7 +532,7 @@ def unanswered_anywhere(core: Any) -> list[Mapping[str, Any]]:
 def open_anywhere(core: Any) -> list[Mapping[str, Any]]:
     """The open questions of every session folder, once per key: what awaits the owner."""
     out: dict[Any, Mapping[str, Any]] = {}
-    for path in sorted((Path(core.root) / ".iaso" / "session").glob(f"*/{QUESTIONS_FILE}")):
+    for path in sorted((state_dir(Path(core.root)) / "session").glob(f"*/{QUESTIONS_FILE}")):
         for q in open_questions(core, path.parent.name):
             out.setdefault(q.get("key"), q)
     return list(out.values())
@@ -950,7 +952,7 @@ def drop_settled_questions(core: Any, still_stale: Collection[str]) -> None:
     """Withdraw, in every session folder, the questions about links (``job`` is
     ``debug:<link id>`` or ``stale:<link id>``) that are no longer stale: their link was repinned,
     relinked or removed, so the question no longer stands (INT-079). Each is logged (SR-216)."""
-    for path in (Path(core.root) / ".iaso" / "session").glob(f"*/{QUESTIONS_FILE}"):
+    for path in (state_dir(Path(core.root)) / "session").glob(f"*/{QUESTIONS_FILE}"):
         raw = files.read_json(path)
         if not isinstance(raw, list):
             continue
@@ -968,7 +970,7 @@ def drop_merged_branch_questions(core: Any, merged: Collection[str]) -> None:
     sessions, are withdrawn and logged."""
     out = _git(Path(core.root), "worktree", "list", "--porcelain") or ""
     for tree in (Path(x[9:]) for x in out.splitlines() if x.startswith("worktree ")):
-        for path in (tree / ".iaso" / "session").glob(f"*/{QUESTIONS_FILE}"):
+        for path in (state_dir(tree) / "session").glob(f"*/{QUESTIONS_FILE}"):
             raw = files.read_json(path)
             gone = [q for q in raw if isinstance(q, Mapping) and q.get("branch") in merged] \
                 if isinstance(raw, list) else []

@@ -50,7 +50,7 @@ def test_only_hint_at_startup(setup: tuple[Path, dict[str, str], Path]) -> None:
         result = run_hook("session-start", root, hook_data("session-start", source=source), env)
         assert (result.returncode, result.stdout) == (0, "")
     assert not sentinel.exists()
-    assert not (root / ".iaso").exists()
+    assert not (root / ".iaso").exists() and not (root / ".iaso").exists()
 
 
 @pytest.mark.parametrize("event", ["prompt", "pre-tool", "post-edit", "stop"])
@@ -62,7 +62,7 @@ def test_silent(setup: tuple[Path, dict[str, str], Path], event: str) -> None:
     result = run_hook(event, root, data, env)
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
     assert not sentinel.exists()
-    assert not (root / ".iaso").exists()
+    assert not (root / ".iaso").exists() and not (root / ".iaso").exists()
 
 
 def test_not_a_git_work_tree_is_silent(tmp_path: Path) -> None:

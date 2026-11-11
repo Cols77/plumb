@@ -11,6 +11,8 @@ The turn baseline, the hold-open and the stale questions (HA4, HA5) live below t
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import json
 import os
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
     from iaso.api import Core
     from iaso.contracts import LinkState
 
-CACHE_REL = ".iaso/cache/linkmap.json"
+CACHE_REL = "cache/linkmap.json"  # under the records folder
 VERSION = 2
 DERIVING = frozenset({"derives_from", "decides", "upstream"})
 MAX_NOTICES = 5
@@ -54,7 +56,7 @@ class StaleLink(NamedTuple):
 
 
 def cache_path(root: Path | str) -> Path:
-    return Path(root) / CACHE_REL
+    return state_dir(Path(root)) / CACHE_REL
 
 
 def _link_key(link: Any) -> list[Any]:
@@ -159,7 +161,7 @@ def linkmap_outdated(root: Path | str) -> bool:
         return False
     for name in RECORD_DIRS:
         try:
-            scan = os.scandir(Path(root) / ".iaso" / name)
+            scan = os.scandir(state_dir(Path(root)) / name)
         except OSError:
             continue
         with scan:
@@ -269,7 +271,7 @@ def derived_lines(core: Core, ids: Iterable[str]) -> list[str]:
 
 
 def session_path(root: Path | str, session: str) -> Path:
-    return Path(root) / ".iaso" / "session" / session
+    return state_dir(Path(root)) / "session" / session
 
 
 def _read_json(path: Path) -> Any:
@@ -336,8 +338,7 @@ def stale_rows(core: Core, records: Iterable[str] | None = None,
     return out
 
 
-BASE_RECORD_DIRS = (".iaso/decisions", ".iaso/features", ".iaso/intents", ".iaso/ncs",
-                    ".iaso/requirements")
+BASE_RECORD_DIRS = ("decisions", "features", "intents", "ncs", "requirements")
 
 
 @contextmanager
@@ -352,7 +353,8 @@ def base_core(root: Path, base: str, wanted: Sequence[str] = ()) -> Iterator[Cor
     from iaso.api import open_core
 
     listed = subprocess.run(["git", "ls-tree", "-r", "--name-only", base, "--",
-                             *BASE_RECORD_DIRS, *wanted], cwd=root, capture_output=True,
+                             *(f"{state_dir(Path(root)).name}/{d}" for d in BASE_RECORD_DIRS),
+                             *wanted], cwd=root, capture_output=True,
                             text=True, encoding="utf-8", timeout=30,
                             check=True).stdout.splitlines()
     tar = subprocess.run(["git", "archive", "--format=tar", base, "--",
@@ -573,7 +575,7 @@ def default_question(row: Row, record_title: str, other_title: str = "") -> dict
 def sessions(root: Path | str) -> list[str]:
     """Every session directory under ``.iaso/session`` (sorted)."""
     try:
-        return sorted(e.name for e in os.scandir(Path(root) / ".iaso" / "session")
+        return sorted(e.name for e in os.scandir(state_dir(Path(root)) / "session")
                       if e.is_dir())
     except OSError:
         return []
@@ -606,7 +608,7 @@ def current_session(root: Path | str) -> str:
             return _safe_session(named)
     best, newest = "cli", -1
     try:
-        entries = list(os.scandir(Path(root) / ".iaso" / "session"))
+        entries = list(os.scandir(state_dir(Path(root)) / "session"))
     except OSError:
         return best
     for entry in entries:

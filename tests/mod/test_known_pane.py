@@ -27,7 +27,7 @@ def register(repo: Path) -> Path:
     (repo / ".iaso" / "known-issues.json").write_text(json.dumps({"issues": issues}), "utf-8")
     case = {"id": "KI-3", "state": "open", "detail": "symptom 3 again",
             "history": [{"state": "fixed", "landed": "abc3"}]}
-    folder = repo.joinpath(*debug.STORE)
+    folder = (repo / ".iaso").joinpath(*debug.STORE)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "KI-3.json").write_text(json.dumps(case), "utf-8")
     return repo

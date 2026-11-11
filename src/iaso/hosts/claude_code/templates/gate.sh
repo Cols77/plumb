@@ -26,12 +26,15 @@ session=${session%%\"*}
 case "$session" in
   ""|*[!A-Za-z0-9_-]*) exit 0 ;;
 esac
-# the .iaso/ folder: IASO_ROOT (the plugin hook passes the one its walk up found, so a session
-# started in a subfolder is gated too), else the project folder (the per-repository install)
-file="${IASO_ROOT:-${CLAUDE_PROJECT_DIR:-.}}/.iaso/session/$session/gate"
+# the records folder (.iaso/) of IASO_ROOT (the plugin hook
+# passes the one its walk up found, so a session started in a subfolder is gated too), else of
+# the project folder (the per-repository install)
+r="${IASO_ROOT:-${CLAUDE_PROJECT_DIR:-.}}"
+sd=.iaso
+file="$r/$sd/session/$session/gate"
 if [ -z "$IASO_ROOT" ] && [ ! -r "$file" ]; then
   # the per-repository install passes no IASO_ROOT: a session started in a subfolder reads
-  # the gate of the .iaso/ above it, the walk stopping at the git root
+  # the gate of the records folder above it, the walk stopping at the git root
   d=${CLAUDE_PROJECT_DIR:-$PWD}
   while :; do
     case $d in
@@ -40,8 +43,9 @@ if [ -z "$IASO_ROOT" ] && [ ! -r "$file" ]; then
     esac
   done
   while [ -n "$d" ]; do
-    if [ -d "$d/.iaso/session" ]; then
-      file="$d/.iaso/session/$session/gate"
+    sd=.iaso
+    if [ -d "$d/$sd/session" ]; then
+      file="$d/$sd/session/$session/gate"
       break
     fi
     [ -e "$d/.git" ] && break

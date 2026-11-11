@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -29,7 +31,7 @@ def spawn_map_build(root: Path) -> bool:
 
     if os.environ.get("IASO_NO_BACKGROUND_MAP"):
         return False
-    lock = Path(root) / ".iaso" / "cache" / "map.building"
+    lock = state_dir(Path(root)) / "cache" / "map.building"
     try:
         if time.time() - lock.stat().st_mtime < MAP_BUILD_LOCK_S:
             return False

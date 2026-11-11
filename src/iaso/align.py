@@ -18,6 +18,8 @@ weakest first and as badges.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import hashlib
 import json
 import subprocess
@@ -309,7 +311,7 @@ def align(core: Any, scope: Sequence[str] | None = None, *, backend: Any = None,
     fp = fingerprint(core, nodes, edges)
     chosen, cause = _backend(core, backend)
     name = str(getattr(chosen, "name", "none")) if chosen is not None else "none"
-    cache = Path(core.root) / ".iaso" / "cache" / f"align-{fp.split(':')[1][:24]}-{name}.json"
+    cache = state_dir(Path(core.root)) / "cache" / f"align-{fp.split(':')[1][:24]}-{name}.json"
     if use_cache and backend is None and chosen is not None:
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))

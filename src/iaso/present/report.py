@@ -3,6 +3,8 @@ the owner and drift, in a few lines (sp5 6.1)."""
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import json
 from typing import Any
 
@@ -10,7 +12,7 @@ from typing import Any
 def _intent_summary(core: Any) -> str:
     """The session's intent from the last snapshot the hooks wrote (it recomputes nothing)."""
     try:
-        data = json.loads((core.root / ".iaso" / "session" / "status.json")
+        data = json.loads((state_dir(core.root) / "session" / "status.json")
                           .read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return ""

@@ -8,6 +8,8 @@ that end as a defect report on the case, for the agent. Nothing here confirms a 
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import contextlib
 import json
 import os
@@ -133,13 +135,14 @@ def _add_copy(root: Path, path: Path, branch: str, known: bool) -> None:
     _git(root, "worktree", "add", "--no-checkout", *([str(path), branch] if known
                                                       else ["-b", branch, str(path)]))
     subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=path,
-                   input="/*\n!/.iaso/" + "log/\n", text=True, check=True, capture_output=True)
+                   input=f"/*\n!/{state_dir(root).name}/log/\n", text=True, check=True,
+                   capture_output=True)
     _git(path, "checkout", "-q")
 
 
 def _worktree(root: Path, case_id: str) -> tuple[Path, str]:
     slug = _slug(case_id)
-    path, branch = root / ".iaso" / "wt" / f"debug-{slug}", f"debug/{slug}"
+    path, branch = state_dir(root) / "wt" / f"debug-{slug}", f"debug/{slug}"
     there = _checked_out(root, branch)
     if there is not None and there.resolve() != root.resolve():   # checked out once: reuse
         if not _own_commits(root, branch) and not _git(
@@ -260,10 +263,13 @@ def _runner(wt_core: Any) -> Runner:
     def _run(paths: list[str]) -> tuple[bool, str]:
         if not all(Path(p.split("::")[0]).name.startswith("test_") for p in paths):
             return covering(paths)
+        # no hook GIT_DIR for the fixtures' git init
+        from iaso.background import child_env
+
         done = subprocess.run(
             [sys.executable, "-m", "pytest", *paths, "-q", "-p", "no:cacheprovider"], cwd=wt,
             capture_output=True, text=True, encoding="utf-8",
-            env={**os.environ, "PYTHONPATH": str(wt / "src")})
+            env={**child_env(), "PYTHONPATH": str(wt / "src")})
         return done.returncode == 0, (done.stdout or done.stderr).strip()[-300:]
 
     return run

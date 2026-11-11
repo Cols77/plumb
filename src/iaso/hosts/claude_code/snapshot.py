@@ -6,6 +6,8 @@ itself recomputes nothing.
 
 from __future__ import annotations
 
+from iaso.paths import state_dir
+
 import dataclasses
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -157,7 +159,7 @@ def awaiting_count(core: Any) -> int:
     from iaso.understand import judge
 
     waiting: set[str] = set()
-    sessions = Path(core.root) / ".iaso" / "session"
+    sessions = state_dir(Path(core.root)) / "session"
     for path in sorted(p for p in sessions.glob("*") if p.is_dir()):
         try:
             waiting |= {str(q.get("key")) for q in judge.open_questions(core, path.name)}
@@ -178,7 +180,7 @@ def write_turn_fields(root: Path, *, present: Any = None, **fields: Any) -> None
     from iaso.hosts.claude_code.hookio import read_json
     from iaso.present.render import card_state
 
-    path = Path(root) / ".iaso" / "session" / "status.json"
+    path = state_dir(Path(root)) / "session" / "status.json"
     data = read_json(path)
     data = data if isinstance(data, dict) else {}
     data.update({k: list(v) if isinstance(v, tuple) else v for k, v in fields.items()},
@@ -198,7 +200,7 @@ def refresh_counts(core: Any) -> None:
     from iaso.present.render import card_state
 
     recheck_judges(core)    # SR-359 EX-3: a judge that recovered stops showing red
-    path = Path(core.root) / ".iaso" / "session" / "status.json"
+    path = state_dir(Path(core.root)) / "session" / "status.json"
     data = read_json(path)
     data = data if isinstance(data, dict) else {}
     fresh = snapshot_dict(build_snapshot(core, tests_summary=("unknown", (), ())))
@@ -214,7 +216,7 @@ def write_snapshot(root: Path, snapshot: StatusSnapshot, *, present: Any = None,
     preferences the status line reads with it (``ascii``); ``failures`` is how many
     checks in a row failed (``queue.consecutive_failures``), which the line flags at three
     (SHOW P2, spec 9.1)."""
-    path = Path(root) / ".iaso" / "session" / "status.json"
+    path = state_dir(Path(root)) / "session" / "status.json"
     data = snapshot_dict(snapshot)
     if failures:
         data["understand_failures"] = int(failures)
