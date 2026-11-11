@@ -196,18 +196,57 @@ class FixerDispatcher:
                  **given: Any) -> dict[str, Any]:
         import shutil
 
+        from iaso.config import load_config
         from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
+        user = json.dumps({"round": round, **given, "earlier_rounds": previous},
+                          ensure_ascii=False, indent=1)
+        if load_config(Path(worktree)).understand.dispatch == "codex":   # report-6fb712c4
+            return self.run_codex(user, worktree, model)
         binary = shutil.which("claude")
         if binary is None:
             raise RuntimeError("the claude command was not found on this machine")
-        user = json.dumps({"round": round, **given, "earlier_rounds": previous},
-                          ensure_ascii=False, indent=1)
         done = subprocess.run(self.command(binary, model), input=user, capture_output=True,
                               text=True, encoding="utf-8", cwd=worktree,
                               timeout=self.timeout_s)
         return dict(ClaudeCodeDispatcher.answer_of(done.stdout, done.returncode, done.stderr,
                                                    self.schema))
+
+
+    def run_codex(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
+        """The same stage through ``codex exec`` (report-6fb712c4): the work copy is the working
+        directory; the run may write in it unless the stage is read-only (``tools`` set); no
+        model is named when ``model`` is a bare level, and Codex then uses its own."""
+        import shutil
+        import tempfile
+
+        from iaso.config import LEVELS
+        from iaso.understand import agents
+        from iaso.understand.dispatch.claude_code import cli_schema
+        from iaso.understand.dispatch.codex import CodexDispatcher, strict
+
+        binary = shutil.which("codex")
+        if binary is None:
+            raise RuntimeError("the codex command was not found on this machine")
+        scratch = Path(tempfile.mkdtemp(prefix="iaso-codex-"))     # outside the work copy
+        try:
+            (scratch / "schema.json").write_text(
+                json.dumps(strict(cli_schema(self.schema)), ensure_ascii=False), encoding="utf-8")
+            command = [binary, "exec", "--ephemeral", "--skip-git-repo-check", "--color", "never",
+                       "-s", "read-only" if self.tools else "workspace-write", "-C", str(worktree),
+                       "--output-schema", str(scratch / "schema.json"),
+                       "-o", str(scratch / "answer.json"),
+                       *([] if model in LEVELS else ["-m", model]), "-"]
+            done = subprocess.run(command, input=f"{agents.load(self.agent)}\n\n{user}",
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  cwd=worktree, timeout=self.timeout_s)
+            try:
+                text = (scratch / "answer.json").read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        return dict(CodexDispatcher.answer_of(text, done.returncode, done.stderr, self.schema))
 
 
 @contextlib.contextmanager

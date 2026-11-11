@@ -1,7 +1,7 @@
 """Dispatchers (ENGINE): ``configured(core)`` returns exactly one, never a second route.
 
 ``understand.dispatch`` in the config picks it: ``auto`` is ``claude-code`` under Claude Code and
-``hermes`` under Hermes (an error elsewhere), ``openrouter`` only when set. When the one
+``hermes`` under Hermes (an error elsewhere), ``codex`` and ``openrouter`` only when set. When the one
 dispatcher fails, the job fails with an error; nothing else is tried."""
 
 from __future__ import annotations
@@ -118,6 +118,12 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
         from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
         return ClaudeCodeDispatcher(model=model, timeout_s=timeout_s)
+    if choice == "codex":
+        from iaso.config import LEVELS
+        from iaso.understand.dispatch.codex import CodexDispatcher
+
+        # a level left unmapped (understand.levels) is no Codex model: Codex uses its own
+        return CodexDispatcher(model="" if model in LEVELS else model, timeout_s=timeout_s)
     if choice == "hermes":
         from iaso.understand.dispatch.hermes import HermesDispatcher
 
@@ -130,4 +136,4 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
             dispatcher.model = model
         return dispatcher
     raise NoModel(f"no model configured: {choice!r} is not a dispatcher "
-                  "(claude-code, hermes or openrouter)")
+                  "(claude-code, codex, hermes or openrouter)")
