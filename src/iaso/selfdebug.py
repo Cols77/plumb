@@ -194,15 +194,29 @@ class FixerDispatcher:
 
     def __call__(self, *, round: int, worktree: Path, model: str, previous: list[str],
                  **given: Any) -> dict[str, Any]:
-        import shutil
-
         from iaso.config import load_config
-        from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
+        from iaso.contracts import host_unavailable
 
         user = json.dumps({"round": round, **given, "earlier_rounds": previous},
                           ensure_ascii=False, indent=1)
-        if load_config(Path(worktree)).understand.dispatch == "codex":   # report-6fb712c4
-            return self.run_codex(user, worktree, model)
+        # report-6fb712c4: the hosts of understand.dispatch in order; the next one takes the
+        # stage only when this one cannot serve (out of quota, not installed)
+        hosts = [h.strip() for h in load_config(Path(worktree)).understand.dispatch.split(",")]
+        for i, host in enumerate(hosts):
+            try:
+                if host == "codex":
+                    return self.run_codex(user, worktree, model)
+                return self.run_claude(user, worktree, model)
+            except Exception as exc:  # noqa: BLE001 - only a host that cannot serve moves on
+                if i + 1 == len(hosts) or not host_unavailable(exc):
+                    raise
+        raise RuntimeError("no host is configured")   # unreachable: hosts is not empty
+
+    def run_claude(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
+        import shutil
+
+        from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
+
         binary = shutil.which("claude")
         if binary is None:
             raise RuntimeError("the claude command was not found on this machine")
@@ -211,7 +225,6 @@ class FixerDispatcher:
                               timeout=self.timeout_s)
         return dict(ClaudeCodeDispatcher.answer_of(done.stdout, done.returncode, done.stderr,
                                                    self.schema))
-
 
     def run_codex(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
         """The same stage through ``codex exec`` (report-6fb712c4): the work copy is the working

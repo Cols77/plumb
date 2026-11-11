@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -689,6 +691,21 @@ class DispatchError(Exception):
         super().__init__(f"{step}: {message}")
         self.step = step
         self.message = message
+
+
+# report-6fb712c4: a host that cannot serve (out of quota, not installed) is worth leaving for
+# the next configured one; a timeout or a bad answer is not about the host
+OUT_OF_QUOTA = re.compile(
+    r"hit your .{0,30}limit|usage limit|insufficient_quota|exceeded your current quota"
+    r"|rate_limit_exceeded|credit balance|HTTP 402|out of credit", re.I)
+NOT_INSTALLED = re.compile(
+    r"(claude|codex) command was not found|(claude|codex) is not available|could not be started",
+    re.I)
+
+
+def host_unavailable(text: object) -> bool:
+    """Whether ``text`` (an error) says the host cannot serve now: out of quota or not installed."""
+    return bool(OUT_OF_QUOTA.search(str(text)) or NOT_INSTALLED.search(str(text)))
 
 
 class NoModel(Exception):

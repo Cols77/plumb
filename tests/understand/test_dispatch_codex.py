@@ -112,3 +112,82 @@ def test_a_selfdebug_stage_runs_through_codex_in_the_work_copy(tmp_path: Path, r
         round=1, worktree=repo, model="gpt-x", previous=[])
     argv = json.loads((tmp_path / "bin" / "call.json").read_text("utf-8"))["argv"]
     assert argv[argv.index("-s") + 1] == "read-only" and argv[argv.index("-m") + 1] == "gpt-x"
+
+
+class _Host:
+    """A dispatcher that answers, or fails with ``error``; it counts its calls."""
+
+    def __init__(self, name: str, answer: dict | None = None, error: DispatchError | None = None):
+        self.name, self.answer, self.error, self.calls = name, answer, error, 0
+
+    def available(self) -> str | None:
+        return None
+
+    def run(self, job, *, system, user, schema, on_step):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.answer
+
+
+def _fallback(*hosts: _Host):
+    from iaso.understand.dispatch import FallbackDispatcher
+
+    said: list[str] = []
+    dispatcher = FallbackDispatcher(list(hosts))
+    return dispatcher, said, lambda: dispatcher.run(JOB, system="s", user="u", schema=SCHEMA,
+                                                    on_step=said.append)
+
+
+@pytest.mark.parametrize("cause", ["You've hit your usage limit", "the claude command was not found "
+                                   "on this machine", "HTTP 402 out of credit"])
+def test_a_host_that_cannot_serve_hands_the_job_to_the_next_and_says_so(cause: str) -> None:
+    first = _Host("claude-code", error=DispatchError("run", cause))
+    second = _Host("codex", {"n": 1})
+    dispatcher, said, run = _fallback(first, second)
+    assert run() == {"n": 1} and (first.calls, second.calls) == (1, 1)
+    assert dispatcher.name == "codex"
+    assert said == [f"claude-code cannot serve ({cause[:80]}): trying codex"]
+
+
+def test_a_timeout_or_a_bad_answer_is_not_retried_on_another_host() -> None:
+    first = _Host("claude-code", error=DispatchError("timeout", "no answer within 120 seconds"))
+    second = _Host("codex", {"n": 1})
+    _, _, run = _fallback(first, second)
+    with pytest.raises(DispatchError, match="claude-code: no answer within 120"):
+        run()
+    assert second.calls == 0
+
+
+def test_when_every_host_fails_the_error_names_each_host_and_its_cause() -> None:
+    _, _, run = _fallback(_Host("claude-code", error=DispatchError("run", "You've hit your limit")),
+                          _Host("codex", error=DispatchError("run", "codex command was not found")))
+    with pytest.raises(DispatchError) as raised:
+        run()
+    text = str(raised.value)
+    assert "claude-code: You've hit your limit" in text and "codex: codex command was not found" in text
+
+
+def test_several_hosts_in_the_config_make_a_fallback(repo: Path) -> None:
+    from iaso.api import open_core
+    from iaso.understand.dispatch import FallbackDispatcher, configured
+
+    path = repo / ".iaso" / "config.yaml"
+    path.write_text(path.read_text("utf-8") + "\nunderstand:\n  dispatch: claude-code, codex\n",
+                    encoding="utf-8")
+    dispatcher = configured(open_core(repo))
+    assert isinstance(dispatcher, FallbackDispatcher)
+    assert [h.name for h in dispatcher.hosts] == ["claude-code", "codex"]
+
+
+def test_a_selfdebug_stage_moves_to_codex_when_claude_is_not_installed(
+        tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from iaso import selfdebug
+
+    path = repo / ".iaso" / "config.yaml"
+    path.write_text(path.read_text("utf-8") + "\nunderstand:\n  dispatch: claude-code,codex\n",
+                    encoding="utf-8")
+    env = _fake(tmp_path / "bin", json.dumps({"test": "t"}))     # a PATH with no claude
+    monkeypatch.setenv("PATH", env["PATH"])
+    assert selfdebug.FixerDispatcher()(round=1, worktree=repo, model="sonnet",
+                                       previous=[]) == {"test": "t"}
