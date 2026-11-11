@@ -477,9 +477,27 @@ def _versions(root: Path, rel: str) -> list[str]:
                                                          "MERGE_HEAD"]) else [])
     found: list[str] = []
     for rev in revs:
-        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--", rel])
+        from iaso.convert import restore_old
+
+        # a file converted to IASO (SR-432) has its older versions under its old-name path
+        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--",
+                                   rel, restore_old(rel)])
         found += [sha for sha in (listing or "").split() if sha not in found]
     return found
+
+
+def _file_at(root: Path, sha: str, rel: str) -> str | None:
+    """``rel`` as committed at ``sha``. Before the conversion to IASO (SR-432) the file lives
+    under its old-name path and its text names the old name: it is read as the converter
+    rewrote it, which is what a converted pin hashes."""
+    text = _git_text(root, ["show", f"{sha}:{rel}"])
+    if text is not None:
+        return text
+    from iaso.convert import restore_old, rewrite_text
+
+    old = restore_old(rel)
+    text = _git_text(root, ["show", f"{sha}:{old}"]) if old != rel else None
+    return None if text is None else rewrite_text(text)
 
 
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
@@ -503,7 +521,7 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
     except (OSError, UnicodeDecodeError):
         return None
     for sha in _versions(root, rel):
-        text = _git_text(root, ["show", f"{sha}:{rel}"])
+        text = _file_at(root, sha, rel)
         before = None if text is None else _segment(text, qualname)
         if before is not None and sha256_text(before) == link.pin.target:
             return before, now or ""
@@ -687,7 +705,7 @@ def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
     from iaso.understand.judge import record_text
 
     for sha in _versions(root, record.path):
-        text = _git_text(root, ["show", f"{sha}:{record.path}"])
+        text = _file_at(root, sha, record.path)
         try:
             old = parse_record(text, record.path) if text is not None else None
         except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
