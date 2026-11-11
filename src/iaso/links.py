@@ -470,15 +470,23 @@ def _git_text(root: Path, args: list[str]) -> str | None:
         return None
 
 
-def _versions(root: Path, rel: str) -> list[str]:
-    """The commits holding ``rel``'s last versions, newest first: HEAD's, then, during a merge,
-    the incoming side's, whose history HEAD does not reach until the merge is recorded."""
+def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
+    """``(commit, path)`` of ``rel``'s last versions, newest first: HEAD's, then, during a merge,
+    the incoming side's, whose history HEAD does not reach until the merge is recorded. The path
+    is the file's at that commit: a renamed file (the IASO rename moved every one) is followed."""
     revs = ["HEAD"] + (["MERGE_HEAD"] if _git_text(root, ["rev-parse", "-q", "--verify",
                                                          "MERGE_HEAD"]) else [])
-    found: list[str] = []
+    found: list[tuple[str, str]] = []
     for rev in revs:
-        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--", rel])
-        found += [sha for sha in (listing or "").split() if sha not in found]
+        # --full-history: a merge that kept one side's file hides the other side's versions
+        listing = _git_text(root, ["log", "--follow", "--full-history", f"-n{HISTORY_DEPTH}",
+                                   "--format=@%H", "--name-only", rev, "--", rel]) or ""
+        sha = None
+        for line in listing.splitlines():
+            if line.startswith("@"):
+                sha = line[1:]
+            elif line.strip() and sha and (sha, line.strip()) not in found:
+                found.append((sha, line.strip()))
     return found
 
 
@@ -502,8 +510,8 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
         now = _segment((Path(root) / rel).read_text(encoding="utf-8"), qualname)
     except (OSError, UnicodeDecodeError):
         return None
-    for sha in _versions(root, rel):
-        text = _git_text(root, ["show", f"{sha}:{rel}"])
+    for sha, at in _versions(root, rel):
+        text = _git_text(root, ["show", f"{sha}:{at}"])
         before = None if text is None else _segment(text, qualname)
         if before is not None and sha256_text(before) == link.pin.target:
             return before, now or ""
@@ -686,8 +694,8 @@ def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
     from iaso.model import parse_record
     from iaso.understand.judge import record_text
 
-    for sha in _versions(root, record.path):
-        text = _git_text(root, ["show", f"{sha}:{record.path}"])
+    for sha, at in _versions(root, record.path):
+        text = _git_text(root, ["show", f"{sha}:{at}"])
         try:
             old = parse_record(text, record.path) if text is not None else None
         except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
