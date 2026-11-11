@@ -211,3 +211,87 @@ def test_a_merge_into_a_checkout_with_untracked_state_is_finished_by_the_convert
     assert OLD not in (repo / ".iaso" / "decisions" / "DEC-900.md").read_text().lower()
     assert str(repo / ".iaso" / "wt" / "w1") in _git(repo, "worktree", "list")
     assert (repo / ".iaso" / "wt" / "w1" / ".git").exists() and base
+
+
+@pytest.mark.sr("SR-432")
+def test_log_digests_of_the_owners_message_stay_and_quote_digests_follow_the_quote() -> None:
+    from iaso.convert import _log_entry
+    from iaso.log import entry_digest
+    from iaso.normalize import sha256_text
+
+    quote = f"rename {OLD} now"
+    prompt = sha256_text(f"please rename {OLD} now")
+    entry = {"kind": "approval", "payload": {"quote": quote, "quote_digest": sha256_text(quote),
+                                             "prompt_digest": prompt, "trail": [prompt]}}
+    entry["digest"] = entry_digest(entry)
+    import json
+
+    got = json.loads(_log_entry(json.dumps(entry), {}))
+    assert got["payload"]["prompt_digest"] == prompt and got["payload"]["trail"] == [prompt]
+    assert got["payload"]["quote"] == "rename iaso now"
+    assert got["payload"]["quote_digest"] == sha256_text("rename iaso now")
+    assert got["digest"] == entry_digest(got)
+
+
+@pytest.mark.sr("SR-432")
+def test_the_user_level_settings_are_carried_over_untouched(tmp_path: Path, monkeypatch) -> None:
+    from iaso.convert import _carry_user_config
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    (tmp_path / OLD).mkdir()
+    key = tmp_path / OLD / "jev"
+    key.write_text("secret", encoding="utf-8")
+    key.chmod(0o600)
+    (tmp_path / "iaso").mkdir()
+    (tmp_path / "iaso" / "kept").write_text("mine", encoding="utf-8")
+    (tmp_path / OLD / "kept").write_text("old", encoding="utf-8")
+    lines = _carry_user_config()
+    assert (tmp_path / "iaso" / "jev").read_text() == "secret"
+    assert (tmp_path / "iaso" / "jev").stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "iaso" / "kept").read_text() == "mine"   # one that exists is kept
+    assert all("secret" not in line for line in lines) and lines
+
+
+@pytest.mark.sr("SR-432")
+def test_repair_gives_owner_messages_and_their_digests_back(tmp_path: Path) -> None:
+    """A converter before the fix rewrote premise texts and remapped message digests in the
+    untracked local log; the repair restores both, checked against the session files."""
+    import json
+
+    from iaso.convert import repair_messages
+    from iaso.log import entry_digest
+    from iaso.normalize import sha256_text
+
+    repo = _repo(tmp_path)
+    said = f"please fix {OLD} today"
+    new = said.replace(OLD, "iaso")
+    log = repo / ".iaso" / "log"
+
+    def put(kind: str, name: str, payload: dict) -> Path:
+        entry = {"at": "2026-10-19T03:35:42Z", "kind": kind, "payload": payload}
+        entry["digest"] = entry_digest(entry)
+        path = log / kind / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(entry), encoding="utf-8")
+        return path
+
+    premise = put("premise", "20261019T033542.442887Z-01345d00.json",
+                  {"text": new, "digest": sha256_text(new)})  # the old converter remapped with sha256_text
+    gate = put("gate", "20261019T033206.458414Z-09383d0a.json",
+               {"digest": sha256_text(new), "state": "open"})
+    approval = put("approval", "20261019T033206.458414Z-0000aaaa.json",
+                   {"prompt_digest": sha256_text(new)})
+    before = approval.read_bytes()
+    session = repo / ".iaso" / "session" / "s1"
+    session.mkdir(parents=True)
+    from iaso.approvals import prompt_digest
+
+    (session / "gate").write_text(json.dumps({"message_digest": prompt_digest(said)}),
+                                  encoding="utf-8")
+    assert repair_messages(repo)
+    got = json.loads(premise.read_text())
+    assert got["payload"] == {"text": said, "digest": prompt_digest(said)}
+    assert got["digest"] == entry_digest(got)
+    opened = json.loads(gate.read_text())
+    assert opened["payload"]["digest"] == prompt_digest(said) and opened["digest"] == entry_digest(opened)
+    assert approval.read_bytes() == before
