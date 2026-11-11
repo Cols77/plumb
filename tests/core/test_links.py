@@ -628,3 +628,30 @@ def test_every_test_of_a_retired_example_is_warned_not_only_the_last(
     open_core(setup).add_link("SR-002", "supersedes", Target(record="SR-001"))
     assert links.live_examples(open_core(setup), "SR-001", "SR-002") == [
         ("EX-1", "tests/test_a.py"), ("EX-1", "tests/test_b.py")]
+
+
+def test_end_texts_finds_a_pin_made_before_the_conversion_to_iaso(setup: Path) -> None:
+    """SR-432: the converter rewrites a pin to hash the renamed text, but git only holds the
+    older version under its old-name path with the old name in it; it is found there."""
+    from iaso import convert
+    from iaso.normalize import sha256_text
+    from tests.conftest import git
+
+    old = f"src/{convert.OLD}_mod.py"
+    new = convert.rewrite_text(old)
+    v1, v2 = f'name = "{convert.OLD}"\n', f'name = "{convert.OLD}"\nmore = 2\n'
+    (setup / old).write_text(v1, encoding="utf-8")
+    link = open_core(setup).add_link("SR-001", "implemented_by", Target(path=old))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "v1")
+    (setup / old).write_text(v2, encoding="utf-8")
+    git(setup, "commit", "-q", "-am", "v2")
+    git(setup, "mv", old, new)                      # the conversion: path, text and pin
+    (setup / new).write_text(convert.rewrite_text(v2), encoding="utf-8")
+    record = setup / ".iaso" / "requirements" / "SR-001.md"
+    record.write_text(record.read_text("utf-8").replace(old, new).replace(
+        link.pin.target, sha256_text(convert.rewrite_text(v1))), encoding="utf-8")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "convert")
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert links.end_texts(setup, pinned) == (convert.rewrite_text(v1), convert.rewrite_text(v2))

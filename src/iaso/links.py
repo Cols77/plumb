@@ -487,7 +487,29 @@ def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
                 sha = line[1:]
             elif line.strip() and sha and (sha, line.strip()) not in found:
                 found.append((sha, line.strip()))
+        from iaso.convert import restore_old
+
+        # --follow misses a small file whose conversion to IASO changed too much of it (SR-432)
+        before = restore_old(rel)
+        if before != rel:
+            listing = _git_text(root, ["log", "--full-history", f"-n{HISTORY_DEPTH}", "--format=%H",
+                                       rev, "--", before]) or ""
+            found += [(sha, before) for sha in listing.split() if (sha, before) not in found]
     return found
+
+
+def _texts_at(root: Path, sha: str, at: str, rel: str) -> list[str]:
+    """The file as committed at ``sha`` under its path then, ``at``. A version from before the
+    conversion to IASO (SR-432, a different path) is also read as the converter rewrote it: a pin
+    made before the rename hashes the first, a pin the converter carried over the second."""
+    text = _git_text(root, ["show", f"{sha}:{at}"])
+    if text is None:
+        return []
+    if at == rel:
+        return [text]
+    from iaso.convert import rewrite_text
+
+    return [text, rewrite_text(text)]
 
 
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
@@ -511,10 +533,10 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
     except (OSError, UnicodeDecodeError):
         return None
     for sha, at in _versions(root, rel):
-        text = _git_text(root, ["show", f"{sha}:{at}"])
-        before = None if text is None else _segment(text, qualname)
-        if before is not None and sha256_text(before) == link.pin.target:
-            return before, now or ""
+        for text in _texts_at(root, sha, at, rel):
+            before = _segment(text, qualname)
+            if before is not None and sha256_text(before) == link.pin.target:
+                return before, now or ""
     # shortcut: a loose blob can be pruned by git gc after ~2 weeks; record the pin in a ref if repins come later than that
     store = _blob_store(root)
     try:
@@ -695,13 +717,13 @@ def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
     from iaso.understand.judge import record_text
 
     for sha, at in _versions(root, record.path):
-        text = _git_text(root, ["show", f"{sha}:{at}"])
-        try:
-            old = parse_record(text, record.path) if text is not None else None
-        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
-            continue
-        if old is not None and old.hash == pin_hash:
-            return record_text(old)
+        for text in _texts_at(root, sha, at, record.path):
+            try:
+                old = parse_record(text, record.path)
+            except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
+                continue
+            if old.hash == pin_hash:
+                return record_text(old)
     return None
 
 
