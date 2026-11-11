@@ -535,6 +535,26 @@ def test_end_texts_follows_a_file_moved_after_the_pin(setup: Path) -> None:
     assert before.startswith("x = 2") and now.startswith("x = 3")
 
 
+def test_end_texts_finds_a_pin_made_at_the_rename_commit_itself(setup: Path, monkeypatch) -> None:
+    """``git log --follow`` names the old path for the rename commit while the file is already
+    at the new one there: the version is read at the current path."""
+    from tests.conftest import git
+
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "renamed")
+    link = open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "link")
+    sha = git(setup, "rev-parse", "HEAD~1").strip()
+    (setup / "src" / "mod.py").write_bytes(b"x = 3\n")
+    old_path = "src/" + "plu" + "mb" + "/mod.py"   # the path --follow reports, absent at ``sha``
+    monkeypatch.setattr(links, "_versions", lambda root, rel: [(sha, old_path)])
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert pinned.id == link.id
+    assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
+
+
 def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
     from tests.conftest import git
 
