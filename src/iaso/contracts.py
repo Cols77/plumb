@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -689,6 +690,26 @@ class DispatchError(Exception):
         super().__init__(f"{step}: {message}")
         self.step = step
         self.message = message
+
+
+# One list of "the environment failed, not the case". OUT_OF_QUOTA and NOT_INSTALLED mean this
+# host cannot serve (another host may); INFRA adds the failures no host fixes. Shared with the
+# Codex dispatcher (fix/codex-dispatch): keep these lines identical there.
+OUT_OF_QUOTA = re.compile(r"hit your .{0,30}limit|usage limit|insufficient_quota|exceeded your "
+                          r"current quota|rate_limit_exceeded|credit balance|HTTP 402|"
+                          r"out of credit", re.I)
+NOT_INSTALLED = re.compile(r"(claude|codex) command was not found|(claude|codex) is not "
+                           r"available|could not be started", re.I)
+INFRA = re.compile(f"{OUT_OF_QUOTA.pattern}|{NOT_INSTALLED.pattern}|No response from API|"
+                   r"No space left on device|Errno 28", re.I)
+
+
+def host_unavailable(text: str) -> bool:
+    return bool(OUT_OF_QUOTA.search(text) or NOT_INSTALLED.search(text))
+
+
+def is_infra(text: str) -> bool:
+    return bool(INFRA.search(text))
 
 
 class NoModel(Exception):

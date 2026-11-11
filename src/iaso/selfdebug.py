@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from iaso import debug
+from iaso.contracts import is_infra
 from iaso.heavy import heavy
 
 ISSUES_REPO = "Cols77/iaso"
@@ -107,9 +108,6 @@ def landed(root: Path, branch: str) -> bool:
 
 # The environment failed, not the case: such an error is no round, makes no report and leaves
 # no work copy; the case stays open and runs again when the cause is gone.
-INFRA = re.compile(r"hit your .{0,30}limit|claude command was not found|No response from API"
-                   r"|No space left on device|Errno 28|claude is not available", re.I)
-
 FLOOR_GB = 5   # SR-402: refuse a new work copy below this free space (fixed; a setting if asked)
 
 
@@ -457,7 +455,7 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                         state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
                                              session, case)
                 except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
-                    if INFRA.search(str(exc)) or getattr(exc, "errno", 0) == 28:
+                    if is_infra(str(exc)) or getattr(exc, "errno", 0) == 28:
                         if made and not _own_commits(root, branch) and not _changed(wt):
                             _git(root, "worktree", "remove", "--force", str(wt), check=False)
                         return Outcome("waiting", branch, f"{exc}; not counted as a round, "

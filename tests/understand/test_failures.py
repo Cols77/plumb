@@ -260,3 +260,18 @@ def test_scripted_dispatcher_answers_by_kind(tmp_path: Path) -> None:
     with pytest.raises(DispatchError):
         scripted.run(_job("judge"), system="", user="", schema={}, on_step=lambda s: None)
     assert dispatch.ScriptedDispatcher(tmp_path / "missing.json").available()
+
+
+def test_environment_errors_are_not_counted_and_open_no_case(
+        repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
+    """report-63c3de43: a usage limit three times in a row is not the job's failure."""
+    from iaso import debug
+
+    fake_kinds(monkeypatch, {"a": FakeKind("a")})
+    core = Core(repo)
+    fake.failing("run", "You've hit your 5-hour limit")
+    for n in (1, 2, 3):
+        queue.enqueue(core, _job("a", n))
+        worker.run_once(core, "s1")
+    assert queue.consecutive_failures(repo, "s1") == 0
+    assert not [c for c in debug.open_cases(repo) if c["id"].startswith("job-")]
