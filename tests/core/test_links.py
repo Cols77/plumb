@@ -488,6 +488,53 @@ def test_end_texts_finds_a_pin_made_on_the_incoming_side_of_a_merge(setup: Path)
     assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
 
 
+def test_end_texts_finds_a_pin_made_on_the_side_a_merge_dropped(setup: Path) -> None:
+    """A merge that keeps the first parent's file (TREESAME to it) hides the other side's
+    versions from a plain ``git log -- <path>``; the pin made there is still found."""
+    from tests.conftest import git
+
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    base = git(setup, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(setup, "checkout", "-q", "-b", "other")
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "two")
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "link")
+    git(setup, "checkout", "-q", base)
+    git(setup, "merge", "-q", "--no-ff", "--no-commit", "other")
+    git(setup, "checkout", "HEAD", "--", "src/mod.py")    # the merge keeps the first parent's file
+    git(setup, "commit", "-q", "-m", "merge")
+    (setup / "src" / "mod.py").write_bytes(b"x = 3\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "later")
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
+
+
+def test_end_texts_follows_a_file_moved_after_the_pin(setup: Path) -> None:
+    """A pin made before the file was moved (the IASO rename moved every file) is still found."""
+    from tests.conftest import git
+
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\nkeep = 'a long enough body to be a rename'\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "link")
+    git(setup, "mv", "src/mod.py", "src/moved.py")
+    (setup / "src" / "moved.py").write_bytes(b"x = 3\nkeep = 'a long enough body to be a rename'\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "moved")
+    from dataclasses import replace
+
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    before, now = links.end_texts(setup, replace(pinned, target=Target(path="src/moved.py")))
+    assert before.startswith("x = 2") and now.startswith("x = 3")
+
+
 def test_pin_on_a_committed_file_stores_no_blob(setup: Path) -> None:
     from tests.conftest import git
 

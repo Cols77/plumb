@@ -470,34 +470,46 @@ def _git_text(root: Path, args: list[str]) -> str | None:
         return None
 
 
-def _versions(root: Path, rel: str) -> list[str]:
-    """The commits holding ``rel``'s last versions, newest first: HEAD's, then, during a merge,
-    the incoming side's, whose history HEAD does not reach until the merge is recorded."""
+def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
+    """``(commit, path)`` of ``rel``'s last versions, newest first: HEAD's, then, during a merge,
+    the incoming side's, whose history HEAD does not reach until the merge is recorded. The path
+    is the file's at that commit: a renamed file (the IASO rename moved every one) is followed."""
     revs = ["HEAD"] + (["MERGE_HEAD"] if _git_text(root, ["rev-parse", "-q", "--verify",
                                                          "MERGE_HEAD"]) else [])
-    found: list[str] = []
+    found: list[tuple[str, str]] = []
     for rev in revs:
+        # --full-history: a merge that kept one side's file hides the other side's versions
+        listing = _git_text(root, ["log", "--follow", "--full-history", f"-n{HISTORY_DEPTH}",
+                                   "--format=@%H", "--name-only", rev, "--", rel]) or ""
+        sha = None
+        for line in listing.splitlines():
+            if line.startswith("@"):
+                sha = line[1:]
+            elif line.strip() and sha and (sha, line.strip()) not in found:
+                found.append((sha, line.strip()))
         from iaso.convert import restore_old
 
-        # a file converted to IASO (SR-432) has its older versions under its old-name path
-        listing = _git_text(root, ["log", f"-n{HISTORY_DEPTH}", "--format=%H", rev, "--",
-                                   rel, restore_old(rel)])
-        found += [sha for sha in (listing or "").split() if sha not in found]
+        # --follow misses a small file whose conversion to IASO changed too much of it (SR-432)
+        before = restore_old(rel)
+        if before != rel:
+            listing = _git_text(root, ["log", "--full-history", f"-n{HISTORY_DEPTH}", "--format=%H",
+                                       rev, "--", before]) or ""
+            found += [(sha, before) for sha in listing.split() if (sha, before) not in found]
     return found
 
 
-def _file_at(root: Path, sha: str, rel: str) -> str | None:
-    """``rel`` as committed at ``sha``. Before the conversion to IASO (SR-432) the file lives
-    under its old-name path and its text names the old name: it is read as the converter
-    rewrote it, which is what a converted pin hashes."""
-    text = _git_text(root, ["show", f"{sha}:{rel}"])
-    if text is not None:
-        return text
-    from iaso.convert import restore_old, rewrite_text
+def _texts_at(root: Path, sha: str, at: str, rel: str) -> list[str]:
+    """The file as committed at ``sha`` under its path then, ``at``. A version from before the
+    conversion to IASO (SR-432, a different path) is also read as the converter rewrote it: a pin
+    made before the rename hashes the first, a pin the converter carried over the second."""
+    text = _git_text(root, ["show", f"{sha}:{at}"])
+    if text is None:
+        return []
+    if at == rel:
+        return [text]
+    from iaso.convert import rewrite_text
 
-    old = restore_old(rel)
-    text = _git_text(root, ["show", f"{sha}:{old}"]) if old != rel else None
-    return None if text is None else rewrite_text(text)
+    return [text, rewrite_text(text)]
 
 
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
@@ -520,11 +532,11 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
         now = _segment((Path(root) / rel).read_text(encoding="utf-8"), qualname)
     except (OSError, UnicodeDecodeError):
         return None
-    for sha in _versions(root, rel):
-        text = _file_at(root, sha, rel)
-        before = None if text is None else _segment(text, qualname)
-        if before is not None and sha256_text(before) == link.pin.target:
-            return before, now or ""
+    for sha, at in _versions(root, rel):
+        for text in _texts_at(root, sha, at, rel):
+            before = _segment(text, qualname)
+            if before is not None and sha256_text(before) == link.pin.target:
+                return before, now or ""
     # shortcut: a loose blob can be pruned by git gc after ~2 weeks; record the pin in a ref if repins come later than that
     store = _blob_store(root)
     try:
@@ -704,14 +716,14 @@ def _pinned_text(root: Path, record: Record, pin_hash: str) -> str | None:
     from iaso.model import parse_record
     from iaso.understand.judge import record_text
 
-    for sha in _versions(root, record.path):
-        text = _file_at(root, sha, record.path)
-        try:
-            old = parse_record(text, record.path) if text is not None else None
-        except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
-            continue
-        if old is not None and old.hash == pin_hash:
-            return record_text(old)
+    for sha, at in _versions(root, record.path):
+        for text in _texts_at(root, sha, at, record.path):
+            try:
+                old = parse_record(text, record.path)
+            except Exception:  # noqa: BLE001 - a version that does not parse is not the pinned one
+                continue
+            if old.hash == pin_hash:
+                return record_text(old)
     return None
 
 
