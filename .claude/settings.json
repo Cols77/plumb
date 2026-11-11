@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "iaso@iaso": true
+    "iaso@iaso": true,
+    "diagram@diagram-mod": true
   }
 }
