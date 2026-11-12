@@ -250,7 +250,7 @@ def _run_task(root: Path, task: Any, home: Path, *, model: str, owner: Any,
         if state["out_of_time"]:
             break
     issues = issues_mod.collect(scratch, run_dir, root, run_dir.name, task.name, model)
-    shutil.copytree(state_dir(scratch), run_dir / "iaso", dirs_exist_ok=True)
+    shutil.copytree(state_dir(scratch), run_dir / ".iaso", dirs_exist_ok=True)
     (run_dir / "transcript.jsonl").write_text(
         "".join(json.dumps(asdict(t), ensure_ascii=False) + "\n" for t in transcript),
         encoding="utf-8")
