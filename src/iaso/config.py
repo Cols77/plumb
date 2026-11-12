@@ -198,7 +198,7 @@ LEVELS = ("haiku", "sonnet", "opus", "fable")   # SR-389: smallest to largest
 class UnderstandConfig:
     """SP8: the model-backed understanding layer."""
 
-    dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
+    dispatch: str = "auto"       # auto | claude-code | codex | hermes | openrouter
     model: str = "haiku"
     judge_model: str = "haiku"       # SR-182: gives the verdict below JEV's threshold (or without JEV)
     repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
