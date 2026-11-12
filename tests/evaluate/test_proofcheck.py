@@ -74,8 +74,14 @@ def test_sr397_ex1_verified_records_evidence_and_confirms(core) -> None:
     rows = go(core, ["SR-001"], Fake())
     core = open_core(core.root)
     assert proof.confirmed(core, "SR-001") and proof.shown_working(core.index()["SR-001"])
+    report = Path(rows[0]["report"])
+    # owner 2026-11-12: a small report in the repository, by its repository path; no run folder
     assert core.index()["SR-001"].fields["evidence"]["where"] == \
-        Path(rows[0]["run_dir"]).relative_to(core.root).as_posix()
+        report.relative_to(core.root).as_posix()
+    assert report.parent == core.root / ".iaso" / "proofs" and report.suffix == ".md"
+    text = report.read_text(encoding="utf-8")
+    assert "Verdict: verified" in text and "Saw: saw SR-001 work" in text and "Checked:" in text
+    assert not (core.root / ".iaso" / "eval" / "runs").exists()
     line = proofcheck.lines(rows)[0]
     assert "SR-001 verified" in line and "ask nothing" in line
 
@@ -207,7 +213,7 @@ def test_sr399_ex1_three_evaluators_run_at_the_same_time(core) -> None:
     core = open_core(core.root)
     fake = Fake(barrier=threading.Barrier(3, timeout=10))
     rows = go(core, IDS, fake)
-    assert len(fake.calls) == 3 and len({r["run_dir"] for r in rows}) == 3
+    assert len(fake.calls) == 3 and len({r["report"] for r in rows}) == 3
     assert [r["id"] for r in rows] == list(IDS)
 
 
