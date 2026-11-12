@@ -131,6 +131,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
             if _free_text(entry):
                 entry["free_text"] = True   # SR-212: logged and reread, the question stays open
     elsewhere = _tag_proofs(core, ctx.session_id, entries, key_of)
+    _tag_waivers(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     _share_proofs(core, entries, elsewhere)
     from iaso.mergedriver.conflicts import stage_choice
@@ -221,19 +222,53 @@ def _share_proofs(core, entries: list[dict], elsewhere: list[tuple[Any, dict]]) 
             pass
 
 
-def _proof_files(core, session: str) -> list[tuple[Path, Path]]:
-    """``(root, file)`` of every pending proof question file: the session's own first, then the
-    other session folders of this checkout (the CLI's), then those of every other checkout of
-    the repository on this machine, where ``iaso proof --ask`` in a worktree files them."""
+def _proof_files(core, session: str, name: str = "") -> list[tuple[Path, Path]]:
+    """``(root, file)`` of every pending proof question file (or pending file ``name``): the
+    session's own first, then the other session folders of this checkout (the CLI's), then
+    those of every other checkout of the repository on this machine, where ``iaso proof --ask``
+    in a worktree files them."""
     from iaso import log
     from iaso.capture import proof
+    from iaso.understand import files
 
-    own = proof.questions_path(core.root, session)
+    name = name or proof.QUESTIONS_FILE
+    own = files.session_dir(Path(core.root), session) / name
     found = [(Path(core.root), own)] if own.exists() else []
     for root in (Path(core.root), *log.sibling_roots(core.paths)):
         found += [(root, path) for path in sorted((state_dir(root) / "session").glob(
-            f"*/{proof.QUESTIONS_FILE}")) if path != own]
+            f"*/{name}")) if path != own]
     return found
+
+
+def _tag_waivers(core, session: str, entries: list[dict], key_of) -> None:
+    """SR-254 EX-11: an answer to a pending run-or-waive question (``iaso tests ask-waiver``)
+    leaves its file; a WAIVE answer is the owner's ``waiver`` of the digest it was asked on,
+    logged in the checkout that filed it, where that merge is checked."""
+    from iaso.api import open_core
+    from iaso.understand import files
+    from iaso.verify.policy import WAIVE, WAIVER_QUESTIONS_FILE
+
+    for root, path in _proof_files(core, session, WAIVER_QUESTIONS_FILE):
+        asked = files.read_json(path)
+        asked = [q for q in asked if isinstance(q, dict)] if isinstance(asked, list) else []
+        hits = [(e, q) for e in entries if "waiver" not in e for q in asked
+                if q.get("key") == key_of(e["question"])]
+        if not hits:
+            continue
+        try:
+            where = core if root == Path(core.root) else open_core(root)
+        except Exception:  # noqa: BLE001 - a broken checkout never loses the owner's answer
+            continue
+        for entry, found in hits:
+            if found in asked:
+                asked.remove(found)
+            if entry["answer"] == WAIVE and WAIVE in [o["label"] for o in entry["options"]]:
+                entry["waiver"] = found.get("diff_digest")
+                where.log_append("events", "waiver", {
+                    "diff_digest": found.get("diff_digest"), "by": "owner",
+                    "via": "question-tool", "reason": "the owner waived it through the "
+                    "question tool"})
+        files.write_json_atomic(path, asked)
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> list[tuple[Any, dict]]:
