@@ -593,7 +593,7 @@ def slim_copies(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
         tree = Path(fields.get("worktree", "")).resolve()
         if tree.parent != wt_dir or not tree.name.startswith("debug-"):
             continue
-        name = next((n for n in (".iaso", ".plumb") if (tree / n / "log").is_dir()), "")
+        name = ".iaso" if (tree / ".iaso" / "log").is_dir() else ""
         if not name:
             continue                      # already slim
         if tree.name.removeprefix("debug-") in busy:
