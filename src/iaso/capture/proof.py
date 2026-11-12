@@ -406,7 +406,9 @@ def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
 
 
 def _where(core: Core, where: str) -> str:
-    """A link as given; a path as a repository-relative path that exists."""
+    """A link as given; a path as a repository-relative path that exists; a file outside the
+    repository by its name only, marked not kept: its absolute path names the machine and,
+    in a session scratchpad, the repository folder (which tripped SR-430's old-name check)."""
     where = where.strip()
     if "://" in where:
         return where
@@ -419,7 +421,7 @@ def _where(core: Core, where: str) -> str:
     try:
         return path.resolve().relative_to(Path(core.root).resolve()).as_posix()
     except ValueError:
-        return path.resolve().as_posix()
+        return f"{path.name} (not kept)"
 
 
 def _requirement(core: Core, sr_id: str) -> Record:
