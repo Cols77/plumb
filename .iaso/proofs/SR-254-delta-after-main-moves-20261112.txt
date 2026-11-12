@@ -1,0 +1,7 @@
+SR-254 EX-22 proof, 2026-11-12T07:36:17Z: delta_proof.py run with main's code (31db0601c's line), then intent/landing-speedups (503a6d7b6)
+green full run of the branch: 4 tests, passed: True
+plumb: after main moved, the merge check ran the full suite: 4 test(s) ['tests/test_mod.py::test_add', 'tests/test_other.py::test_mul', 'tests/test_other.py::test_mul_zero', 'tests/test_text.py::test_shout'], verdict passed
+  that run counts as the merged tree's full run: True
+green full run of the branch: 4 tests, passed: True
+intent-landing-speedups: after main moved, the merge check ran only the affected tests: 1 test(s) ['tests/test_mod.py::test_add'], verdict passed
+  that run counts as the merged tree's full run: True
