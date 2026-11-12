@@ -301,3 +301,29 @@ def test_an_applied_entry_is_seen_by_the_next_job_on_the_same_core(repo: Path) -
     worker._write_applied(core, "s1", Applied(job="r1", entries=(
         {"kind": "read-entry", "payload": {"id": "choice:x/q", "answer": "open"}},)))
     assert [e.payload["answer"] for e in core.events() if e.kind == "read-entry"] == ["open"]
+
+
+def test_the_turns_upkeep_runs_under_the_lock_with_a_fresh_heartbeat(
+        repo: Path, fake: FakeDispatcher, monkeypatch: pytest.MonkeyPatch) -> None:
+    """report-7ff51b51: the upkeep a turn end leaves ran before the lock was taken, so every
+    turn end during a long upkeep met no lock and started one more worker (9 at once, 5 for
+    one session); a long step with no model call let the heartbeat go stale too."""
+    from iaso.understand import summary
+
+    monkeypatch.setattr(worker, "HEARTBEAT_S", 0.05)
+    monkeypatch.setattr(worker, "STALE_S", 0.5)
+    path = files.lock_path(repo, "s1")
+    seen: list[bool] = []
+
+    def long_upkeep(core, session, turn, transcript):
+        time.sleep(1.0)                                    # longer than STALE_S
+        seen.append(worker._lock_is_held(repo, "s1", path))   # a turn end now starts none
+        seen.append(worker.acquire(repo, "s1") is None)
+        return ()
+
+    monkeypatch.setattr(summary, "_turn_upkeep", long_upkeep)
+    monkeypatch.setattr("iaso.hosts.claude_code.snapshot.refresh_counts", lambda core: None)
+    files.write_json_atomic(files.session_dir(repo, "s1") / summary.AFTER_STOP, {"turn": {}})
+    worker.run_loop(Core(repo), "s1")
+    assert seen == [True, True]
+    assert not path.exists()                               # let go at the end
