@@ -467,6 +467,8 @@ def test_the_configured_build_runs_in_main_and_rides_the_tidy_commit(repo: Path)
     result = landing.land(repo, sha, before)
     assert not [c for c in debug_cases(repo, sha) if c["kind"] == "landing-step"]
     assert (repo / "version.txt").read_text(encoding="utf-8") == "2"
+    assert "the configured build changed 2 file(s), in the tidy commit" in result["line"]
+    assert "tidied" not in result["line"], result["line"]
     changed = run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
     assert "version.txt" in changed and ".iaso/requirements/SR-001.md" in changed
     assert run_git(repo, "status", "--porcelain", "--", "version.txt", ".iaso/requirements"

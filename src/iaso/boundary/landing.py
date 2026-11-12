@@ -663,6 +663,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     session = session or files.CLI_SESSION
     cases: list[dict] = []
     removed: list[str] = []
+    built: list[str] = []
     outside: list[str] = []
     archived: list[str] = []
     queued = 0
@@ -690,7 +691,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         archived.extend(compact(open_core(root), before))
 
     def do_build() -> None:
-        removed.extend(build_after_landing(open_core(root)))   # staged, as the tidy's removals
+        built.extend(build_after_landing(open_core(root)))     # staged, as the tidy's removals
 
     def do_queue() -> None:
         nonlocal queued, queued_line
@@ -703,8 +704,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         # SR-329: main's uncommitted shared entries ride the tidy commit; judgment entries are
         # not among them (ignored by git), the compaction archives them instead (SR-376)
         shared = log.shared_uncommitted(root)
-        if removed or archived or shared:
-            _commit(root, removed, [*archived, *shared], head)
+        if removed or built or archived or shared:
+            _commit(root, [*removed, *built], [*archived, *shared], head)
 
     idle: list[tuple[str, int]] = []
     swept: list[str] = []
@@ -733,6 +734,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     parts = [f"tidied {', '.join([*removed, *outside])}" if removed or outside
              else "nothing to tidy",
              f"compacted {moved} log entries" if moved else "",
+             f"the configured build changed {len(built)} file(s), in the tidy commit" if built
+             else "",
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
              f"removed idle debug work copies {', '.join(n for n, _ in idle)} "
              f"({sum(m for _, m in idle)} MB freed)" if idle else "",
@@ -743,7 +746,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"iaso: landing {head[:12]}: " + "; ".join(p for p in parts if p)
-    result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
+    result = {"line": line, "removed": removed, "built": built, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
               "post_merge": proofs, "owner_words": len(words_back)}
     summary.write_cases(open_core(root), head,
