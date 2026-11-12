@@ -85,6 +85,8 @@ def isolated_environment(request: pytest.FixtureRequest, tmp_path_factory: pytes
     for name in list(os.environ):
         if name.upper().startswith(prefixes):
             monkeypatch.delenv(name)
+    # report-dadc31d7: the heavy-job space floor is tested on its own, not on this disk
+    monkeypatch.setenv("IASO_SKIP_SPACE_CHECK", "1")
     if live:
         return
     home = tmp_path_factory.mktemp("home")
