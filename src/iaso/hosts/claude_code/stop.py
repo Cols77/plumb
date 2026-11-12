@@ -60,7 +60,9 @@ def time_left_s(ctx: HookContext) -> float:
     never more than what is left under the watchdog's hard limit less ``HARD_RESERVE_S`` (both
     clocks run from the same start), so a step that keeps to it ends before the watchdog
     fires, whatever the configured budget (case hook-stop-e98405d1)."""
-    under_hard = hard_limit_s(ctx.root) - ctx.deadline.elapsed_s() - HARD_RESERVE_S
+    hard = hard_limit_s(ctx.root)
+    # a hard limit set under twice the reserve keeps half of itself, not no time at all
+    under_hard = hard - ctx.deadline.elapsed_s() - min(HARD_RESERVE_S, hard / 2)
     return max(min(ctx.deadline.remaining_s(), under_hard), 0.0)
 
 
