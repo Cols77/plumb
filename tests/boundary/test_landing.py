@@ -445,3 +445,31 @@ def test_ex3_an_ended_session_folder_holding_a_waiting_question_stays(repo: Path
         {"key": "which", "question": "which?", "options": []}]), encoding="utf-8")
     assert landing.ended_sessions(repo, "s-own") == ["done"]
     assert (sessions / "asked" / "judge_questions.json").exists() and not (sessions / "done").exists()
+
+
+@pytest.mark.sr("SR-296", "SR-377")
+def test_the_configured_build_runs_in_main_and_rides_the_tidy_commit(repo: Path) -> None:
+    """SR-377 EX-5, DEC-548: the branch commits no build; the landing builds once in main, the
+    tidy commit carries what the build wrote and the record whose link to it was repinned."""
+    from iaso import links
+
+    (repo / "build.py").write_text(
+        "from pathlib import Path\n"
+        "p = Path('version.txt'); p.write_text(str(int(p.read_text()) + 1))\n", encoding="utf-8")
+    (repo / "version.txt").write_text("1", encoding="utf-8")
+    (repo / ".iaso" / "config.yaml").write_text(
+        'merge:\n  after_landing: ["{python}", build.py]\n', encoding="utf-8")
+    write_record(repo, record("SR-001", "the version", statement="s", examples=[ex(1)],
+                              links=[{"kind": "implemented_by", "path": "version.txt"}]))
+    links.repin(open_core(repo), "SR-001")
+    commit_all(repo, "before")
+    sha, before = land_branch(repo, lambda root: docs(root, "docs/a.md"))
+    result = landing.land(repo, sha, before)
+    assert not [c for c in debug_cases(repo, sha) if c["kind"] == "landing-step"]
+    assert (repo / "version.txt").read_text(encoding="utf-8") == "2"
+    changed = run_git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert "version.txt" in changed and ".iaso/requirements/SR-001.md" in changed
+    assert run_git(repo, "status", "--porcelain", "--", "version.txt", ".iaso/requirements"
+                   ).stdout == ""
+    states = open_core(repo).status(["SR-001"])["SR-001"].links
+    assert [s.state for s in states] != ["stale"]
