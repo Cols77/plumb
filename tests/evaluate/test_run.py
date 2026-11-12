@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -274,3 +275,17 @@ def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
     judgment = load_config(kept).judgment
     assert judgment.backend == "jev"
     assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"
+
+
+@pytest.mark.sr("SR-344")
+def test_the_scratch_repository_tests_with_the_hosts_python(tmp_path):
+    """report-e1a601a7: the scratch tests run where pytest is, the host project's interpreter."""
+    from iaso.config import load_config
+
+    host = tmp_path / "host"
+    (host / ".venv" / "bin").mkdir(parents=True)
+    (host / ".venv" / "bin" / "python").write_text("", encoding="utf-8")
+    (host / ".iaso").mkdir()
+    scratch = run.scratch_repo(tmp_path / "s", host=host)
+    assert load_config(scratch).verify.python == str(host / ".venv" / "bin" / "python")
+    assert load_config(run.scratch_repo(tmp_path / "t")).verify.python == sys.executable
