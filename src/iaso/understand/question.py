@@ -87,8 +87,29 @@ def enqueue(core: Any, session: str, transcript: Any) -> None:
         queue.enqueue(core, job)
 
 
+def already_known(core: Any, made: Mapping[str, Any]) -> bool:
+    """Case report-9316d1a2: the reply only quotes or reports a question the owner already
+    has or already answered, so reading it files nothing. That is: the same question was
+    answered; a question waiting in any session about one of the same records holds these
+    words or is held in them (a note added or dropped changes the key); or it is the proof
+    question of records whose proof is confirmed."""
+    from iaso.capture import proof
+
+    key, ids = str(made["key"]), {str(r["id"]) for r in made["records"]}
+    if key in judge._answered_keys(core):
+        return True
+    for q in judge.unanswered_anywhere(core):
+        other = str(q.get("key") or "")
+        if other and (other in key or key in other) and ids & judge._ids_of(q):
+            return True
+    labels = {str(o["label"]) for o in made["options"]}
+    return (proof.YES in labels or key.startswith("did you see")) and all(
+        proof.confirmed(core, i) for i in ids)
+
+
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
     for q in answer.get("questions") or ():
-        if isinstance(q, Mapping) and (made := asked_question(core, q, job)) is not None:
+        if isinstance(q, Mapping) and (made := asked_question(core, q, job)) is not None \
+                and not already_known(core, made):
             judge.add_question(core, job.session, made)   # the next turn's ask names it
     return Applied(job=job.id)
