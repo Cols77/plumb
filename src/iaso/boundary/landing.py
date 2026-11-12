@@ -569,6 +569,44 @@ def idle_debug_copies(root: Path) -> tuple[list[tuple[Path, str, int]], list[str
     return sorted(idle, key=lambda i: -i[2]), kept
 
 
+def slim_copies(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
+    """SR-400: ``iaso debug prune --slim``: a debug work copy made before the rule loses its
+    log folder (a sparse checkout, as a new copy has) and its own cache, so it is about the
+    size of the code. ``([(name, MB freed)], skipped lines)``. Only a copy with no uncommitted
+    change and no fixer running on its case; git keeps every removed file it can restore."""
+    import shutil
+
+    from iaso import debug, selfdebug
+
+    root = Path(root).resolve()
+    wt_dir = state_dir(root) / "wt"
+    busy = {selfdebug._slug(c["id"]) for c in debug.open_cases(root) if debug._alive(c.get("pid"))}
+    done: list[tuple[str, int]] = []
+    skipped: list[str] = []
+    for block in _git(root, "worktree", "list", "--porcelain").split(chr(10) * 2):
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines())
+        tree = Path(fields.get("worktree", "")).resolve()
+        if tree.parent != wt_dir or not tree.name.startswith("debug-"):
+            continue
+        name = next((n for n in (".iaso", ".plumb") if (tree / n / "log").is_dir()), "")
+        if not name:
+            continue                      # already slim
+        if tree.name.removeprefix("debug-") in busy:
+            skipped.append(f"{tree.name}: a fixer is running on it")
+        elif _git(tree, "status", "--porcelain", "--untracked-files=all").strip():
+            skipped.append(f"{tree.name}: uncommitted changes")
+        else:
+            before = _size_mb(tree)
+            subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=tree,
+                           input=f"/*\n!/{name}/log/\n", text=True, check=True,
+                           capture_output=True)
+            cache = tree / name / "cache"
+            if cache.is_dir() and not cache.is_symlink():   # its own, rebuilt on the next command
+                shutil.rmtree(cache, ignore_errors=True)
+            done.append((tree.name, before - _size_mb(tree)))
+    return done, skipped
+
+
 def remove_idle(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
     """SR-401: remove every idle debug work copy (its branch stays): ``([(name, MB)], kept
     lines)``."""

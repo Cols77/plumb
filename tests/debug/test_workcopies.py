@@ -180,3 +180,19 @@ def test_sr402_a_refused_fix_leaves_the_case_open(main: Path,
                                           "target": "stop", "detail": "boom"})
     assert out.state == "refused" and "floor is 5 GB" in out.detail
     assert [c["id"] for c in debug.open_cases(main)] == ["case-a"]
+
+
+@pytest.mark.sr("SR-400")
+def test_sr400_slim_strips_the_log_and_cache_of_a_clean_older_copy_and_skips_a_dirty_one(
+        main: Path) -> None:
+    clean, edited = (main / ".iaso" / "wt" / f"debug-case-{c}" for c in "ab")
+    for tree, case in ((clean, "a"), (edited, "b")):
+        run_git(main, "worktree", "add", "-q", "-b", f"debug/case-{case}", str(tree))
+        (tree / ".iaso" / "cache").mkdir(exist_ok=True)
+        (tree / ".iaso" / "cache" / "x").write_text("x" * 1000, encoding="utf-8")
+    (edited / "README.md").write_text("edited\n", encoding="utf-8")
+    done, skipped = landing.slim_copies(main)
+    assert [n for n, _ in done] == ["debug-case-a"]
+    assert skipped == ["debug-case-b: uncommitted changes"]
+    assert log_files(clean) == [] and not (clean / ".iaso" / "cache").exists()
+    assert dirty(clean) == "" and log_files(edited)          # git restores it, nothing shows

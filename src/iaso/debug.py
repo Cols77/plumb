@@ -455,10 +455,17 @@ def _done(root: Path | str, ids: list[str]) -> int:
     return 1 if held else 0
 
 
-def _prune(root: Path | str) -> int:
-    """SR-401: ``iaso debug prune`` removes every idle debug work copy now; branches stay."""
+def _prune(root: Path | str, slim: bool = False) -> int:
+    """SR-401: ``iaso debug prune`` removes every idle debug work copy now; branches stay.
+    SR-400: with ``--slim`` it instead strips the log and cache from the older copies."""
     from iaso.boundary import landing
 
+    if slim:
+        done, skipped = landing.slim_copies(Path(root))
+        for line in skipped:
+            print(f"iaso: debug: {line}")
+        print(f"iaso: debug: slimmed {len(done)} work copies ({sum(m for _, m in done)} MB freed)")
+        return 0
     removed, kept = landing.remove_idle(Path(root))
     for line in kept:
         print(f"iaso: debug: {line}")
@@ -583,6 +590,9 @@ def run(command: str, argv: list[str]) -> int:
     parser.add_argument("selector", nargs="*", help="record IDs or link ids; default: all")
     parser.add_argument("--dry-run", action="store_true",
                         help="ask the models only: no tests, no repin, no owner question")
+    parser.add_argument("--slim", action="store_true",
+                        help="iaso debug prune --slim: strip the log and cache from older "
+                             "work copies")
     parser.add_argument("--proof-evaluator", action="store_true",
                         help="iaso debug fix: the owner picked the independent evaluator for "
                              "this run's fixes at launch")
@@ -591,7 +601,7 @@ def run(command: str, argv: list[str]) -> int:
     if args.selector[:1] == ["done"]:
         return _done(core.root, args.selector[1:])
     if args.selector[:1] == ["prune"]:
-        return _prune(core.root)
+        return _prune(core.root, args.slim)
     if args.selector[:1] == ["fix"]:
         return _fix(core, args.selector[1:], args.proof_evaluator)
     if args.selector[:1] == ["report"]:
