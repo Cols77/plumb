@@ -200,13 +200,18 @@ def sweep_eval_scratch(root: Path, older_than_s: float = 86400, *,
                        now: float | None = None) -> list[str]:
     """Report report-0ab44aff, SR-301: the evaluator's leftover ``iaso-eval-*`` folders in the
     temp folder, untouched for a day, are removed unless one holds a worktree of this repository
-    or a running process works in it; the paths removed."""
+    or a running process works in it; the paths removed. report-dadc31d7: the same for the
+    proof evaluator's ``iaso-proof-*`` and coverage ``iaso-cov-*`` folders and the old numbered
+    folders of pytest (``pytest-of-<user>/pytest-N``)."""
     import tempfile
 
     cutoff = (time.time() if now is None else now) - older_than_s
     held = worktrees(root)
     gone: list[str] = []
-    for path in sorted(Path(tempfile.gettempdir()).glob("iaso-eval-*")):
+    tmp = Path(tempfile.gettempdir())
+    found = [*tmp.glob("iaso-eval-*"), *tmp.glob("iaso-proof-*"), *tmp.glob("iaso-cov-*"),
+             *tmp.glob("pytest-of-*/pytest-[0-9]*")]
+    for path in sorted(found):
         try:
             if not path.is_dir() or path.is_symlink() or path.stat().st_mtime >= cutoff:
                 continue
@@ -567,6 +572,44 @@ def idle_debug_copies(root: Path) -> tuple[list[tuple[Path, str, int]], list[str
         else:
             idle.append((tree, branch, _size_mb(tree)))
     return sorted(idle, key=lambda i: -i[2]), kept
+
+
+def slim_copies(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
+    """SR-400: ``iaso debug prune --slim``: a debug work copy made before the rule loses its
+    log folder (a sparse checkout, as a new copy has) and its own cache, so it is about the
+    size of the code. ``([(name, MB freed)], skipped lines)``. Only a copy with no uncommitted
+    change and no fixer running on its case; git keeps every removed file it can restore."""
+    import shutil
+
+    from iaso import debug, selfdebug
+
+    root = Path(root).resolve()
+    wt_dir = state_dir(root) / "wt"
+    busy = {selfdebug._slug(c["id"]) for c in debug.open_cases(root) if debug._alive(c.get("pid"))}
+    done: list[tuple[str, int]] = []
+    skipped: list[str] = []
+    for block in _git(root, "worktree", "list", "--porcelain").split(chr(10) * 2):
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines())
+        tree = Path(fields.get("worktree", "")).resolve()
+        if tree.parent != wt_dir or not tree.name.startswith("debug-"):
+            continue
+        name = ".iaso" if (tree / ".iaso" / "log").is_dir() else ""
+        if not name:
+            continue                      # already slim
+        if tree.name.removeprefix("debug-") in busy:
+            skipped.append(f"{tree.name}: a fixer is running on it")
+        elif _git(tree, "status", "--porcelain", "--untracked-files=all").strip():
+            skipped.append(f"{tree.name}: uncommitted changes")
+        else:
+            before = _size_mb(tree)
+            subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=tree,
+                           input=f"/*\n!/{name}/log/\n", text=True, check=True,
+                           capture_output=True)
+            cache = tree / name / "cache"
+            if cache.is_dir() and not cache.is_symlink():   # its own, rebuilt on the next command
+                shutil.rmtree(cache, ignore_errors=True)
+            done.append((tree.name, before - _size_mb(tree)))
+    return done, skipped
 
 
 def remove_idle(root: Path) -> tuple[list[tuple[str, int]], list[str]]:

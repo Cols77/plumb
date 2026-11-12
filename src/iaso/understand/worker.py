@@ -26,7 +26,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from iaso.contracts import Applied, DispatchError, Job, JobError, JobResult, NoModel
+from iaso.contracts import Applied, DispatchError, Job, JobError, JobResult, NoModel, is_infra
 from iaso.understand import agents, dispatch, files, jobs, ledger
 from iaso.understand import schema as schema_check
 
@@ -292,6 +292,8 @@ class _Pass:
         data = data if isinstance(data, Mapping) else {}
         if result.status == "ok":
             new = {"v": 1, "consecutive": 0, "last": data.get("last")}
+        elif result.error and is_infra(f"{result.error.step}: {result.error.message}"):
+            return      # the environment failed (limit, no claude, API down): not the job's failure
         else:
             new = {"v": 1, "consecutive": int(data.get("consecutive") or 0) + 1,
                    "last": {"job": job.id, "kind": job.kind,

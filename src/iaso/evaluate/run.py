@@ -177,9 +177,24 @@ def _claude_call(binary: str, scratch: Path, message: str, *, model: str, sessio
             "error": text[:300] if data.get("is_error") and not maxed else ""}
 
 
+KEEP_RUNS = 2     # run folders kept per series (task and model, or proof): the new one and one before
+
+
+def _prune_runs(parent: Path, name: str) -> None:
+    """report-d5a411ff: a new run folder replaces the older ones of its series (the name after
+    the 16-character timestamp), keeping the newest ``KEEP_RUNS - 1``. shortcut: a record's
+    ``where`` is not read, so a cited run older than that goes (its verdict is in the proof log)."""
+    series = name[16:]
+    old = sorted(d for d in parent.iterdir() if d.is_dir() and d.name[16:] == series)
+    for d in old[:max(0, len(old) - (KEEP_RUNS - 1))]:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def _new_run_dir(parent: Path, name: str) -> Path:
-    """A fresh run folder: two runs of one task and model in the same second get -2, -3, ..."""
+    """A fresh run folder: two runs of one task and model in the same second get -2, -3, ...
+    The older folders of the same series are removed first."""
     parent.mkdir(parents=True, exist_ok=True)
+    _prune_runs(parent, name)
     for n in range(1, 10_000):
         run_dir = parent / (name if n == 1 else f"{name}-{n}")
         try:

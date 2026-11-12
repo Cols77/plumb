@@ -346,3 +346,16 @@ def test_ex8_a_branch_with_its_own_commit_or_a_dirty_worktree_is_used_as_it_is(
     tip = _git(fixed, "rev-parse", "HEAD")
     assert selfdebug._worktree(iaso_repo, "other-1")[0] == fixed
     assert _git(fixed, "rev-parse", "HEAD") == tip
+
+
+def test_an_environment_error_is_no_round_no_report_and_leaves_no_work_copy(
+        iaso_repo: Path) -> None:
+    """report-63c3de43: a usage limit stops the run at once; the case stays open."""
+    def limit(wt: Path) -> None:
+        raise RuntimeError("run: You've hit your 5-hour limit · resets 1:10pm")
+
+    out, _, _ = _fix(iaso_repo, Fixer(limit), Meaning(True, "same"))
+    assert out.state == "waiting" and out.rounds == []
+    row = next(c for c in debug.open_cases(iaso_repo) if c["id"] == CASE)
+    assert "report" not in row
+    assert not (iaso_repo / ".iaso" / "wt" / "debug-hook-stop-1").exists()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -706,6 +705,16 @@ NOT_INSTALLED = re.compile(
 def host_unavailable(text: object) -> bool:
     """Whether ``text`` (an error) says the host cannot serve now: out of quota or not installed."""
     return bool(OUT_OF_QUOTA.search(str(text)) or NOT_INSTALLED.search(str(text)))
+
+
+# INFRA adds the failures no host fixes; report-63c3de43: such an error is no round, no failure,
+# no work copy.
+INFRA = re.compile(f"{OUT_OF_QUOTA.pattern}|{NOT_INSTALLED.pattern}|No response from API|"
+                   r"No space left on device|Errno 28", re.I)
+
+
+def is_infra(text: str) -> bool:
+    return bool(INFRA.search(text))
 
 
 class NoModel(Exception):
