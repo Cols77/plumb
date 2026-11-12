@@ -143,6 +143,26 @@ def release(root: Path, session: str, token: str) -> None:
 
 
 @contextlib.contextmanager
+def _beating(root: Path, session: str, token: str) -> Iterator[None]:
+    """Keep the held lock's heartbeat fresh for as long as the work inside takes: a step with no
+    model call out (the turn's upkeep, a recompute over the whole log) can outlast ``STALE_S``,
+    and a silent lock is taken over by a second worker while the first still runs."""
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(HEARTBEAT_S):
+            heartbeat(root, session, token)
+
+    thread = threading.Thread(target=beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(5)
+
+
+@contextlib.contextmanager
 def _as_worker(token: str) -> Iterator[None]:
     old = os.environ.get("IASO_WORKER")
     os.environ["IASO_WORKER"] = token
@@ -605,7 +625,8 @@ def run_once(core: Any, session: str, job_id: str | None = None) -> list[str]:
     if token is None:
         return []
     try:
-        return _run_locked(core, session, token, job_id)
+        with _beating(root, session, token):
+            return _run_locked(core, session, token, job_id)
     finally:
         release(root, session, token)
 
@@ -620,17 +641,20 @@ def run_loop(core: Any, session: str) -> None:
 
     idle_looks = 0
     while True:
-        try:
-            # SR-375: what a turn end left for the background; looked at on every pass, since
-            # a stop that found this worker holding the lock started no worker of its own
-            after_stop(core, session)
-        except Exception:  # noqa: BLE001 - the jobs still run
-            pass
         token = acquire(root, session)
         if token is None:
             return None
         try:
-            ran = _run_locked(core, session, token, None)
+            with _beating(root, session, token):
+                try:
+                    # SR-375: what a turn end left for the background, under the lock (done
+                    # outside it, each turn end met no lock and started one more worker);
+                    # looked at on every pass, since a stop that found this worker holding
+                    # the lock started no worker of its own
+                    after_stop(core, session)
+                except Exception:  # noqa: BLE001 - the jobs still run
+                    pass
+                ran = _run_locked(core, session, token, None)
         finally:
             release(root, session, token)
         if ran:

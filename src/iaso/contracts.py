@@ -692,20 +692,25 @@ class DispatchError(Exception):
         self.message = message
 
 
-# One list of "the environment failed, not the case". OUT_OF_QUOTA and NOT_INSTALLED mean this
-# host cannot serve (another host may); INFRA adds the failures no host fixes. Shared with the
-# Codex dispatcher (fix/codex-dispatch): keep these lines identical there.
-OUT_OF_QUOTA = re.compile(r"hit your .{0,30}limit|usage limit|insufficient_quota|exceeded your "
-                          r"current quota|rate_limit_exceeded|credit balance|HTTP 402|"
-                          r"out of credit", re.I)
-NOT_INSTALLED = re.compile(r"(claude|codex) command was not found|(claude|codex) is not "
-                           r"available|could not be started", re.I)
+# report-6fb712c4: a host that cannot serve (out of quota, not installed) is worth leaving for
+# the next configured one; a timeout or a bad answer is not about the host
+OUT_OF_QUOTA = re.compile(
+    r"hit your .{0,30}limit|usage limit|insufficient_quota|exceeded your current quota"
+    r"|rate_limit_exceeded|credit balance|HTTP 402|out of credit", re.I)
+NOT_INSTALLED = re.compile(
+    r"(claude|codex) command was not found|(claude|codex) is not available|could not be started",
+    re.I)
+
+
+def host_unavailable(text: object) -> bool:
+    """Whether ``text`` (an error) says the host cannot serve now: out of quota or not installed."""
+    return bool(OUT_OF_QUOTA.search(str(text)) or NOT_INSTALLED.search(str(text)))
+
+
+# INFRA adds the failures no host fixes; report-63c3de43: such an error is no round, no failure,
+# no work copy.
 INFRA = re.compile(f"{OUT_OF_QUOTA.pattern}|{NOT_INSTALLED.pattern}|No response from API|"
                    r"No space left on device|Errno 28", re.I)
-
-
-def host_unavailable(text: str) -> bool:
-    return bool(OUT_OF_QUOTA.search(text) or NOT_INSTALLED.search(text))
 
 
 def is_infra(text: str) -> bool:

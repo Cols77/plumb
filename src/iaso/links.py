@@ -501,15 +501,16 @@ def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
 def _texts_at(root: Path, sha: str, at: str, rel: str) -> list[str]:
     """The file as committed at ``sha`` under its path then, ``at``. A version from before the
     conversion to IASO (SR-432, a different path) is also read as the converter rewrote it: a pin
-    made before the rename hashes the first, a pin the converter carried over the second."""
-    text = _git_text(root, ["show", f"{sha}:{at}"])
-    if text is None:
-        return []
-    if at == rel:
-        return [text]
-    from iaso.convert import rewrite_text
+    made before the rename hashes the first, a pin the converter carried over the second. At the
+    rename commit itself ``git log --follow`` names the old path while the file is already at the
+    new one, so the current path and the old-name path are tried too."""
+    from iaso.convert import restore_old, rewrite_text
 
-    return [text, rewrite_text(text)]
+    for path in dict.fromkeys((at, rel, restore_old(rel))):
+        text = _git_text(root, ["show", f"{sha}:{path}"])
+        if text is not None:
+            return [text] if path == rel else [text, rewrite_text(text)]
+    return []
 
 
 def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
