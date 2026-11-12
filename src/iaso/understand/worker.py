@@ -655,6 +655,9 @@ def run_loop(core: Any, session: str) -> None:
                 ran = _run_locked(core, session, token, None)
         finally:
             release(root, session, token)
+            forget = getattr(core, "forget_log", None)
+            if forget is not None:   # the worker lives long: no pass keeps the log (report-30e224a3)
+                forget()
         if ran:
             idle_looks = 0
         elif idle_looks >= 3 or not (jobs.pending(root, session)

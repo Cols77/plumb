@@ -264,15 +264,29 @@ def escalated_of(core: Core) -> dict[str, frozenset[str]]:
     return out
 
 
+# Every kind ``checked_entries`` reads (the re-check inputs, then approvals and revocations),
+# and ``renumber`` for ``carry_renumbers``: a reader holding a Core loads these kinds only, so
+# a long-lived worker stays small as the log grows (report-30e224a3).
+CONFIRM_KINDS = ("prompt", "owner-words", "config", "calibration", "question-answer",
+                 "pre-intent", "approval", "revocation", "renumber")
+
+
+def confirm_events(core: Any) -> Sequence[LogEntry]:
+    """``core``'s events of ``CONFIRM_KINDS``, in log order."""
+    from iaso import words
+
+    return words.events_of(core, CONFIRM_KINDS)
+
+
 def checked(core: Core) -> list[tuple[LogEntry, str | None]]:
     """``checked_entries`` of ``core``'s event log with every re-check input (the one entry
     point for callers holding a Core)."""
-    return checked_entries(core.events(), core.config.approve.affirmations, escalated_of(core),
-                           core)
+    return checked_entries(confirm_events(core), core.config.approve.affirmations,
+                           escalated_of(core), core)
 
 
 def remaining(core: Core) -> dict[str, list[tuple[str, str, LogEntry]]]:
-    standing = remaining_entries(core.events(), core.config.approve.affirmations,
+    standing = remaining_entries(confirm_events(core), core.config.approve.affirmations,
                                  escalated_of(core), core)
     return carry_renumbers(core, standing)[0]
 
@@ -283,7 +297,7 @@ def carry_renumbers(core: Core, standing: dict[str, list[tuple[str, str, LogEntr
     (sp6 5.4, R17), and ``{new id: old id}`` for the records confirmed only that way. The
     one choke point every confirmation reader goes through (``statuses``, ``remaining``);
     nothing is imported when the log holds no ``renumber`` entry."""
-    if not any(e.kind == "renumber" for e in core.events()):
+    if not any(e.kind == "renumber" for e in confirm_events(core)):
         return standing, {}
     from iaso.ids.aliases import carry, revocations_of
 
@@ -299,7 +313,7 @@ def pinned_through_renumbers(core: Core, pairs: Iterable[tuple[LogEntry, str | N
     states (``merge.approved_ends``, ``boundary.report._set_confirmed``); nothing is
     imported when the log holds no ``renumber`` entry."""
     carried: Mapping[tuple[str, str, str], tuple[str, str]] = {}
-    if any(e.kind == "renumber" for e in core.events()):
+    if any(e.kind == "renumber" for e in confirm_events(core)):
         from iaso.ids.aliases import carried_items
 
         carried = carried_items(core)
@@ -410,11 +424,12 @@ def judge_auto(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
 def statuses(core: Core, ids: Iterable[str] | None = None) -> dict[str, RecordStatus]:
     index = core.index()
     selected = list(index) if ids is None else [i for i in ids if i in index]
+    events = confirm_events(core)
     standing, carried = carry_renumbers(
-        core, remaining_entries(core.events(), core.config.approve.affirmations,
+        core, remaining_entries(events, core.config.approve.affirmations,
                                 escalated_of(core), core))
     approvals = {r: [(h, by) for h, by, _ in items] for r, items in standing.items()}
-    pins = approved_test_pins(core.events(), core.config.approve.affirmations, index, core)
+    pins = approved_test_pins(events, core.config.approve.affirmations, index, core)
     states = core.link_states(selected)
     by_record: dict[str, list] = {}
     for state in states:

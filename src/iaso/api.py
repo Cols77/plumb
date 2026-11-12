@@ -34,6 +34,8 @@ class Core:
         self.store = Store(self.paths)
         self._config: Config | None = None
         self._events: list[LogEntry] | None = None
+        self._order: list[tuple[str, str, int]] | None = None   # log.chain_order, this pass
+        self._log_generation = 0   # moves on each append through this core (the status memo)
         # inside one hook process (hashing.stat_cached) statuses and link states are computed
         # once: kept while the record index, the events and the link-end hashes are the same
         self._ends_memo: tuple[Any, dict[str, set[str]]] | None = None
@@ -62,9 +64,9 @@ class Core:
             self._status_basis = None
             self._status_memo = None
             return False
-        basis = (self.store.index(), self.events(), _hashing.ends_generation())
+        basis = (self.store.index(), self._log_generation, _hashing.ends_generation())
         old = self._status_basis
-        if (old is None or old[0] is not basis[0] or old[1] is not basis[1]
+        if (old is None or old[0] is not basis[0] or old[1] != basis[1]
                 or old[2] != basis[2]):
             self._status_basis = basis
             self._status_memo = None
@@ -85,6 +87,30 @@ class Core:
             more = [e for e in _log.other_checkouts(self.paths) if e.digest not in held]
             self._events = sorted(own + more, key=lambda e: e.at) if more else own
         return self._events
+
+    def forget_log(self) -> None:
+        """Drop what this core holds of the log (a long-lived reader, between passes)."""
+        self._events = None
+        self._order = None
+        self._log_generation += 1
+
+    def events_of(self, kinds: Iterable[str]) -> list[LogEntry]:
+        """The entries of ``kinds`` only, in order, with the owner's words other checkouts
+        hold (DEC-116). Only those kinds' payloads are loaded; the instance keeps the log's
+        order alone (names and kinds) until ``forget_log``, so a long-lived reader (the
+        worker's upkeep) stays small as the log grows."""
+        wanted = set(kinds)
+        if self._events is not None:      # already paid for: no second read
+            return [e for e in self._events if e.kind in wanted]
+        if self._order is None:   # the log's order, without payloads, until forget_log
+            self._order = _log.chain_order(self.paths, "events")
+        own = _log.read_kinds(self.paths, "events", wanted, order=self._order)
+        if not wanted & _log.OWNER_WORDS_KINDS:
+            return own
+        held = {e.digest for e in own}
+        more = [e for e in _log.other_checkouts(self.paths, wanted)
+                if e.digest not in held]
+        return sorted(own + more, key=lambda e: e.at) if more else own
 
     # -- CoreAPI
     def index(self) -> Mapping[str, Record]:
@@ -153,7 +179,7 @@ class Core:
             return _log.append(self.paths, stream, kind, payload)
         finally:
             if stream == "events":
-                self._events = None
+                self.forget_log()
 
     def log_append_many(self, stream: LogStream,
                         entries: Sequence[tuple[str, Mapping[str, Any]]]) -> list[LogEntry]:
@@ -162,7 +188,7 @@ class Core:
         finally:
             # A failed batch can have persisted a prefix, which subsequent jobs must see.
             if stream == "events":
-                self._events = None
+                self.forget_log()
 
     def log_read(self, stream: LogStream, kinds: Iterable[str] | None = None,
                  since_offset: int = 0, *,

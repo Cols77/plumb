@@ -98,7 +98,9 @@ def _requests(core: Any) -> list[dict[str, str]]:
 
 
 def _answer_entries(core: Any) -> list[Any]:
-    return [e for e in core.events() if e.kind == "question-answer"
+    from iaso import words
+
+    return [e for e in words.events_of(core, ("question-answer",)) if e.kind == "question-answer"
             and e.payload.get("via") == "question-tool" and not e.payload.get("study")]
 
 
@@ -255,7 +257,10 @@ def undo_settlement(core: Any, key: str) -> bool:
     from iaso import links
     from iaso.understand import judge
 
-    mine = [e for e in core.events() if e.kind in ("question-withdrawn", "answer-unbound")
+    from iaso import words
+
+    mine = [e for e in words.events_of(core, ("question-withdrawn", "answer-unbound"))
+            if e.kind in ("question-withdrawn", "answer-unbound")
             and e.payload.get("key") == key]
     if (not mine or mine[-1].kind != "question-withdrawn"
             or mine[-1].payload.get("reason") != "settled"):
