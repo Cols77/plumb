@@ -34,8 +34,10 @@ from pathlib import Path
 from typing import Any, NamedTuple, TextIO
 
 from iaso.hosts.claude_code.hookio import (
+    Deadline,
     HookContext,
     HookOutput,
+    hard_limit_s,
     hook_budget,
     read_json,
     run_hook,
@@ -50,6 +52,22 @@ GIT_TIMEOUT_S = 5.0  # a slice of the soft budget: under load git status alone c
 STOP_GRACE_S = 1.0  # past the hard limit, only while the read-back is not yet kept (R1)
 GIT_SKIPPED = "change detection (git status)"
 MAX_INSTRUCTION_PATHS = 8
+HARD_RESERVE_S = 10.0  # kept under the watchdog's hard limit for the steps after a long one
+
+
+def time_left_s(ctx: HookContext) -> float:
+    """SR-310: the time a step that starts work may take: what is left of the soft budget, and
+    never more than what is left under the watchdog's hard limit less ``HARD_RESERVE_S`` (both
+    clocks run from the same start), so a step that keeps to it ends before the watchdog
+    fires, whatever the configured budget (case hook-stop-e98405d1)."""
+    under_hard = hard_limit_s(ctx.root) - ctx.deadline.elapsed_s() - HARD_RESERVE_S
+    return max(min(ctx.deadline.remaining_s(), under_hard), 0.0)
+
+
+def capped_deadline(ctx: HookContext) -> Deadline:
+    """The deadline of a step that takes one (the awareness git work): ``time_left_s`` from
+    now, so a soft budget set past the hard limit cannot carry it into the watchdog."""
+    return Deadline(time_left_s(ctx) * 1000.0)
 
 
 def _clip(text: str, width: int = 120) -> str:
@@ -291,7 +309,7 @@ def _verification(ctx: HookContext, core: Any, verify: Any, index: Any, all_stat
     recorded = turn_regressions(verify, turn_start)
     selection = evidence = pending = None
     if verify is not None:
-        if ctx.deadline.expired():
+        if time_left_s(ctx) <= 0:   # the soft budget or the room under the hard limit is gone
             skipped.append("covering tests")
         else:
             selection = verify.select(changed,
@@ -393,7 +411,7 @@ def handle(ctx: HookContext, *, verify: Any = LAZY, unjudged: Any = LAZY) -> Hoo
     # and the overlap lines of the records this turn touched (each once per other version)
     from iaso.awareness.turn import at_stop
 
-    aware = at_stop(core, changed, touched_ids, ctx.deadline)
+    aware = at_stop(core, changed, touched_ids, capped_deadline(ctx))
     ctx.mark("awareness")
     out, stale_notes = _next_action(ctx, core, index, turn, turn_path, active,
                                     v, changed, asked, queued, turn_start)
@@ -635,7 +653,9 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
         waiting: list[str] = []
         if open_rows:   # SR-175: drift is checked for coverage and repinned before any hold
             no_judge: set[str] = set()
-            waiting = stale.settle_drift(core, ctx.session_id, open_rows, no_judge)
+            # SR-310: its test runs and judge calls keep to the hook's time (hook-stop-e98405d1)
+            waiting = stale.settle_drift(core, ctx.session_id, open_rows, no_judge,
+                                         budget_s=time_left_s(ctx))
             state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
             # SR-174, DEC-060: a check that waits for the judge does not hold the turn
             open_rows = [r for r in stale.unresolved(core, ctx.session_id, state)
