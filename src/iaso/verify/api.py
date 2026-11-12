@@ -901,7 +901,10 @@ class Verify:
 
     # -- the run flow
     def run(self, *, changed: Sequence[str] | None = None, nodes: Sequence[str] | None = None,
-            full: bool = False, budget_s: float | None = None) -> RunReport:
+            full: bool = False, budget_s: float | None = None,
+            extends: Mapping[str, Any] | None = None) -> RunReport:
+        """``extends``: the earlier green full run this covering run brings up to the current
+        tree (SR-254, ``fullrun.run_delta``), recorded in the payload."""
         from iaso.verify import evidence as ev
         from iaso.verify.runner import run_selection
 
@@ -964,6 +967,8 @@ class Verify:
                                 selection=report.selection, infra=infra, files=files,
                                 identity=self.identity(compute=True), aborted=aborted,
                                 expected=expected)
+        if extends:
+            payload["extends"] = dict(extends)
         entry = core.log_append("evidence", "test-run", payload)
         report.run_id = payload["run_id"]
         report.discarded = outcome.discarded
