@@ -213,7 +213,7 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
 
     parsed = typed.parse(entry.get("text"))
     if parsed is not None:                # a typed "approve" is prose, read by meaning (SR-209)
-        if parsed.command == "auto-approve":
+        if parsed.command in ("auto-approve", "evaluator"):
             typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
         return None                       # auto-approve, undo, go, settle: no reading
     job = build(core, session, message=entry)

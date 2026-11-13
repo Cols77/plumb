@@ -63,6 +63,39 @@ def is_documentation(path: str) -> bool:
     return pure.parts[0] == "docs" or pure.suffix.lower() in _DOC_SUFFIXES
 
 
+def without_version(text: str) -> str:
+    """A pyproject.toml's text without its ``[project]`` version line. The landing bumps that
+    line (SR-377), which changes no test, so it is no shared test infrastructure change (owner,
+    DEC-551: the pytest configuration, conftest.py and the lock file are)."""
+    out: list[str] = []
+    table = ""
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            table = stripped
+        elif table == "[project]" and stripped.split("=", 1)[0].strip() == "version":
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+def is_pyproject(rel: str) -> bool:
+    return PurePosixPath(rel).name.casefold() == "pyproject.toml"
+
+
+def infra_digest(rel: str, path: Any) -> str:
+    """The hash a full run records for a shared test infrastructure file: a pyproject.toml
+    without its version line, any other file as it is."""
+    from iaso.normalize import file_digest, sha256_text
+
+    if is_pyproject(rel):
+        try:
+            return sha256_text(without_version(path.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError):
+            pass
+    return file_digest(path)
+
+
 def matches_infra(path: str, globs: Iterable[str]) -> bool:
     """``**/<name>`` matches that name at any depth; other patterns are fnmatch globs on
     the whole path. Case-insensitive, so a case-insensitive checkout fails toward pending."""

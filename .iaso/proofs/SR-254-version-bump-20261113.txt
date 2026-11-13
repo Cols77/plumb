@@ -1,0 +1,33 @@
+SR-254 EX-24/EX-25 proof, 2026-11-13T04:29:06Z: .iaso/proofs/SR-254-version-bump-proof.py run with intent/version-bump-not-infra (36bc397c5), then main (f716b00d6) for contrast; each scenario in its own scratch repository with a green full run recorded first
+
+$ PYTHONPATH=src python .iaso/proofs/SR-254-version-bump-proof.py   # in the branch's worktree
+iaso: running the tests that 1 changed path(s) since the green full run 20261113T042843Z-24780c6a affect (main moved; no new full run)
+iaso: running the full suite (no earlier passing run matches this tree; this can take minutes)
+code under test: intent/version-bump-not-infra
+
+after a green full run (3 tests), a [project] version bump only:
+  full run pending: False []
+
+after a green full run (3 tests), a version bump and main moving src/pkg/mod.py:
+  full run pending: False []
+  the merge check's run step ran only the affected tests: 1 test(s) ['tests/test_mod.py::test_add'], verdict passed
+
+after a green full run (3 tests), a version bump plus a pytest setting, and src/pkg/mod.py:
+  full run pending: True ['pyproject.toml changed']
+  the merge check's run step ran the full suite: 3 test(s) ['tests/test_mod.py::test_add', 'tests/test_other.py::test_mul', 'tests/test_other.py::test_mul_zero'], verdict passed
+
+$ PYTHONPATH=<main checkout>/src python .iaso/proofs/SR-254-version-bump-proof.py
+iaso: running the full suite (no earlier passing run matches this tree; this can take minutes)
+iaso: running the full suite (no earlier passing run matches this tree; this can take minutes)
+code under test: main
+
+after a green full run (3 tests), a [project] version bump only:
+  full run pending: True ['pyproject.toml changed']
+
+after a green full run (3 tests), a version bump and main moving src/pkg/mod.py:
+  full run pending: True ['pyproject.toml changed']
+  the merge check's run step ran the full suite: 3 test(s) ['tests/test_mod.py::test_add', 'tests/test_other.py::test_mul', 'tests/test_other.py::test_mul_zero'], verdict passed
+
+after a green full run (3 tests), a version bump plus a pytest setting, and src/pkg/mod.py:
+  full run pending: True ['pyproject.toml changed']
+  the merge check's run step ran the full suite: 3 test(s) ['tests/test_mod.py::test_add', 'tests/test_other.py::test_mul', 'tests/test_other.py::test_mul_zero'], verdict passed
