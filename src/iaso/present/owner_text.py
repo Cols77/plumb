@@ -93,6 +93,8 @@ CONFLICTS_CARD_MANY = "{n} conflicts await you"
 # -- choosing a side (8.4)
 CHOOSE_REFUSED = ("iaso: only the owner chooses a side; say which version to keep (for "
                   "example \"keep {theirs}'s\")")
+CHOOSE_ASK = ("iaso: or ask with the question tool: iaso conflict ask {ic} prints the "
+              "question, and the owner's answer applies in this checkout")
 CHOSEN = "iaso: {record} \"{title}\" now holds {side} version"
 CHOSEN_RECONFIRMED = " (your earlier ok of that version holds again)"
 CHOSEN_PROPOSED = " (it waits for your ok, like any new wording)"

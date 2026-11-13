@@ -147,9 +147,11 @@ def _conflict(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="iaso conflict",
         description="propose: store a combined version (--file) and/or suggest a side (--take "
-                    "with --why); shown in the question, applies nothing. choose: the owner's "
-                    "terminal. relay, and choose with --prompt or --quote, are refused.")
-    parser.add_argument("action", choices=["propose", "choose", "relay"])
+                    "with --why); shown in the question, applies nothing. ask: print the "
+                    "conflict as question-tool JSON; the owner's answer applies here. choose: "
+                    "the owner's terminal. relay, and choose with --prompt or --quote, are "
+                    "refused.")
+    parser.add_argument("action", choices=["propose", "ask", "choose", "relay"])
     parser.add_argument("ref", nargs="+", help="an IC, a record or plain words")
     parser.add_argument("--take", default=None,
                         help="ours | theirs | combined, or a side's name (main, feat-x)")
@@ -167,6 +169,15 @@ def _conflict(argv: list[str]) -> int:
         return 3
     core = open_core(resolve_root(args.root))
     ref = " ".join(args.ref)
+    if args.action == "ask":   # report-cee7804c: the question tool settles it, in this checkout
+        from iaso.stale import current_session
+
+        try:
+            emit(mod.ask(core, ref, current_session(core.root)), True)
+        except mod.ConflictError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
     if args.action != "propose":
         try:
             from iaso.awareness.answer import merge_conflict_of
@@ -197,8 +208,9 @@ def _conflict(argv: list[str]) -> int:
             conflict, payload = mod.choose_owner(core, ref, args.take,
                                                  values=_values(args.file))
         except Refused:
-            theirs = mod.find(core, ref).labels[1]
-            print(owner_text.CHOOSE_REFUSED.format(theirs=theirs), file=sys.stderr)
+            held = mod.find(core, ref)
+            print(owner_text.CHOOSE_REFUSED.format(theirs=held.labels[1]), file=sys.stderr)
+            print(owner_text.CHOOSE_ASK.format(ic=held.ic), file=sys.stderr)
             return 3
     except Declined:
         print("iaso: nothing chosen", file=sys.stderr)
