@@ -1,6 +1,8 @@
 """The plugin's GENERATED files and its vendored wheel match their sources (SP7 4.1): the
 command, the skills, the edit gate, the mod's guard table, the hooks and manifests, and the wheel
-built from ``src/iaso``. A failure here means: run ``python scripts/build_plugin.py``."""
+built from ``src/iaso``. A failure here means: run ``python scripts/build_plugin.py --no-wheel``
+(a branch builds the text files only; the landing rebuilds the wheel and the version in main,
+SR-377)."""
 
 from __future__ import annotations
 
@@ -28,7 +30,18 @@ def _build_plugin():
 
 
 def test_bundle_fresh() -> None:
-    assert _build_plugin().stale() == []
+    assert _build_plugin().stale(wheel=False) == []
+
+
+@pytest.mark.sr("SR-377")
+def test_a_source_change_on_a_branch_asks_for_no_wheel_rebuild(monkeypatch) -> None:
+    """SR-377 EX-4: a branch's change to src/iaso leaves the vendored wheel to main's landing:
+    the branch's check passes on the text files, and only the full check names the wheel."""
+    build = _build_plugin()
+    monkeypatch.setattr(build, "source_digest", lambda: "a branch changed src/iaso")
+    assert build.stale(wheel=False) == []
+    assert "plugin/vendor: the wheel was built from another source (rebuild it)" in build.stale()
+    assert build.main(["--check", "--no-wheel"]) == 0
 
 
 def test_versions_agree() -> None:

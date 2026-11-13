@@ -1,0 +1,25 @@
+SR-296 proof, 2026-11-12T20:39:41Z: a hand-run landing in a scratch clone of intent/landing-speedups; a docs-only branch merged into main with --no-ff, then the landing job (python -m iaso.boundary.landing --head --before) run by hand, with no model host on PATH (the judge jobs it queued stayed in the clone, which was deleted after).
+branch under test: intent/landing-speedups 3f59c7659
+plugin version before: "version":"0.1.1575"
+the branch's own commit touches: docs/scratch-landing-note.md
+merged: da180cf0a Merge scratch-docs
+landing line: iaso: landing da180cf0a56b: nothing to tidy; compacted 1 log entries; the configured build changed 12 file(s), in the tidy commit; queued 599 records for the judge; 0 cases went to debugging
+commits after the merge:
+  d6b275382 iaso: tidy after the landing of da180cf0a56b
+the tidy commit carries:
+  M	.claude-plugin/marketplace.json
+  D	.iaso/log/test-run/20261112T093736.629021Z-7ebc37b1.json
+  M	.iaso/log/test-run/archive.jsonl
+  M	.iaso/requirements/SR-243.md
+  M	.iaso/requirements/SR-317.md
+  M	.iaso/requirements/SR-377.md
+  M	.iaso/requirements/SR-380.md
+  M	.iaso/requirements/SR-430.md
+  M	plugin/.claude-plugin/plugin.json
+  M	plugin/vendor/MANIFEST.json
+  R095	plugin/vendor/iaso-0.1.1575-py3-none-any.whl	plugin/vendor/iaso-0.1.1604-py3-none-any.whl
+  M	pyproject.toml
+  M	src/iaso/__init__.py
+plugin version after: "version":"0.1.1604"
+main left clean: yes
+bundle fresh in main: yes
