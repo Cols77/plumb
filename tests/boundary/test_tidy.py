@@ -115,3 +115,24 @@ def test_the_tidy_sweeps_evaluator_scratch_folders_older_than_a_day(
         proc.kill()
     assert not old.exists()
     assert all(d.exists() for d in (fresh, held, busy, other))
+
+
+def test_the_tidy_sweeps_old_proof_cov_and_pytest_numbered_folders(
+        repo: Path, tmp_path, monkeypatch):
+    """report-dadc31d7: day-old iaso-proof-*, iaso-cov-* and pytest-of-<user>/pytest-N folders
+    go; a fresh one and pytest's -current link stay."""
+    import os
+    import time
+
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    old = [tmp_path / "iaso-proof-a", tmp_path / "iaso-cov-b", tmp_path / "pytest-of-u" / "pytest-7"]
+    fresh = tmp_path / "pytest-of-u" / "pytest-8"
+    for d in (*old, fresh):
+        (d / "sub").mkdir(parents=True)
+        (d / "sub" / "f").write_text("x")
+    (tmp_path / "pytest-of-u" / "pytest-current").symlink_to(fresh)
+    two_days = time.time() - 2 * 86400
+    for d in old:
+        os.utime(d, (two_days, two_days))
+    assert sorted(landing.sweep_eval_scratch(repo)) == sorted(str(d) for d in old)
+    assert fresh.exists() and not any(d.exists() for d in old)
