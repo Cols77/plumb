@@ -123,6 +123,11 @@ def _iso(epoch: float) -> str:
 # --------------------------------------------------------------------------- the parts
 
 
+# The kinds the turn's upkeep decides from: the worker lives long and the log grows, so it
+# reads these and no other (report-30e224a3).
+UPKEEP_KINDS = ("verdict", "calibration", "trial", "rejection", "approval", "revocation")
+
+
 def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str, ...]:
     """What the owner's words confirmed for this turn's message, then what they confirmed for
     an earlier message whose read finished after that turn ended (told once)."""
@@ -140,7 +145,7 @@ def _confirmations(core: Any, turn: Any, told: Told | None = None) -> tuple[str,
     from iaso import words
 
     said_by = words.held(core)
-    for entry in core.events():
+    for entry in words.events_of(core, ("approval",)):
         payload = entry.payload
         if (entry.kind != "approval" or payload.get("by") not in ("owner-words", "auto-model",
                                                                  "auto-jev")
@@ -184,7 +189,9 @@ def _labels_since_calibration(entries: Sequence[Any]) -> bool:
 def _upkeep(core: Any, session: str, recalibrate: bool) -> None:
     """The turn's upkeep, from the logs alone (no model): rerun the calibration from the logged
     scores after an owner label. No trial card is drawn (SR-252 EX-6)."""
-    entries = core.events()
+    from iaso import words
+
+    entries = words.events_of(core, UPKEEP_KINDS)   # never the whole log (report-30e224a3)
     if recalibrate and any(e.kind == "verdict" for e in entries) and _labels_since_calibration(
             entries):
         try:
@@ -249,6 +256,9 @@ def after_stop(core: Any, session: str) -> None:
         os.replace(path, claimed)
     except OSError:
         return
+    forget = getattr(core, "forget_log", None)
+    if forget is not None:   # a turn ended since this core last read: the log moved
+        forget()
     try:
         data = files.read_json(claimed)
         if not isinstance(data, Mapping):

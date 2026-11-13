@@ -66,7 +66,8 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
     open_core(repo).add_link("SR-001", "implemented_by", Target(path="src/calc.py", symbol="add"))
     _vcs(repo, "add", "-A")
     _vcs(repo, "commit", "-q", "-m", "setup")
-    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (True, "passed"))
+    monkeypatch.setattr(links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (True, "passed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
     (repo / "src" / "calc.py").write_text("def add(a, b):\n    return b + a\n", "utf-8")
     return repo

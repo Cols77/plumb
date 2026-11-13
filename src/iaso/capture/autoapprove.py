@@ -57,13 +57,16 @@ def owner_config(entries: Sequence[LogEntry]) -> Mapping[str, Any] | None:
     return entry.payload["auto_approve"] if entry is not None else None
 
 
-def _last_model_version(entries: Sequence[LogEntry]) -> str | None:
-    for entry in reversed(entries):
-        if entry.kind == "judgment":
-            backend = str(entry.payload.get("backend") or "")
-            if backend.startswith("jev:"):
-                return backend.split(":", 1)[1] or None
-    return None
+def _last_model_version(core: Core) -> str | None:
+    """The model of the latest JEV judgment, read from the newest back (judgments are many)."""
+    from iaso import log
+
+    def jev(entry: LogEntry) -> bool:
+        return str(entry.payload.get("backend") or "").startswith("jev:")
+
+    last = log.last_of(core.paths, "events", ("judgment",), jev,
+                       order=getattr(core, "_order", None))
+    return (str(last.payload["backend"]).split(":", 1)[1] or None) if last else None
 
 
 def jev_ready(core: Core) -> tuple[bool, str]:
@@ -79,18 +82,21 @@ def jev_ready(core: Core) -> tuple[bool, str]:
     return True, "ok"
 
 
-def auto_approve_state(core: Core) -> AutoApproveState:
+def auto_approve_state(core: Core, *, with_model: bool = False) -> AutoApproveState:
+    """``with_model``: also find the last JEV model seen, a walk back through the judgments
+    that only ``config show`` prints (the status line never pays it, report-30e224a3)."""
     from iaso.capture.calibrate import latest_calibration
     from iaso.capture.ownerconfig import latest, source_of
 
-    entries = core.events()
-    switch = latest(entries)
+    from iaso import words
+
+    switch = latest(words.events_of(core, ("prompt", "owner-words", "config")))
     settings = switch.payload["auto_approve"] if switch is not None else None
     configured = bool(settings and settings.get("enabled"))
     mirror = bool(core.config.auto_approve.enabled)
     calibration = latest_calibration(core)
     calibrated = str(calibration.payload.get("model_version")) if calibration else None
-    seen = _last_model_version(entries)
+    seen = _last_model_version(core) if with_model else None
     ready, why = jev_ready(core)
     if not configured:
         reason = "off"

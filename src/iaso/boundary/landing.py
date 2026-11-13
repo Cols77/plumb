@@ -1,6 +1,7 @@
 """The landing job (SR-296): after a merge into the default branch, in the background, in
 order: the tidy of what the landed records supersede (SR-286), the log compaction (SR-287),
-the finished worktrees removed (DEC-190), the folders of ended sessions removed, the judge backlog queued (SR-298), then every count the status still shows written down as
+the repository's configured build (``merge.after_landing``, SR-377: iaso's plugin) committed with
+them, the finished worktrees removed (DEC-190), the folders of ended sessions removed, the judge backlog queued (SR-298), then every count the status still shows written down as
 debug cases (SR-300). Each step's failure is itself a case and the next step still runs.
 
 It writes only main's tree and log (SR-301): never another worktree (but a finished, clean one it removes), another session's loop,
@@ -200,13 +201,18 @@ def sweep_eval_scratch(root: Path, older_than_s: float = 86400, *,
                        now: float | None = None) -> list[str]:
     """Report report-0ab44aff, SR-301: the evaluator's leftover ``iaso-eval-*`` folders in the
     temp folder, untouched for a day, are removed unless one holds a worktree of this repository
-    or a running process works in it; the paths removed."""
+    or a running process works in it; the paths removed. report-dadc31d7: the same for the
+    proof evaluator's ``iaso-proof-*`` and coverage ``iaso-cov-*`` folders and the old numbered
+    folders of pytest (``pytest-of-<user>/pytest-N``)."""
     import tempfile
 
     cutoff = (time.time() if now is None else now) - older_than_s
     held = worktrees(root)
     gone: list[str] = []
-    for path in sorted(Path(tempfile.gettempdir()).glob("iaso-eval-*")):
+    tmp = Path(tempfile.gettempdir())
+    found = [*tmp.glob("iaso-eval-*"), *tmp.glob("iaso-proof-*"), *tmp.glob("iaso-cov-*"),
+             *tmp.glob("pytest-of-*/pytest-[0-9]*")]
+    for path in sorted(found):
         try:
             if not path.is_dir() or path.is_symlink() or path.stat().st_mtime >= cutoff:
                 continue
@@ -272,6 +278,50 @@ def tidy(core: Any, before: str, head: str) -> tuple[list[str], list[str], list[
                 cases.append({"id": f"tidy-failed:{rel}", "kind": "tidy-failed",
                               "target": rel, "detail": (exc.stderr or "").strip()[:200]})
     return removed, outside, cases
+
+
+# --------------------------------------------------------------------------- build (SR-377)
+
+BUILD_NOTE = "rebuilt by the landing (merge.after_landing); its outputs only (SR-377, DEC-548)"
+
+
+def _dirty(root: Path) -> set[str]:
+    out = _git(root, "status", "--porcelain", "-z", "--untracked-files=all")
+    return {item[3:] for item in out.split("\0") if len(item) > 3}
+
+
+def build_after_landing(core: Any) -> list[str]:
+    """SR-296, SR-377: run the repository's configured build (``merge.after_landing``) in main,
+    once per landing; the paths it changed, and the records whose links to them it repinned,
+    staged for the tidy commit. Only main builds: a branch commits none of these (DEC-548). A
+    build that fails raises, and the step's failure is a case."""
+    from iaso import links
+    from iaso.api import open_core
+    from iaso.background import child_env
+
+    root = Path(core.root)
+    argv = [sys.executable if a == "{python}" else a for a in core.config.merge.after_landing]
+    if not argv:
+        return []
+    before = _dirty(root)
+    done = subprocess.run(argv, cwd=root, env=child_env(), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=1800)
+    if done.returncode:
+        raise RuntimeError(f"{' '.join(argv)}: exit {done.returncode}: "
+                           f"{(done.stderr or done.stdout).strip()[-200:]}")
+    built = sorted(p for p in _dirty(root) - before if not p.startswith(f"{state_dir(root).name}/"))
+    if not built:
+        return []
+    core = open_core(root)
+    wanted = set(built)
+    stale = [s.link for status in core.status().values() for s in status.links
+             if s.state == "stale" and s.link.target.path in wanted]
+    for link in stale:
+        links.repin(open_core(root), link.id, note=BUILD_NOTE)
+    index = core.index()
+    staged = [*built, *sorted({index[link.source].path for link in stale})]
+    _git(root, "add", "-A", "--", *staged)
+    return staged
 
 
 # --------------------------------------------------------------------------- compaction (SR-287)
@@ -569,6 +619,44 @@ def idle_debug_copies(root: Path) -> tuple[list[tuple[Path, str, int]], list[str
     return sorted(idle, key=lambda i: -i[2]), kept
 
 
+def slim_copies(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
+    """SR-400: ``iaso debug prune --slim``: a debug work copy made before the rule loses its
+    log folder (a sparse checkout, as a new copy has) and its own cache, so it is about the
+    size of the code. ``([(name, MB freed)], skipped lines)``. Only a copy with no uncommitted
+    change and no fixer running on its case; git keeps every removed file it can restore."""
+    import shutil
+
+    from iaso import debug, selfdebug
+
+    root = Path(root).resolve()
+    wt_dir = state_dir(root) / "wt"
+    busy = {selfdebug._slug(c["id"]) for c in debug.open_cases(root) if debug._alive(c.get("pid"))}
+    done: list[tuple[str, int]] = []
+    skipped: list[str] = []
+    for block in _git(root, "worktree", "list", "--porcelain").split(chr(10) * 2):
+        fields = dict(line.partition(" ")[::2] for line in block.splitlines())
+        tree = Path(fields.get("worktree", "")).resolve()
+        if tree.parent != wt_dir or not tree.name.startswith("debug-"):
+            continue
+        name = ".iaso" if (tree / ".iaso" / "log").is_dir() else ""
+        if not name:
+            continue                      # already slim
+        if tree.name.removeprefix("debug-") in busy:
+            skipped.append(f"{tree.name}: a fixer is running on it")
+        elif _git(tree, "status", "--porcelain", "--untracked-files=all").strip():
+            skipped.append(f"{tree.name}: uncommitted changes")
+        else:
+            before = _size_mb(tree)
+            subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=tree,
+                           input=f"/*\n!/{name}/log/\n", text=True, check=True,
+                           capture_output=True)
+            cache = tree / name / "cache"
+            if cache.is_dir() and not cache.is_symlink():   # its own, rebuilt on the next command
+                shutil.rmtree(cache, ignore_errors=True)
+            done.append((tree.name, before - _size_mb(tree)))
+    return done, skipped
+
+
 def remove_idle(root: Path) -> tuple[list[tuple[str, int]], list[str]]:
     """SR-401: remove every idle debug work copy (its branch stays): ``([(name, MB)], kept
     lines)``."""
@@ -618,6 +706,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     session = session or files.CLI_SESSION
     cases: list[dict] = []
     removed: list[str] = []
+    built: list[str] = []
     outside: list[str] = []
     archived: list[str] = []
     queued = 0
@@ -644,6 +733,9 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     def do_compact() -> None:
         archived.extend(compact(open_core(root), before))
 
+    def do_build() -> None:
+        built.extend(build_after_landing(open_core(root)))     # staged, as the tidy's removals
+
     def do_queue() -> None:
         nonlocal queued, queued_line
         started = backlog.queue_waiting(open_core(root), session, mark=False)
@@ -655,8 +747,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
         # SR-329: main's uncommitted shared entries ride the tidy commit; judgment entries are
         # not among them (ignored by git), the compaction archives them instead (SR-376)
         shared = log.shared_uncommitted(root)
-        if removed or archived or shared:
-            _commit(root, removed, [*archived, *shared], head)
+        if removed or built or archived or shared:
+            _commit(root, [*removed, *built], [*archived, *shared], head)
 
     idle: list[tuple[str, int]] = []
     swept: list[str] = []
@@ -675,6 +767,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     step("tidy", do_tidy)
     step("eval-scratch", lambda: swept.extend(sweep_eval_scratch(root)))
     step("compaction", do_compact)
+    step("build", do_build)
     step("commit", do_commit)
     step("worktrees", do_worktrees)
     step("sessions", lambda: ended.extend(ended_sessions(root, session)))
@@ -684,6 +777,8 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
     parts = [f"tidied {', '.join([*removed, *outside])}" if removed or outside
              else "nothing to tidy",
              f"compacted {moved} log entries" if moved else "",
+             f"the configured build changed {len(built)} file(s), in the tidy commit" if built
+             else "",
              f"removed finished worktrees {', '.join(gone)}" if gone else "",
              f"removed idle debug work copies {', '.join(n for n, _ in idle)} "
              f"({sum(m for _, m in idle)} MB freed)" if idle else "",
@@ -694,7 +789,7 @@ def land(root: Path, head: str, before: str, session: str | None = None) -> dict
              f"queued {queued} records for the judge",
              f"{len(cases)} cases went to debugging"]
     line = f"iaso: landing {head[:12]}: " + "; ".join(p for p in parts if p)
-    result = {"line": line, "removed": removed, "outside": outside, "archived": moved,
+    result = {"line": line, "removed": removed, "built": built, "outside": outside, "archived": moved,
               "queued": queued, "worktrees": gone, "kept": kept, "sessions": ended, "cases": len(cases),
               "post_merge": proofs, "owner_words": len(words_back)}
     summary.write_cases(open_core(root), head,

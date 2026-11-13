@@ -289,3 +289,13 @@ def test_the_scratch_repository_tests_with_the_hosts_python(tmp_path):
     scratch = run.scratch_repo(tmp_path / "s", host=host)
     assert load_config(scratch).verify.python == str(host / ".venv" / "bin" / "python")
     assert load_config(run.scratch_repo(tmp_path / "t")).verify.python == sys.executable
+
+
+def test_a_new_run_folder_removes_the_older_runs_of_its_series(tmp_path: Path) -> None:
+    """report-d5a411ff: runs of one series do not pile up; other series are left alone."""
+    for n in ("20260101T000001-proof-SR-1", "20260101T000002-proof-SR-1",
+              "20260101T000003-proof-SR-1", "20260101T000001-proof-SR-2"):
+        (tmp_path / n).mkdir()
+    new = run._new_run_dir(tmp_path, "20260101T000004-proof-SR-1")
+    assert sorted(d.name for d in tmp_path.iterdir()) == [
+        "20260101T000001-proof-SR-2", "20260101T000003-proof-SR-1", new.name]
