@@ -210,7 +210,10 @@ def _conflict(argv: list[str]) -> int:
         except Refused:
             held = mod.find(core, ref)
             print(owner_text.CHOOSE_REFUSED.format(theirs=held.labels[1]), file=sys.stderr)
-            print(owner_text.CHOOSE_ASK.format(ic=held.ic), file=sys.stderr)
+            # for the agent, not the owner: the question tool settles it (report-cee7804c)
+            print(f"iaso: or ask with the question tool: iaso conflict ask {held.ic} prints "
+                  "the question, and the owner's answer applies in this checkout",
+                  file=sys.stderr)
             return 3
     except Declined:
         print("iaso: nothing chosen", file=sys.stderr)
