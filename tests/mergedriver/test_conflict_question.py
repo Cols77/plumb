@@ -46,6 +46,7 @@ def test_the_answer_heard_in_main_settles_the_worktrees_conflict(held, hook_inpu
     root, feat, asked = held
     assert [o["label"] for o in asked["questions"][0]["options"]] == [
         "Keep main's version", "Keep feat-x's version", "Both"]
+    assert "SR-005" not in asked["questions"][0]["question"]
     _answer(root, hook_input, asked, "Keep feat-x's version")
     data = parse((feat / SR).read_text(encoding="utf-8"))[0]
     assert data["statement"] == THEIRS_STATEMENT and "conflict" not in data

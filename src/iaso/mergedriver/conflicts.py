@@ -571,7 +571,8 @@ def _asked(conflict: IntentConflict) -> tuple[dict[str, Any], dict[str, str | No
         why = f" {suggested.get('why')}" if first and suggested.get("why") else ""
         options.append({"label": label, "description": str(choice.get("consequence")) + why})
         takes[label] = take
-    return {"question": f'{conflict.record} "{conflict.title}": '
+    # SR-267: a question names the requirement by its title, never its id
+    return {"question": f'"{conflict.title}": '
                         f"{owner_text.CONFLICT_ISSUE.format(ours=ours, theirs=theirs)}. "
                         f"Which version holds?\n\n{said}",
             "header": "Conflict", "multiSelect": False, "options": options}, takes
