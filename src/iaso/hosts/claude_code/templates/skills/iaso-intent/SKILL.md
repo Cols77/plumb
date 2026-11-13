@@ -51,7 +51,9 @@ Stage A, clarify and integrate, until `{iaso} intent gate clarify` passes:
   `--post-merge`; the merge check does not hold on it and the turn after the landing asks
   for it. The question's first option, marked as the suggestion, is "An independent
   evaluator checks it for me": offer it in every loop, never take it as picked from an
-  earlier one. Picked: add `--evaluator` to each `{iaso} proof --plan` of the loop
+  earlier one. Unless the owner's standing choice is on (they typed `/iaso evaluator
+  always`): then do not offer it, add `--evaluator` to every proof as if picked, and run it.
+  Otherwise, picked: add `--evaluator` to each `{iaso} proof --plan` of the loop
   (`"evaluator": true` in a capture document's proof). Declined: nothing changes.
 - Capture with `{iaso} capture --prompt <digest> --file <doc.json>` (`"mode": "escalated"`
   in the intent for a big one), naming in `supersedes` every record a new one replaces.

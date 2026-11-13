@@ -408,7 +408,7 @@ def cmd_config(command: str, argv: list[str]) -> int:
 
     parser = _parser(command, "Owner settings: auto-approve on|off and show run in your own "
                      "terminal only (logged in the event log); card is retired.")
-    parser.add_argument("setting", choices=["auto-approve", "show", "card"])
+    parser.add_argument("setting", choices=["auto-approve", "evaluator", "show", "card"])
     parser.add_argument("value", nargs="?", default=None)
     parser.add_argument("--backend", default="jev")
     parser.add_argument("--min-probability", type=float, default=0.9)
@@ -424,6 +424,14 @@ def cmd_config(command: str, argv: list[str]) -> int:
             from iaso.config import CARD_RETIRED
 
             print(CARD_RETIRED)  # SR-173: the setting is retired and changes nothing
+            return 0
+        if args.setting == "evaluator":     # SR-434
+            from iaso.capture import evaluatorpref
+
+            if args.value not in (evaluatorpref.ALWAYS, evaluatorpref.ASK):
+                parser.error("evaluator takes always or ask")
+            evaluatorpref.set_terminal(core, args.value)
+            print(f"iaso: evaluator {args.value} (by: owner; logged)")
             return 0
         if args.value not in ("on", "off"):
             parser.error("auto-approve takes on or off")

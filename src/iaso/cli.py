@@ -117,7 +117,7 @@ intent capture:
   question     reword: your wording of the judge's questions (merged by principle)
   escalate     escalation suggestions; decline (the owner said no)
   spec         an escalated spec: show (every member in full, the set hash), state
-  config       auto-approve on|off and show (owner's terminal only)
+  config       auto-approve on|off, evaluator always|ask and show (owner's terminal only)
   jev          status, setup (the credential variable's name only), calibrate
   study        propose | add | list | candidates | mark: at most one study idea per
                intent-loop step, written once the owner accepts it, read in the browser
