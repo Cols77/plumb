@@ -503,7 +503,8 @@ class Verify:
         current = self.infra_hashes()
         recorded = full.get("infra") or {}
         for path in sorted(set(current) | set(recorded)):
-            if current.get(path) != recorded.get(path):
+            if current.get(path) != recorded.get(path) and \
+                    not self._bumped_only(path, recorded.get(path)):
                 reasons.append(f"{path} changed")
         still_failing = self._full_failures(full)
         if still_failing:
@@ -849,6 +850,26 @@ class Verify:
                            "regression": evidence[t].regression} for t in tests]}
 
     # -- helpers
+    def _bumped_only(self, rel: str, recorded: str | None) -> bool:
+        """A full run recorded before SR-254 EX-24 hashed pyproject.toml whole: it still counts
+        when the file it hashed (found in git history) differs from today's only in its version
+        line. shortcut: looks back 50 commits; drop once every branch has a newer full run."""
+        from iaso.normalize import sha256_text
+        from iaso.verify.evidence import _git
+        from iaso.verify.select import is_pyproject, without_version
+
+        if not recorded or not is_pyproject(rel):
+            return False
+        try:
+            now = without_version((self.root / rel).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return False
+        for commit in (_git(self.root, "log", "--format=%H", "-n50", "--", rel) or "").split():
+            old = _git(self.root, "show", f"{commit}:{rel}")
+            if old is not None and sha256_text(old) == recorded:
+                return without_version(old) == now
+        return False
+
     def infra_hashes(self) -> dict[str, str]:
         """Current hashes of every shared test infrastructure file present."""
         from iaso.verify.select import infra_digest, matches_infra

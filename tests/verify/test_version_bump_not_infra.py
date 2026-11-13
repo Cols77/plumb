@@ -63,3 +63,22 @@ def test_any_other_pyproject_change_still_needs_a_full_run(green: Path) -> None:
     core = open_core(green)
     verify = open_verify(core)
     assert fullrun.delta_plan(core, verify, fullrun.current_identity(core, verify)) is None
+
+
+def test_a_full_run_that_hashed_pyproject_whole_still_counts_after_a_bump(
+        repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A run recorded before EX-24 hashed the whole file; a later bump alone keeps it counting."""
+    from iaso.normalize import file_digest
+    from iaso.verify import select
+
+    make_project(repo)
+    write(repo, "pyproject.toml", VERSIONED)
+    commit_all(repo, "base")
+    with monkeypatch.context() as m:
+        m.setattr(select, "infra_digest", lambda rel, path: file_digest(path))
+        assert open_verify(open_core(repo)).run(full=True).ok
+    _bump(repo)
+    commit_all(repo, "a landing's bump")
+    assert not open_verify(open_core(repo)).full_pending().pending
+    _bump(repo, "# a pytest setting moved\n")
+    assert open_verify(open_core(repo)).full_pending().pending
