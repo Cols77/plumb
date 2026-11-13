@@ -104,7 +104,7 @@ def proof_lines(root: Path, ids: Iterable[str]) -> list[tuple[str, str]]:
         if record is None or confirmed(core, i):
             continue
         plan = " ".join(str((proof_of(record) or {}).get("plan") or "").split())
-        if evaluator_picked(record):    # SR-396 EX-4
+        if evaluator_picked(record, core):    # SR-396 EX-4, SR-434
             out.append((f"post-merge-proof:{i}",
                         f"iaso: {i} has landed and its proof was agreed as post-merge; the "
                         f"owner picked the independent evaluator: run iaso evaluate proof "

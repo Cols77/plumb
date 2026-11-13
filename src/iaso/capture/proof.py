@@ -78,10 +78,17 @@ def proof_entry(raw: Any, name: str = "proof") -> dict[str, str]:
     return entry
 
 
-def evaluator_picked(record: Record) -> bool:
-    """SR-396: whether the owner picked the independent evaluator for ``record``'s proof."""
+def evaluator_picked(record: Record, core: Core | None = None) -> bool:
+    """SR-396: whether the owner picked the independent evaluator for ``record``'s proof;
+    SR-434: with ``core``, also whenever their standing choice is on."""
     proof = proof_of(record)
-    return proof is not None and proof.get("evaluator") is True
+    if proof is not None and proof.get("evaluator") is True:
+        return True
+    if core is None:
+        return False
+    from iaso.capture import evaluatorpref
+
+    return proof is not None and evaluatorpref.always(core)
 
 
 def require_pick(core: Core) -> None:
@@ -89,9 +96,12 @@ def require_pick(core: Core) -> None:
     its open loop opened, answered a question offering the evaluator. A loop opened in main
     keeps its answers in main's log, so that log is read too."""
     from iaso.api import open_core
+    from iaso.capture import evaluatorpref
     from iaso.stale import current_session
     from iaso.understand import cmd_intent
 
+    if evaluatorpref.always(core):     # SR-434: the owner's standing choice is the pick
+        return
     root = Path(core.root)
     session = current_session(root)
     held = [d for _, d in cmd_intent.loops(root, session)
@@ -308,7 +318,7 @@ def unverified(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for record_id in ids:
         record = index.get(record_id)
-        if record is None or record.kind != "requirement" or not evaluator_picked(record) \
+        if record is None or record.kind != "requirement" or not evaluator_picked(record, core) \
                 or post_merge(record) or not shown_working(record) or confirmed(core, record_id):
             continue
         rows.append({"id": record_id, "title": record.title,
@@ -531,7 +541,7 @@ def run(command: str, argv: list[str]) -> int:
             raise CaptureError(f"the evaluator already gave a verdict on {args.sr}: the pick "
                                f"stays; the owner's yes still confirms it (iaso proof "
                                f"{args.sr} --ask)")
-        if args.evaluator and not evaluator_picked(record):
+        if args.evaluator and not evaluator_picked(record, core):
             require_pick(core)
         if args.plan is not None or args.kind is not None or args.post_merge is not None \
                 or args.evaluator is not None:
