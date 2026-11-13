@@ -361,7 +361,7 @@ def record_verdict(core: Core, sr_id: str, verdict: str, summary: str,
     payload = {"record": record.id, "hash": record.hash,
                "evidence_at": _flat(evidence_of(record).get("at"))}
     core.log_append("events", VERIFIED if ok else NOT_VERIFIED,
-                    {**payload, "where": where} if ok else payload)
+                    {**payload, "where": evidence_of(record).get("where")} if ok else payload)
     return {"verdict": verdict} if ok else {"verdict": verdict, "retry_left": first}
 
 
@@ -406,7 +406,8 @@ def unconfirmed_proofs(core: Core, ids: Sequence[str]) -> list[dict[str, Any]]:
 
 
 def _where(core: Core, where: str) -> str:
-    """A link as given; a path as a repository-relative path that exists."""
+    """A link as given; a path that exists as a repository-relative path, or, outside the
+    repository, as ``<name> (not kept)``."""
     where = where.strip()
     if "://" in where:
         return where
@@ -418,8 +419,8 @@ def _where(core: Core, where: str) -> str:
                            "path or a link")
     try:
         return path.resolve().relative_to(Path(core.root).resolve()).as_posix()
-    except ValueError:
-        return path.resolve().as_posix()
+    except ValueError:  # report-bb6888e4: a tracked record names no machine path
+        return f"{path.name} (not kept)"
 
 
 def _requirement(core: Core, sr_id: str) -> Record:
