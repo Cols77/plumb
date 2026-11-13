@@ -304,6 +304,9 @@ AWAITS_NOTHING = "awaits you: nothing"
 TYPED_CONFIRMED = "Confirmed: {titles}"
 TYPED_SETTLE_GONE = "That switch no longer exists; nothing changed. Records are confirmed by you, or by the judge reading your words when automatic confirmation is on."
 AUTO_APPROVE_SWITCHED = "Automatic confirmation is now {state}."
+EVALUATOR_SWITCHED = {
+    "always": "The independent evaluator now checks every proof; you are no longer asked to pick it.",
+    "ask": "The evaluator is offered at each proof question again."}
 AUTO_APPROVE_NOT_YET = "Automatic confirmation is switched on, but not in effect yet: {reason}."
 BACKLOG_DONE = "{judged} records judged, {questions} questions waiting for you"
 
