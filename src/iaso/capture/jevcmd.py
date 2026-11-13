@@ -280,7 +280,7 @@ def config_show(core: Core) -> list[str]:
     from iaso.capture.autoapprove import auto_approve_state
 
     refuse_under_marker("config show")
-    state = auto_approve_state(core)
+    state = auto_approve_state(core, with_model=True)
     mirror = core.config.auto_approve
     lines = [f"auto-approve: {'effective' if state.effective else state.reason}",
              f"  your last switch: {'on' if state.configured else 'off'}"

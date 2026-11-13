@@ -60,6 +60,30 @@ def heavy(cwd: Path, what: str) -> Iterator[None]:
         yield
 
 
+TMP_FLOOR_GB = 1   # the temp folder is often a small tmpfs: a lower floor than the disk's
+
+
+class SpaceShort(RuntimeError):
+    """report-dadc31d7: a heavy job does not start when the disk or the temp folder is short."""
+
+
+def _check_space(cwd: Path, what: str) -> None:
+    import shutil
+    import tempfile
+
+    if os.environ.get("IASO_SKIP_SPACE_CHECK"):    # the tests run on whatever disk they have
+        return
+    from iaso import selfdebug   # the disk floor of SR-402, one number for both (DEC-495)
+
+    for where, floor in ((Path(cwd), selfdebug.FLOOR_GB), (Path(tempfile.gettempdir()),
+                                                         TMP_FLOOR_GB)):
+        free = shutil.disk_usage(where).free / 1e9
+        if free < floor:
+            raise SpaceShort(f"{' '.join(what.split())} not started: only {free:.1f} GB free on "
+                             f"{where} (the floor is {floor} GB); free some space, then run it "
+                             "again")
+
+
 @contextlib.contextmanager
 def _heavy(cwd: Path, what: str) -> Iterator[None]:
     """Hold the lock for the block: wait while another job holds it (saying once what for),
@@ -67,6 +91,7 @@ def _heavy(cwd: Path, what: str) -> Iterator[None]:
     if os.environ.get(HELD):
         yield
         return
+    _check_space(cwd, what)
     lock = common_dir(Path(cwd)) / "iaso-heavy.lock"
     told = False
     while True:
@@ -103,9 +128,13 @@ def run(command: str, argv: list[str]) -> int:
     if not cmd or cmd[0] in ("-h", "--help"):
         print("usage: iaso heavy -- <command...>   run a command under the one-heavy-job lock")
         return 0 if cmd else 2
-    with heavy(Path.cwd(), "iaso heavy: " + " ".join(cmd)):
-        try:
-            return subprocess.run(cmd).returncode
-        except OSError as exc:
-            print(f"iaso: {exc}", file=sys.stderr)
-            return 127
+    try:
+        with heavy(Path.cwd(), "iaso heavy: " + " ".join(cmd)):
+            try:
+                return subprocess.run(cmd).returncode
+            except OSError as exc:
+                print(f"iaso: {exc}", file=sys.stderr)
+                return 127
+    except SpaceShort as exc:
+        print(f"iaso: {exc}", file=sys.stderr)
+        return 3

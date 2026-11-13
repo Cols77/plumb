@@ -429,7 +429,9 @@ def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
         digest = logged[-1].get("digest") if logged else None
     index = core.index()
     lines: list[str] = []
-    for entry in core.events():
+    from iaso import words
+
+    for entry in words.events_of(core, ("config", "approval")):
         payload = entry.payload
         if entry.kind == "config" and payload.get("via") == "typed" \
                 and payload.get("prompt_digest") == digest:

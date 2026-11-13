@@ -124,3 +124,30 @@ def test_status_prints_the_board_only_when_the_queue_is_not_empty(gitrepo: Path)
     run(gitrepo, "landing", "add", "intent/a", "--session", "s-a")
     out = run(gitrepo, "status")
     assert "intent/a" in out.stdout and "s-a" in out.stdout, out.stderr
+
+
+def test_a_heavy_job_does_not_start_when_the_disk_or_temp_is_short(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """report-dadc31d7 (b): refused with the numbers, the lock never taken."""
+    import shutil
+    from types import SimpleNamespace
+
+    from iaso import heavy
+
+    monkeypatch.delenv(heavy.HELD, raising=False)
+    monkeypatch.delenv("IASO_SKIP_SPACE_CHECK")
+    from iaso import selfdebug
+
+    monkeypatch.setattr(selfdebug, "FLOOR_GB", 5)    # the suite sets it to 0
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: SimpleNamespace(free=2 * 10**9))
+    with pytest.raises(heavy.SpaceShort, match=r"only 2\.0 GB free .*floor is 5 GB"):
+        with heavy.heavy(tmp_path, "iaso tests run"):
+            pass
+    small = tmp_path / "small"
+    small.mkdir()
+    monkeypatch.setattr("tempfile.tempdir", str(small))
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: SimpleNamespace(
+        free=(0.5 if Path(p) == small else 10) * 10**9))
+    with pytest.raises(heavy.SpaceShort, match="floor is 1 GB"):
+        with heavy.heavy(tmp_path, "iaso tests run"):
+            pass

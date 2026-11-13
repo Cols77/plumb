@@ -8,16 +8,25 @@ machine has it, and without it where it does not: a reader never fails for want 
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from iaso.log import OWNER_TEXT_FIELDS
 
 
+def events_of(core: Any, kinds: Collection[str]) -> Sequence[Any]:
+    """The events of ``kinds`` only, without loading the other kinds where the core can read
+    that way (a long-lived reader stays small as the log grows, report-30e224a3)."""
+    reader = getattr(core, "events_of", None)
+    if reader is not None:
+        return reader(kinds)
+    return [e for e in core.events() if e.kind in kinds]
+
+
 def held(core: Any) -> dict[str, Any]:
     """Digest -> the text of every ``owner-words`` entry this machine can read."""
     return {str(e.payload.get("digest")): e.payload.get("text")
-            for e in core.events() if e.kind == "owner-words"}
+            for e in events_of(core, ("owner-words",)) if e.kind == "owner-words"}
 
 
 def joined(core: Any, entry: Any, said: Mapping[str, Any] | None = None) -> dict[str, Any]:

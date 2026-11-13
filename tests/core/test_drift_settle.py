@@ -47,7 +47,8 @@ def project(repo: Path, write_record, monkeypatch) -> Path:
     open_core(repo).add_link("SR-001", "implemented_by", Target(path="src/calc.py", symbol="add"))
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "setup")
-    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (True, "passed"))
+    monkeypatch.setattr(links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (True, "passed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
     return repo
 
@@ -82,7 +83,8 @@ def test_ex1_a_refactor_that_keeps_the_meaning_is_repinned_with_no_card(
 def test_failing_tests_leave_the_link_stale_and_unrepinned(project: Path, monkeypatch) -> None:
     (project / "src" / "calc.py").write_text(REFACTORED, "utf-8")
     _models(monkeypatch, True)
-    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (False, "failed"))
+    monkeypatch.setattr(links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (False, "failed"))
     _settle(project)
     assert _state(project) == "stale"
 

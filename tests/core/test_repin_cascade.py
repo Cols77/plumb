@@ -306,7 +306,7 @@ def test_no_diagnoser_configured_is_the_plain_refusal(project: Path) -> None:
 
 def test_cli_prints_the_diagnosis(project: Path, capsys, monkeypatch) -> None:
     _edit(project, CHANGED)
-    monkeypatch.setattr(links, "default_runner", lambda core: _runner)
+    monkeypatch.setattr(links, "default_runner", lambda core, budget_s=None: _runner)
     monkeypatch.setattr(repin, "open_judge", lambda core: Judge(False, "add now multiplies"))
     monkeypatch.setattr(repin, "open_diagnoser",
                         lambda core: ModelDiagnoser(Dispatcher(OWNER)))
@@ -344,7 +344,7 @@ def test_dry_run_changes_nothing(project: Path, capsys, monkeypatch, selector: s
     if after_tests and selector == "--all-stale":
         pytest.skip("--after-tests takes one link id or record ID")
     _edit(project, REFORMATTED)
-    monkeypatch.setattr(links, "default_runner", lambda core: _runner)
+    monkeypatch.setattr(links, "default_runner", lambda core, budget_s=None: _runner)
     monkeypatch.setattr(repin, "open_judge", lambda core: Judge(True))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
     before = _snapshot(project)

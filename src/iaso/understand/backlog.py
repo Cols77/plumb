@@ -61,7 +61,9 @@ def proposed(core: Any) -> list[Any]:
 
 def latest_verdicts(core: Any) -> dict[str, Mapping[str, Any]]:
     out: dict[str, Mapping[str, Any]] = {}
-    for entry in core.events():
+    from iaso import words
+
+    for entry in words.events_of(core, ("verdict",)):
         if entry.kind == "verdict":
             out[str(entry.payload.get("id"))] = entry.payload
     return out
