@@ -133,3 +133,21 @@ def test_sr396_ex4_landing_names_the_evaluator_for_a_post_merge_proof(core) -> N
     picked, plain = lines["post-merge-proof:SR-001"], lines["post-merge-proof:SR-002"]
     assert "iaso evaluate proof SR-001" in picked and "--ask" not in picked
     assert "--ask" in plain and "evaluate" not in plain
+
+
+@pytest.mark.sr("SR-397")
+def test_a_verdict_names_its_evidence_by_repo_path_or_not_kept(core, tmp_path_factory) -> None:
+    """report-bb6888e4: the evaluator passes its run directory as an absolute path; the record
+    and the tracked proof-verified entry keep it repo-relative, or ``<name> (not kept)``
+    outside the repository, never the machine path."""
+    proof.record_verdict(core, "SR-001", "verified", "saw it", str(core.root / "run" / "out.txt"))
+    outside = tmp_path_factory.mktemp("elsewhere") / "run-7"
+    outside.mkdir()
+    proof.set_plan(open_core(core.root), "SR-002", "run it", "command", evaluator=True)
+    proof.record_verdict(open_core(core.root), "SR-002", "verified", "saw it", str(outside))
+    core = open_core(core.root)
+    logged = {e.payload["record"]: e.payload["where"] for e in core.events()
+              if e.kind == proof.VERIFIED}
+    assert logged == {"SR-001": "run/out.txt", "SR-002": "run-7 (not kept)"}
+    assert [proof.evidence_of(core.index()[i])["where"] for i in ("SR-001", "SR-002")] == [
+        "run/out.txt", "run-7 (not kept)"]
