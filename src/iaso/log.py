@@ -1432,13 +1432,15 @@ def untracked_own(tree: Path, status_line: str) -> bool:
     return status_line.startswith("?? ") and status_line[3:].startswith(skip)
 
 
-def full_runs_of_every_checkout(paths: Any) -> Iterator[LogEntry]:
+def full_runs_of_every_checkout(paths: Any, marker: bytes = rb'"full"\s*:\s*true'
+                                ) -> Iterator[LogEntry]:
     """The full runs in the test-run logs of this checkout and the repository's others, newest
     first by entry name, read-only (report-d188e19d: the merge check counts a branch worktree's
     run of the tree it merges). An entry's bytes are tried before it is parsed, as these
     logs run to hundreds of megabytes; an entry two checkouts share is read once, and one whose
-    digest does not hold is left out."""
-    is_full = re.compile(rb'"full"\s*:\s*true')
+    digest does not hold is left out. ``marker``: the bytes that pick the runs (another kind of
+    run: a covering run that extends a full one, ``fullrun.run_delta``)."""
+    is_full = re.compile(marker)
     names: dict[str, Path] = {}
     for root in (paths.root, *sibling_roots(paths)):   # every one: not capped at SIBLING_MAX
         folder = IasoPaths(root).log_kind_dir("test-run")
