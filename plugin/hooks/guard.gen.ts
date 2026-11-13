@@ -54,16 +54,6 @@ export const GUARD_TABLE: GuardRow[] = [
   {
     "words": [
       "config",
-      "evaluator"
-    ],
-    "firstOf": [],
-    "unless": null,
-    "legacy": true,
-    "why": "only the owner can do this, in their own terminal or by a button"
-  },
-  {
-    "words": [
-      "config",
       "show"
     ],
     "firstOf": [],
