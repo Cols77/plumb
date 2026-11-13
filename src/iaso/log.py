@@ -29,7 +29,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ PACK_VERSION = 1
 GIT_BATCH_MIN = 16
 GIT_BATCH_TIMEOUT_S = 10.0
 SIBLING_MAX = 16  # other worktrees whose pack caches a cold read may consult
+CHAIN_CHUNK = 512  # a cold chain index reads its misses this many at a time (bounded memory)
 STREAMS: tuple[LogStream, ...] = ("events", "evidence")
 STREAM_OF_KIND: dict[str, LogStream] = {"test-run": "evidence", "merge-evidence": "evidence"}
 
@@ -367,7 +368,24 @@ def _write_pack(paths: IasoPaths, stream: LogStream, fresh: dict[str, Any],
 def _scan(paths: IasoPaths, stream: LogStream) -> _Scan:
     """Every entry file of ``stream`` through the pack cache: a file whose size and mtime
     are unchanged is not read again; a vanished name is dropped."""
-    pack = _read_json(paths.log_pack(stream))
+    return _scan_dirs(paths, stream, _kind_dirs(paths, stream), IasoPaths.log_pack, stream)
+
+
+def _scan_kind(paths: IasoPaths, stream: LogStream, kind: str) -> _Scan:
+    """The entry files of one kind through that kind's own pack cache: the stream's pack
+    (every kind, parsed) is neither read nor written, so a reader of a few kinds holds
+    those kinds only."""
+    scan = _scan_dirs(paths, stream, [(kind, str(paths.log_kind_dir(kind)))],
+                      IasoPaths.log_kind_pack, kind)
+    if scan.changed:
+        _write_json_atomic(paths.log_kind_pack(kind), {"v": PACK_VERSION, "files": scan.fresh})
+    return scan
+
+
+def _scan_dirs(paths: IasoPaths, stream: LogStream, dirs: list[tuple[str, str]],
+               pack_of: Callable[[IasoPaths, str], Path], pack_key: str) -> _Scan:
+    """The entry files of ``dirs`` through the pack cache ``pack_of(paths, pack_key)``."""
+    pack = _read_json(pack_of(paths, pack_key))
     cached: dict[str, Any] = {}
     order: list[str] | None = None
     if isinstance(pack, dict) and pack.get("v") == PACK_VERSION \
@@ -379,7 +397,7 @@ def _scan(paths: IasoPaths, stream: LogStream) -> _Scan:
     out: dict[str, dict[str, Any]] = {}
     misses: list[tuple[str, str, int]] = []
     segments: list[str] = []
-    for kind, directory in _kind_dirs(paths, stream):
+    for kind, directory in dirs:
         prefix = kind + "/"
         for item in _entry_files(directory):
             if item.name == SEGMENT:
@@ -400,7 +418,7 @@ def _scan(paths: IasoPaths, stream: LogStream) -> _Scan:
                 fresh[name] = [size, mtime, None]
                 misses.append((name, item.path, size))
     if misses:  # read in one place, git's object store first (_read_uncached)
-        for name, raw in _read_uncached(paths, stream, misses).items():
+        for name, raw in _read_uncached(paths, stream, misses, pack_of, pack_key).items():
             fresh[name][2] = raw
             if raw is not None:
                 out[name] = raw
@@ -417,7 +435,9 @@ def _parse_entry(data: bytes) -> dict[str, Any] | None:
 
 
 def _read_uncached(paths: IasoPaths, stream: LogStream,
-                   misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any] | None]:
+                   misses: list[tuple[str, str, int]],
+                   pack_of: Callable[[IasoPaths, str], Path] = IasoPaths.log_pack,
+                   pack_key: str | None = None) -> dict[str, dict[str, Any] | None]:
     """The parsed content of the entry files the pack cache does not hold (``kind/file``,
     path, size on disk): the one place a reader reads an entry file.
 
@@ -439,7 +459,7 @@ def _read_uncached(paths: IasoPaths, stream: LogStream,
     reads the files themselves and reports the edit."""
     out: dict[str, dict[str, Any] | None] = {}
     if len(misses) >= GIT_BATCH_MIN:
-        out.update(_read_from_siblings(paths, stream, misses))
+        out.update(_read_from_siblings(paths, misses, pack_of, pack_key or stream))
         rest = [miss for miss in misses if miss[0] not in out]
         if len(rest) >= GIT_BATCH_MIN:
             out.update(_read_from_git(paths, rest))
@@ -500,7 +520,7 @@ def _worktree_roots(paths: IasoPaths) -> list[Path]:
     return sibling_roots(paths)[:SIBLING_MAX]
 
 
-def other_checkouts(paths: IasoPaths) -> list[LogEntry]:
+def other_checkouts(paths: IasoPaths, kinds: Collection[str] | None = None) -> list[LogEntry]:
     """The owner's-words entries (``OWNER_WORDS_KINDS``) the repository's other checkouts
     logged: read-only, from their entry files, found through git's own files (DEC-116). They
     are local, so a worktree does not have the main checkout's; an entry a checkout has itself
@@ -509,6 +529,8 @@ def other_checkouts(paths: IasoPaths) -> list[LogEntry]:
     seen: set[str] = set()
     for other in _worktree_roots(paths):
         for kind in sorted(OWNER_WORDS_KINDS):
+            if kinds is not None and kind not in kinds:
+                continue
             try:
                 names = sorted(n for n in os.listdir(IasoPaths(other).log_kind_dir(kind))
                                if n.endswith(".json"))
@@ -527,12 +549,14 @@ def other_checkouts(paths: IasoPaths) -> list[LogEntry]:
     return out
 
 
-def _read_from_siblings(paths: IasoPaths, stream: LogStream,
-                        misses: list[tuple[str, str, int]]) -> dict[str, dict[str, Any]]:
-    """The misses another worktree's pack cache holds with the same size on disk."""
+def _read_from_siblings(paths: IasoPaths, misses: list[tuple[str, str, int]],
+                        pack_of: Callable[[IasoPaths, str], Path],
+                        pack_key: str) -> dict[str, dict[str, Any]]:
+    """The misses another worktree's pack cache (the one this scan reads: the stream's, or
+    one kind's) holds with the same size on disk."""
     out: dict[str, dict[str, Any]] = {}
     for other in _worktree_roots(paths):
-        pack = _read_json(IasoPaths(other).log_pack(stream))
+        pack = _read_json(pack_of(IasoPaths(other), pack_key))
         valid = isinstance(pack, dict) and pack.get("v") == PACK_VERSION
         files = pack.get("files") if valid else None
         if not isinstance(files, dict):
@@ -718,6 +742,205 @@ def _all_entries(paths: IasoPaths, stream: LogStream,
     elif scan.changed:
         _write_pack(paths, stream, scan.fresh, None)
     return result
+
+
+class _Link:
+    """An entry's chain fields only: what ``_ordered`` needs to place it among every kind."""
+
+    __slots__ = ("name", "kind", "digest", "prev", "offset")
+
+    def __init__(self, name: str, kind: str, digest: str, prev: str, offset: int) -> None:
+        self.name, self.kind, self.digest, self.prev, self.offset = (
+            name, kind, digest, prev, offset)
+
+
+def _chain_row(raw: Mapping[str, Any] | None) -> list[str] | None:
+    """``[kind, at, digest, prev]`` of a parsed entry; the digests keep their last 16 hex
+    characters, which is all a match of ``prev`` to ``digest`` needs."""
+    if raw is None:
+        return None
+    return [str(raw.get("kind", "")), str(raw.get("at", "")),
+            str(raw.get("digest", ""))[-16:], str(raw.get("prev") or "")[-16:]]
+
+
+def chain_order(paths: IasoPaths, stream: LogStream,
+                since_offset: int = 0) -> list[tuple[str, str, int]]:
+    """``(name, kind, offset)`` of every entry of ``stream``, in the full read's order (by ``at``, the
+    chain through every kind, the name; the same keys and dedup as ``_all_entries``), through
+    a cache of those fields alone (``log_chain_pack``): a read of some kinds is ordered
+    exactly as the full read without holding the other kinds' payloads (report-30e224a3).
+    An entry counts under its own ``kind`` field, whatever folder holds it."""
+    pack = _read_json(paths.log_chain_pack(stream))
+    valid = isinstance(pack, dict) and pack.get("v") == PACK_VERSION
+    cached = pack["files"] if valid and isinstance(pack.get("files"), dict) else {}
+    cached_segments = (pack["segments"] if valid and isinstance(pack.get("segments"), dict)
+                       else {})
+    fresh: dict[str, Any] = {}
+    segments: dict[str, Any] = {}
+    misses: list[tuple[str, str, int]] = []
+    for kind, directory in _kind_dirs(paths, stream):
+        for item in _entry_files(directory):
+            try:
+                st = item.stat()
+            except OSError:
+                continue
+            size, mtime = st.st_size, st.st_mtime_ns
+            if item.name == SEGMENT:
+                hit = cached_segments.get(kind)
+                ok = (type(hit) is list and len(hit) == 3 and hit[0] == size
+                      and hit[1] == mtime and isinstance(hit[2], list))
+                segments[kind] = hit if ok else [size, mtime, None]
+                continue
+            name = f"{kind}/{item.name}"
+            hit = cached.get(name)
+            if type(hit) is list and len(hit) == 3 and hit[0] == size and hit[1] == mtime:
+                fresh[name] = hit
+            elif parse_name(item.name) is not None:
+                fresh[name] = [size, mtime, None]
+                misses.append((name, item.path, size))
+    changed = bool(misses) or fresh.keys() != cached.keys()
+    for start in range(0, len(misses), CHAIN_CHUNK):  # the payloads are dropped chunk by chunk
+        chunk = misses[start:start + CHAIN_CHUNK]
+        got = _read_from_git(paths, chunk) if len(chunk) >= GIT_BATCH_MIN else {}
+        for name, path, _size in chunk:
+            if name not in got:
+                try:
+                    got[name] = _parse_entry(_read_file(path))
+                except OSError:
+                    got[name] = None
+            fresh[name][2] = _chain_row(got[name])
+    if not LIVE_ONLY:
+        for kind, hit in segments.items():
+            if hit[2] is None:
+                changed = True
+                hit[2] = [[number, *row] for _, number, line in segment_lines(paths, stream, [kind])
+                          if (row := _chain_row(_parse_entry(line))) is not None]
+    changed = changed or segments.keys() != cached_segments.keys()
+    try:
+        legacy_present = paths.log_path(stream).stat().st_size > 0
+    except OSError:
+        legacy_present = False
+    order = pack.get("order") if valid and pack.get("live") is LIVE_ONLY else None
+    if not changed and not legacy_present and isinstance(order, list):
+        return [(name, kind, -1) for name, kind in order]  # warm: nothing moved since
+    links: list[tuple[tuple[Any, ...], _Link]] = []
+    seen: set[str] = set()
+    for name, (_size, _mtime, row) in fresh.items():
+        if row is None or row[2] in seen:
+            continue
+        seen.add(row[2])
+        links.append(((row[1], 1, *_sort_name(name), 0), _Link(name, row[0], row[2], row[3], -1)))
+    legacy = paths.log_path(stream).name
+    for number, offset, line in _legacy_lines(paths, stream, since_offset):
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(raw, dict):
+            continue
+        row = _chain_row(raw) or []
+        if row[2] in seen:
+            continue
+        seen.add(row[2])
+        links.append(((row[1], 0, "", "", offset),
+                      _Link(f"{legacy}:{number}", row[0], row[2], row[3], offset)))
+    if not LIVE_ONLY:
+        for kind, (_size, _mtime, rows) in segments.items():
+            for number, entry_kind, at, digest, prev in rows or ():
+                if digest in seen:
+                    continue
+                seen.add(digest)
+                name = f"{kind}/{SEGMENT}:{number}"
+                links.append(((at, 1, *_sort_name(name), 0),
+                              _Link(name, entry_kind, digest, prev, -1)))
+    ordered = [(link.name, link.kind, link.offset)
+               for link in _ordered(links)]  # type: ignore[arg-type]  # .digest, .prev only
+    if changed or not legacy_present:
+        data: dict[str, Any] = {"v": PACK_VERSION, "files": fresh, "segments": segments}
+        if not legacy_present:  # the order rests on the entry files alone: keep it
+            data.update(live=LIVE_ONLY, order=[[name, kind] for name, kind, _ in ordered])
+        _write_json_atomic(paths.log_chain_pack(stream), data)
+    return ordered
+
+
+def read_kinds(paths: IasoPaths, stream: LogStream, kinds: Iterable[str],
+               since_offset: int = 0, *,
+               order: Sequence[tuple[str, str, int]] | None = None) -> list[LogEntry]:
+    """``read(paths, stream, kinds)`` in the same order, loading the payloads of ``kinds``
+    only: an entry file through its folder's own pack cache (a file of a wanted kind in
+    another folder is read alone), an archived or legacy line from its file. For a reader
+    that lives long while the log grows (the worker, report-30e224a3). ``order``: a
+    ``chain_order`` the caller already holds."""
+    wanted = set(kinds)
+    if order is None:
+        order = chain_order(paths, stream, since_offset)
+    chosen = [item for item in order if item[1] in wanted]
+    raws: dict[str, Any] = {}
+    folders: set[str] = set()
+    archived: set[str] = set()
+    for name, _kind, _offset in chosen:
+        folder, _, rest = name.partition("/")
+        if not rest:
+            continue                      # a legacy line, below
+        if rest.startswith(SEGMENT + ":"):
+            archived.add(folder)
+        elif folder in wanted:
+            folders.add(folder)
+        else:                             # a wanted entry in another kind's folder
+            try:
+                raws[name] = _parse_entry(_read_file(str(paths.log_dir / name)))
+            except OSError:
+                pass
+    for folder in sorted(folders):
+        raws.update(_scan_kind(paths, stream, folder).files)
+    names = {name for name, _, _ in chosen}
+    if archived:
+        for kind, number, line in segment_lines(paths, stream, archived):
+            name = f"{kind}/{SEGMENT}:{number}"
+            if name in names:
+                raws[name] = _parse_entry(line)
+    if any("/" not in name for name in names):
+        legacy = paths.log_path(stream).name
+        for number, _offset, line in _legacy_lines(paths, stream, since_offset):
+            if f"{legacy}:{number}" in names:
+                raws[f"{legacy}:{number}"] = _parse_entry(line)
+    return [_to_entry(stream, raws[name], offset, name) for name, _, offset in chosen
+            if raws.get(name) is not None]
+
+
+def last_of(paths: IasoPaths, stream: LogStream, kinds: Collection[str],
+            match: Callable[[LogEntry], bool], *,
+            order: Sequence[tuple[str, str, int]] | None = None) -> LogEntry | None:
+    """The latest entry of ``kinds`` in the full read's order that ``match`` accepts, read one
+    entry at a time from the newest: the latest of a large kind without loading the kind."""
+    archives: dict[str, list[bytes]] = {}
+    for name, kind, offset in reversed(order or chain_order(paths, stream)):
+        if kind not in kinds:
+            continue
+        folder, _, rest = name.partition("/")
+        raw: dict[str, Any] | None = None
+        try:
+            if not rest:                  # a legacy line
+                raw = next((_parse_entry(line) for number, _, line in _legacy_lines(paths, stream)
+                            if f"{paths.log_path(stream).name}:{number}" == name), None)
+            elif rest.startswith(SEGMENT + ":"):
+                if folder not in archives:
+                    archives[folder] = (paths.log_kind_dir(folder) / SEGMENT).read_bytes(
+                    ).splitlines()
+                number = int(rest.rpartition(":")[2])
+                lines = archives[folder]
+                raw = _parse_entry(lines[number - 1]) if 0 < number <= len(lines) else None
+            else:
+                raw = _parse_entry(_read_file(str(paths.log_dir / name)))
+        except (OSError, ValueError):
+            continue
+        if raw is not None:
+            entry = _to_entry(stream, raw, offset, name)
+            if match(entry):
+                return entry
+    return None
 
 
 # --------------------------------------------------------------------------- head

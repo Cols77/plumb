@@ -115,7 +115,8 @@ def test_the_fix_jobs_pytest_runs_without_the_hook_variables(
 
     monkeypatch.setattr(selfdebug.subprocess, "run", run)
     monkeypatch.setattr(selfdebug, "heavy", lambda cwd, what: contextlib.nullcontext())
-    monkeypatch.setattr(iaso.links, "default_runner", lambda core: lambda paths: (True, ""))
+    monkeypatch.setattr(iaso.links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (True, ""))
     ok, _ = selfdebug._runner(SimpleNamespace(root=tmp_path))(["tests/test_a.py::test_b"])
     assert ok and seen["PYTHONPATH"] == str(tmp_path / "src")
     assert not set(GIT_HOOK_VARS) & set(seen)

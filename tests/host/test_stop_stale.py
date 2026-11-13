@@ -63,7 +63,8 @@ def judge_reachable_tests_fail(monkeypatch) -> None:
     from iaso import links
     from iaso.understand import repin
 
-    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (False, "failed"))
+    monkeypatch.setattr(links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (False, "failed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
     monkeypatch.setattr(repin, "open_judge", lambda core: SimpleNamespace())
 
@@ -257,7 +258,8 @@ def test_ex2_a_stale_check_waiting_for_the_judge_does_not_hold_the_turn(
     from iaso import links
     from iaso.understand import repin
 
-    monkeypatch.setattr(links, "default_runner", lambda core: lambda paths: (True, "passed"))
+    monkeypatch.setattr(links, "default_runner",
+                        lambda core, budget_s=None: lambda paths: (True, "passed"))
     monkeypatch.setattr(repin, "open_jev_tier", lambda core: None)
     monkeypatch.setattr(repin, "open_judge", lambda core: None)
     monkeypatch.setattr(repin, "judge_gap", lambda core: "no key")
