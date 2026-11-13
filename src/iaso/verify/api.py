@@ -851,8 +851,7 @@ class Verify:
     # -- helpers
     def infra_hashes(self) -> dict[str, str]:
         """Current hashes of every shared test infrastructure file present."""
-        from iaso.normalize import file_digest
-        from iaso.verify.select import matches_infra
+        from iaso.verify.select import infra_digest, matches_infra
 
         globs = tuple(self.core.config.verify.infra_globs)
         candidates = {p for p in self.test_map().files if matches_infra(p, globs)}
@@ -862,7 +861,7 @@ class Verify:
         out: dict[str, str] = {}
         for rel in sorted(candidates):
             try:
-                out[rel] = file_digest(self.root / rel)
+                out[rel] = infra_digest(rel, self.root / rel)
             except OSError:
                 continue
         return out

@@ -160,13 +160,24 @@ _ANCESTORS = 400                 # how far back in HEAD's history a full run's t
 
 def _paths_between(root: Any, tree: Any, other: Any) -> list[str] | None:
     """The paths that differ between two trees, outside ``.iaso/`` (records repinned after the
-    tests passed are the same code); None when git cannot tell."""
+    tests passed are the same code), except a pyproject.toml whose only change is its version;
+    None when git cannot tell."""
     from iaso.verify.evidence import _git
+
+    from iaso.verify.select import is_pyproject, without_version
 
     out = _git(root, "diff", "--name-only", "--no-renames", "-z", str(tree), str(other))
     if out is None:
         return None
-    return sorted(p for p in out.split("\0") if p and not p.startswith(".iaso/"))
+
+    def version_only(path: str) -> bool:   # the landing's version bump changes no test
+        if not is_pyproject(path):
+            return False
+        old, new = _git(root, "show", f"{tree}:{path}"), _git(root, "show", f"{other}:{path}")
+        return old is not None and new is not None and without_version(old) == without_version(new)
+
+    return sorted(p for p in out.split("\0")
+                  if p and not p.startswith(".iaso/") and not version_only(p))
 
 
 def _delta_selection(verify: Any, paths: Sequence[str]) -> Any:
