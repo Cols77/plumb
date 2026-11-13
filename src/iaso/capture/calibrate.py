@@ -32,6 +32,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from iaso import words
+
 if TYPE_CHECKING:
     from iaso.api import Core
 
@@ -156,7 +158,7 @@ def labelled_set(core: Core) -> list[Item]:
     items: list[Item] = []
     seen_rejected: set[tuple[str, str]] = set()
     corrected: set[tuple[str, str]] = set()
-    for entry in core.events():
+    for entry in words.events_of(core, ("rejection",)):
         if entry.kind != "rejection" or entry.payload.get("reason") != "capture-error":
             continue  # an intent change gets no label (SR-096, DEC-026 A)
         answered = entry.payload.get("by") == "owner-answer"
@@ -278,7 +280,7 @@ def logged_scores(core: Core) -> tuple[dict[tuple[str, str], float], str]:
 
     scores: dict[tuple[str, str], float] = {}
     model = ""
-    for entry in core.events():
+    for entry in words.events_of(core, ("verdict",)):
         payload = entry.payload
         if entry.kind != "verdict":
             continue
@@ -397,13 +399,13 @@ def form_gap(core: Core, calibration: Any) -> str | None:
 
 
 def latest_calibration(core: Core) -> Any:
-    entries = [e for e in core.events() if e.kind == "calibration"]
+    entries = [e for e in words.events_of(core, ("calibration",)) if e.kind == "calibration"]
     return entries[-1] if entries else None
 
 
 def judge_calibrations(core: Core) -> list[Any]:
     """The calibrations made from the judge's logged scores (``source: logged``), oldest first."""
-    return [e for e in core.events()
+    return [e for e in words.events_of(core, ("calibration",))
             if e.kind == "calibration" and e.payload.get("source") == "logged"]
 
 

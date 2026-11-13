@@ -103,6 +103,15 @@ class IasoPaths:
             raise ValueError(f"unknown log stream: {stream}")
         return self.cache / f"log-{stream}.json"
 
+    def log_kind_pack(self, kind: str) -> Path:
+        """The pack cache of one kind's entry files (a read of some kinds only)."""
+        return self.cache / f"log-kind-{kind}.json"
+
+    def log_chain_pack(self, stream: str) -> Path:
+        """The chain fields (kind, at, digest, prev) of every entry of a stream: what orders
+        a read of some kinds exactly as the full read, without the payloads."""
+        return self.cache / f"log-chain-{stream}.json"
+
     def log_path(self, stream: str) -> Path:
         """The legacy JSONL file of a stream (read during the transition, SR-074)."""
         if stream == "events":

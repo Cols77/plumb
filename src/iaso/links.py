@@ -7,6 +7,7 @@ Repinning refreshes pins, logs a ``repin`` event and never confirms anything.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -553,15 +554,42 @@ def end_texts(root: Path, link: Link) -> tuple[str, str] | None:
 
 
 REPIN_BUDGET_S = 120.0  # an explicit repin is not a hook: the turn budget would cut it short
+# SR-310: inside a hook the stale check gets the hook's remaining time, never more; a link it
+# cannot reach in time waits (SR-174), it is not refused and no case is opened
+OUT_OF_TIME = "the stale check ran out of the hook's time"
 
 
-def default_runner(core: Core) -> Callable[[list[str]], tuple[bool, str]]:
-    """Run the covering tests of the changed paths through the verification lane."""
+def test_budget_s(core: Core, budget_s: float | None) -> float:
+    """The test run's budget: ``REPIN_BUDGET_S``, or less so that the run's kill, which the
+    lane sets at ``budget * verify.hard_limit_factor``, lands inside the ``budget_s`` left."""
+    if budget_s is None:
+        return REPIN_BUDGET_S
+    factor = max(float(core.config.verify.hard_limit_factor), 1.0)
+    return min(REPIN_BUDGET_S, max(float(budget_s), 0.0) / factor)
+
+
+def _time_limit(model: Any, seconds: float | None) -> None:
+    """Cut ``model``'s next call to ``seconds`` when it can be (``time_limit``, on the
+    judges of ``understand.repin``); a stub without one is left alone."""
+    limit = getattr(model, "time_limit", None)
+    if seconds is not None and callable(limit):
+        limit(max(float(seconds), 0.0))
+
+
+def default_runner(core: Core,
+                   budget_s: float | None = None) -> Callable[[list[str]], tuple[bool, str]]:
+    """Run the covering tests of the changed paths through the verification lane, within
+    ``budget_s`` (the caller's remaining time; ``REPIN_BUDGET_S`` for an explicit repin)."""
 
     def run(paths: list[str]) -> tuple[bool, str]:
         from iaso.verify import open_verify
 
-        report = open_verify(core).run(changed=paths, budget_s=REPIN_BUDGET_S)
+        report = open_verify(core).run(changed=paths, budget_s=test_budget_s(core, budget_s))
+        deferred = getattr(getattr(report, "selection", None), "deferred", ())
+        if budget_s is not None and (report.timed_out if report.run_id is not None
+                                     else bool(deferred)):
+            # the hook's time ran out before the tests did: the check waits, nothing failed
+            return False, OUT_OF_TIME
         if report.run_id is None:
             # SR-166: an untested end is judged on meaning alone; the judge below still gates
             return True, "no test covers " + ", ".join(paths) + ": judged on meaning only"
@@ -597,7 +625,7 @@ def repin_after_tests(core: Core, selector: str, *,
                       runner: Callable[[list[str]], tuple[bool, str]] | None = None,
                       judge: Any = None, jev: Any = None, diagnoser: Any = None,
                       session: str | None = None, dry_run: bool = False,
-                      auto: bool = False) -> AfterTests:
+                      auto: bool = False, budget_s: float | None = None) -> AfterTests:
     """Repin the stale links of ``selector`` (a link id or a record id) whose linked tests
     pass and whose change a model judges not to alter what the requirement relies on; refuse
     the others, with why. The judging is a cascade (SR-114): ``jev`` (the JEV tier, off
@@ -610,11 +638,29 @@ def repin_after_tests(core: Core, selector: str, *,
     where the command only tells the agent to reword. A link to a record (a decision's
     ``decides``) runs no tests: the record as pinned and as it is now go to the same cascade,
     and a changed meaning is one owner question through the question tool (SR-300 EX-3), not a
-    diagnosis. Never confirms anything."""
+    diagnosis. ``budget_s`` (SR-310, a hook's remaining time): the test run is bounded by it,
+    each model call is cut to the time left and none starts past it; the links not reached
+    wait (``unreachable`` says why), as when no model answers. Never confirms anything."""
     result = AfterTests()
     states = _select_stale(core, selector)
     candidates = list(states)   # a reworded requirement is judged too (its old wording shown)
     if not candidates:
+        return result
+    end = None if budget_s is None else time.monotonic() + max(float(budget_s), 0.0)
+
+    def left() -> float | None:
+        return None if end is None else end - time.monotonic()
+
+    def out_of_time(link_id: str) -> bool:
+        if end is None or time.monotonic() < end:
+            return False
+        result.refused.append((link_id, OUT_OF_TIME))
+        result.unreachable = OUT_OF_TIME
+        return True
+
+    if end is not None and time.monotonic() >= end:
+        for s in candidates:
+            out_of_time(s.link.id)
         return result
     from iaso.understand import repin as meaning_check
 
@@ -629,8 +675,15 @@ def repin_after_tests(core: Core, selector: str, *,
     untested = ""
     paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
     if not dry_run and paths:   # a link to a record (SR-300 EX-3) has no tests to run
-        ok, detail = (runner or default_runner(core))(paths)
-        if not ok:
+        if runner is None:   # an explicit repin keeps the plain call
+            runner = default_runner(core) if end is None else default_runner(core, left())
+        ok, detail = runner(paths)
+        if not ok and detail == OUT_OF_TIME:
+            result.refused += [(s.link.id, OUT_OF_TIME)
+                               for s in candidates if target_path(s.link.target)]
+            result.unreachable = OUT_OF_TIME
+            candidates = [s for s in candidates if not target_path(s.link.target)]
+        elif not ok:
             result.refused += [(s.link.id, f"its linked tests do not pass ({detail})")
                                for s in candidates if target_path(s.link.target)]
             candidates = [s for s in candidates if not target_path(s.link.target)]
@@ -641,6 +694,8 @@ def repin_after_tests(core: Core, selector: str, *,
     index = core.index()
     for state in candidates:
         link = state.link
+        if out_of_time(link.id):   # SR-310: a judge call past the deadline outlives the hook
+            continue
         target = index.get(link.target.record or "")
         texts = (_record_texts(core.root, target, link) if link.target.record is not None
                  else end_texts(core.root, link))
@@ -668,6 +723,7 @@ def repin_after_tests(core: Core, selector: str, *,
                 "supersedes the earlier one on the same point, so a change that applies it "
                 "keeps the meaning:\n"
                 + "\n".join(f"{d.id}: {record_text(d)}" for d in newer))
+        _time_limit(jev, left())   # SR-310: no model call outlives the hook's time
         p = jev.clears(**shown) if jev is not None else None
         if p is not None:   # EX-1: JEV alone, above its calibrated threshold
             why = f"JEV gives {p:.2f}, at or above its threshold {jev.threshold:.2f}"
@@ -676,6 +732,9 @@ def repin_after_tests(core: Core, selector: str, *,
         if judge is None:   # EX-6 leads to Sonnet; without it nothing is repinned on a guess
             result.refused.append((link.id, NO_MODEL))
             continue
+        if out_of_time(link.id):   # JEV used the time up: Sonnet does not start
+            continue
+        _time_limit(judge, left())
         try:
             meaning = judge.same_meaning(**shown)
         except Exception as exc:  # noqa: BLE001 - an unreachable model refuses
@@ -689,9 +748,11 @@ def repin_after_tests(core: Core, selector: str, *,
         elif not meaning.unchanged and target is not None:   # SR-300 EX-3, SR-221
             _ask_owner(core, result, record, target, link, shown, meaning.reason, session,
                        dry_run)
+        elif not meaning.unchanged and out_of_time(link.id):   # Opus would outlive the hook
+            pass
         elif not meaning.unchanged:
             _diagnose(core, result, record, link, shown, meaning.reason, diagnoser,
-                      session, dry_run, auto)
+                      session, dry_run, auto, budget_s=left())
         else:
             _repinned(core, result, link.id, "sonnet", meaning.reason + untested, dry_run)
     return result
@@ -859,9 +920,10 @@ def _diff_summary(before: str, after: str, path: str) -> str:
 
 def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
               shown: Mapping[str, str], reason: str, diagnoser: Any, session: str | None,
-              dry_run: bool, auto: bool = False) -> None:
+              dry_run: bool, auto: bool = False, budget_s: float | None = None) -> None:
     """Sonnet says the change matters: Opus says which way it goes (SR-113, SR-114 EX-3..5).
-    No diagnosis (no model, no usable answer) is the plain refusal: nothing is guessed."""
+    No diagnosis (no model, no usable answer) is the plain refusal: nothing is guessed.
+    ``budget_s`` (SR-310): the time left to the hook; Opus's call is cut to it."""
     from iaso.understand import repin as meaning_check
 
     refusal = CHANGED.format(reason=reason)
@@ -870,6 +932,7 @@ def _diagnose(core: Core, result: AfterTests, record: Record | None, link: Link,
     if diagnoser is None:
         result.refused.append((link.id, refusal))
         return
+    _time_limit(diagnoser, budget_s)
     path = shown["path"]
     change = meaning_check.diff(shown["before"], shown["after"], path)
     turn = meaning_check.turn_before(core, path)
