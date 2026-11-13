@@ -1,3 +1,3 @@
 """iaso: keep agent work aligned with the owner's intent."""
 
-__version__ = "0.1.1648"
+__version__ = "0.1.1651"
