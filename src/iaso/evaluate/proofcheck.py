@@ -89,12 +89,12 @@ def _fingerprint(root: Path) -> str:
 
 
 def live(root: Path, binary: str, env: dict[str, str]) -> str:
-    """SR-397 EX-10: the evaluator's sandbox drives claude and the judge. The folder of the installed
-    ``claude`` goes first on
-    ``env``'s PATH, so the evaluator's shell and its ``iaso evaluate case`` runs find it. The
-    judge's key is read where it already lives (the environment or the user's own store, under
-    the unchanged HOME): only the place is named here, the key is never copied, printed or
-    written. Returns the brief's line saying what the sandbox can drive."""
+    """SR-397 EX-10: the evaluator's sandbox drives claude and the judge. The folder of the
+    installed ``claude`` goes first on ``env``'s PATH, so the evaluator's shell and its
+    ``iaso evaluate case`` runs find it. The judge's key is read where it already lives (the
+    environment or the user's own store, under the unchanged HOME): only the place is named
+    here, the key is never copied, printed or written. Returns the brief's line saying what the
+    sandbox can drive."""
     from iaso.config import load_config
     from iaso.judgment.jev import credential_env, key_source
 
@@ -134,7 +134,9 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
     stamp = time.strftime("%Y%m%dT%H%M%S")
     run_dir = runmod._new_run_dir(runs_dir or state_dir(root) / "eval" / "runs",
                                   f"{stamp}-proof-{name}")
-    binary = binary or shutil.which("claude")
+    from iaso.hosts.claude_code import claude_binary
+
+    binary = binary or claude_binary()
     if binary is None:
         verdict, summary = "could not check", "the claude command was not found on this machine"
         return _keep(run_dir, None, name, verdict, summary, "")
