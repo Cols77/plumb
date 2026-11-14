@@ -127,3 +127,20 @@ def test_dec_404_the_merge_verification_names_no_test_of_a_frozen_part(repo: Pat
                                    "regressions": [frozen["test"], live["test"]]})
     assert out == {"failing": {"SR-001": [live]}, "unverified": {},
                    "regressions": [live["test"]]}
+
+
+@pytest.mark.sr("SR-254")
+def test_report_921ca986_the_merge_verification_skips_files_the_runner_never_runs(
+        repo: Path) -> None:
+    """report-921ca986: a helper module or a .test.ts file linked as a test is never run, so
+    it holds no merge as unverified; the landing's counts skip the same files."""
+    from iaso.merge import live_verification, pytest_file
+
+    core = open_core(repo)
+    test = {"test": "tests/awareness/test_x.py::test_y", "examples": ["EX-1"]}
+    helpers = [{"test": t, "examples": []} for t in (
+        "tests/awareness/gitrepo.py", "tests/awareness/__init__.py", "ui/src/test/App.test.ts")]
+    out = live_verification(core, {"unverified": {"SR-001": [*helpers, test],
+                                                  "SR-002": helpers}})
+    assert out["unverified"] == {"SR-001": [test]}
+    assert pytest_file("tests/a/b_test.py::t") and not pytest_file("tests/a/conftest.py")
