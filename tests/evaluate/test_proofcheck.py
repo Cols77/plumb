@@ -93,7 +93,7 @@ def test_sr397_ex7_fresh_session_with_only_the_subject_outside_the_repo(core) ->
     fake = Fake()
     go(core, ["SR-001"], fake)
     call = fake.calls[0]
-    assert call["session_id"] is None and call["system"] == proofcheck.BRIEF
+    assert call["session_id"] is None and call["system"].startswith(proofcheck.BRIEF)
     for text in ("Thing SR-001", "given a thing; when it runs; then it works",
                  "run the SR-001 command", str(core.root)):
         assert text in call["message"]
@@ -112,6 +112,57 @@ def test_sr397_ex8_case_folder_loads_and_iaso_evaluate_case_runs_it(tmp_path, mo
     monkeypatch.setattr("iaso.evaluate.run.run_task", lambda root, t, **kw: seen.append(t))
     assert cli.main(["evaluate", "case", str(folder), "--root", str(tmp_path)]) == 0
     assert seen == [task]
+
+
+def test_sr397_ex10_the_sandbox_finds_claude_and_reaches_the_judge(core, tmp_path,
+                                                                  monkeypatch) -> None:
+    """A case run in the evaluator's sandbox finds the installed claude although the launching
+    PATH lost its folder, and reaches the configured judge (stubbed: where iaso reads its key);
+    the key is in neither the brief, the message nor the run folder."""
+    import subprocess
+    import sys
+
+    from iaso.capture.configfile import update_section
+    from iaso.judgment import jev
+
+    installed = tmp_path / "npm" / "bin"
+    installed.mkdir(parents=True)
+    claude = installed / "claude"
+    claude.write_text("#!/bin/sh\n", encoding="utf-8")
+    claude.chmod(0o755)
+    home = tmp_path / "home"
+    (home / ".config" / "iaso").mkdir(parents=True)
+    key = "sk-evaluator-live-test-key"
+    store = home / ".config" / "iaso" / "jev"   # the user's store, in and out of the sandbox
+    store.write_text(key, encoding="utf-8")
+    monkeypatch.setattr(jev, "user_store_path", lambda: store)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    for name in ("TYPESAFE_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    update_section(core.root, "judgment", {"backend": "jev"})
+    src = str(Path(proofcheck.__file__).resolve().parents[2])
+    probe = ("import shutil; from pathlib import Path; from iaso.judgment.jev import key_source; "
+             "print(shutil.which('claude')); print(key_source(Path.cwd()))")
+    seen = {}
+
+    def sandbox(binary, scratch, message, **kw):
+        env = {**kw["env"], "PYTHONPATH": src}
+        seen.update(kw, message=message, out=subprocess.run(
+            [sys.executable, "-c", probe], env=env, cwd=scratch, capture_output=True,
+            text=True, check=True).stdout.split())
+        (scratch / "verdict.json").write_text(
+            json.dumps({"verdict": "verified", "summary": "saw it"}), encoding="utf-8")
+        return {"text": "done", "error": ""}
+
+    rows = proofcheck.evaluate_proofs(core, ["SR-001"], claude=sandbox, binary=str(claude))
+    assert seen["out"] == [str(claude), "user-store"]
+    assert str(claude) in seen["system"] and "the judge is set up" in seen["system"]
+    kept = [f.read_text(encoding="utf-8", errors="ignore")
+            for f in Path(rows[0]["run_dir"]).rglob("*") if f.is_file()]
+    assert all(key not in text for text in (seen["system"], seen["message"], *kept))
+    monkeypatch.setattr(jev, "user_store_path", lambda: tmp_path / "no-key")
+    assert "no judge key is set up" in proofcheck.live(core.root, str(claude), {"PATH": "/bin"})
 
 
 def test_dec471_an_evaluator_that_changes_the_tree_could_not_check(core) -> None:
