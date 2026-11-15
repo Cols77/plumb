@@ -216,11 +216,10 @@ class FixerDispatcher:
         raise RuntimeError("no host is configured")   # unreachable: hosts is not empty
 
     def run_claude(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
-        import shutil
-
+        from iaso.hosts.claude_code import claude_binary
         from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
-        binary = shutil.which("claude")
+        binary = claude_binary()
         if binary is None:
             raise RuntimeError("the claude command was not found on this machine")
         done = subprocess.run(self.command(binary, model), input=user, capture_output=True,
@@ -436,9 +435,9 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
         debug.resolve(root, [case["id"]])
         return Outcome("landed", branch, f"already landed: {branch}")
-    import shutil
+    from iaso.hosts.claude_code import claude_binary
 
-    if shutil.which("claude") is None and fixer is None:   # no work copy for a missing command
+    if claude_binary() is None and fixer is None:   # no work copy for a missing command
         return Outcome("waiting", branch, "the claude command was not found on this machine; "
                        "the case stays open and runs again when it is found")
     made = not (state_dir(root) / "wt" / f"debug-{_slug(case['id'])}").exists()

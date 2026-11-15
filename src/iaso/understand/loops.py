@@ -560,7 +560,9 @@ def reopen(root: Path, *, words: str = "", loop: str = "", asker: str | None = N
     cwd, make, undo = _checkout_for(root, row)
     # the full path: a single-instance terminal (Ptyxis, GNOME Terminal) gives a new window the
     # desktop's PATH, not this shell's, so a bare "claude" is often not found there
-    command = [shutil.which("claude") or "claude", "--session-id", new, "-n", f"iaso: {row['goal'][:40]}",
+    from iaso.hosts.claude_code import claude_binary
+
+    command = [claude_binary() or "claude", "--session-id", new, "-n", f"iaso: {row['goal'][:40]}",
                brief(row, data, new)]
     main = next(w.path for w in checkouts(root) if w.main) if make else root
 
