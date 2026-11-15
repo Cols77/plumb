@@ -194,8 +194,11 @@ def _settle(core: Any, session: str, settlements: Any, confirmed: Mapping[str, s
     Logged as ``question-withdrawn`` (reason ``settled``) with what ``iaso question reopen``
     puts back."""
     from iaso import links
+    from iaso.mergedriver.driver import git_operation
     from iaso.understand import judge, worker
 
+    if git_operation(Path(core.root)) is not None:
+        return      # report-8f8dd5df: no repin mid-merge; the questions wait for the next tidy
     waiting = {str(q.get("key")): q for q in judge.open_anywhere(core)}
     for item in settlements:
         key, decision = str(item.get("question")), str(item.get("decision"))

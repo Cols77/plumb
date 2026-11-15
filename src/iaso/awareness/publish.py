@@ -224,6 +224,19 @@ def moved_since(data: Mapping[str, Any], branch: str | None, head: str | None) -
     return bool(published and head and published != head)
 
 
+def still_changed(root: Path, paths: Sequence[str]) -> list[str]:
+    """The ``paths`` that differ from HEAD or git does not track (one git call): a path put
+    back as HEAD holds it (an aborted merge, an undone edit) is no longer being changed."""
+    if not paths:
+        return []
+    out = _git(root, "status", "--porcelain", "-z", "--no-renames",
+               "--untracked-files=all", "--", *paths)
+    if out is None:
+        return list(paths)
+    changed = {entry[3:] for entry in out.split("\0") if len(entry) > 3}
+    return [p for p in paths if p in changed]
+
+
 def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None = None
             ) -> dict[str, Any] | None:
     """Write this worktree's ``changing.json``; returns what it holds (None outside git).
@@ -237,6 +250,12 @@ def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None 
     me = gitfiles.current(root)
     if me is None:
         return None
+    from iaso.mergedriver.driver import operation_at
+
+    if operation_at(me.gitdir) is not None:
+        # report-8f8dd5df: a merge's paths are the other line's work, never this
+        # worktree's edits; left pending, they outlived an aborted merge as R17 claims
+        changed_paths = ()
     path = changing_path(root)
     old = read_changing(path) or {}
     default = default_branch(core)
@@ -258,6 +277,7 @@ def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None 
         committed = list(old.get("committed") or [])
         added = list(old.get("added") or [])
         pending = sorted(set(old.get("pending") or []) | set(changed_paths))
+    pending = still_changed(root, pending)
     paths = sorted(set(committed) | set(pending))
     data: dict[str, Any] = {
         "v": VERSION, "worktree": root.resolve().as_posix(), "branch": me.branch,
