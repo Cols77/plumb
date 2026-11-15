@@ -60,7 +60,7 @@ for (const surface of SURFACES) {
 
     test('SR-305 EX-4: the strip opens the one pane on loops, which closes on Esc; the band stays', async ($, on) => {
       const { w, band, view } = await pressed($, on, surface)
-      expect(w.opens).toEqual([{ id: 'iaso-pane', columns: 80, closeOnEscape: true }])
+      expect(w.opens).toEqual([{ id: 'iaso-pane', columns: 400, closeOnEscape: true }])
       expect((await view.find({ type: 'Text', text: /^loops / }))?.props.bold).toBe(true)
       await view.unmount() // Esc: the host closes a pane opened with closeOnEscape
       expect(await band.find({ type: 'Text', text: 'build ●' })).toBeDefined()

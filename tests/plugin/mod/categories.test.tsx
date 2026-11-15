@@ -125,7 +125,7 @@ for (const surface of SURFACES) {
 
     test('SR-410 EX-1: the studies chip opens the pane: the switch with studies bold, the study rows below', async ($, on) => {
       const { w, view, band } = await open($, on, surface, { studies: [...IDEAS, NEW], known: [issue(1, 'open')] }, 'studies')
-      expect(w.opens).toEqual([{ id: PANE, columns: 80, closeOnEscape: true }])
+      expect(w.opens).toEqual([{ id: PANE, columns: 400, closeOnEscape: true }])
       for (const c of ['loops', 'studies', 'problems', 'judge', 'build']) expect(await view.find({ key: `class:${c}` })).toBeDefined()
       expect((await view.find({ type: 'Text', text: /^studies 3/ }))?.props.bold).toBe(true)
       expect(await view.find({ type: 'Text', text: /First idea/ })).toBeDefined()
