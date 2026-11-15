@@ -65,6 +65,10 @@ class ModelMeaningJudge:
         self.dispatcher = dispatcher
         self.name = f"{getattr(dispatcher, 'name', 'model')}:{getattr(dispatcher, 'model', '')}"
 
+    def time_limit(self, seconds: float) -> None:
+        """SR-310: the next call answers within ``seconds`` or not at all."""
+        _cut_timeout(self.dispatcher, seconds)
+
     def same_meaning(self, *, requirement: str, link_id: str, link_kind: str, path: str,
                      before: str, after: str, requirement_before: str = "") -> Meaning:
         """``requirement_before``: the requirement's wording at the pin when it was reworded
@@ -99,6 +103,16 @@ class ModelMeaningJudge:
         reason = str(answer.get("reason") or "").strip()
         confidence = float(answer.get("confidence") or 0.0)
         return Meaning(answer.get("verdict") == "unchanged", reason, confidence)
+
+
+def _cut_timeout(target: Any, seconds: float) -> None:
+    """Lower ``target.timeout_s`` (a dispatcher's, each host's of a fallback, or the JEV
+    client's) to ``seconds``, never raise it; a stub without one is left alone. Floored at
+    0.05 s: a zero timeout reads as "no timeout" to sockets and subprocesses alike."""
+    for host in getattr(target, "hosts", None) or [target]:
+        current = getattr(host, "timeout_s", None)
+        if isinstance(current, (int, float)):
+            host.timeout_s = max(min(float(current), float(seconds)), 0.05)
 
 
 def judge_gap(core: Any) -> str:
@@ -170,6 +184,10 @@ class JevTier:
 
     def __init__(self, backend: Any, threshold: float) -> None:
         self.backend, self.threshold = backend, float(threshold)
+
+    def time_limit(self, seconds: float) -> None:
+        """SR-310: JEV's HTTP call answers within ``seconds`` or the tier passes (to Sonnet)."""
+        _cut_timeout(getattr(self.backend, "client", None), seconds)
 
     def clears(self, *, requirement: str, link_id: str, link_kind: str, path: str,
                before: str, after: str, requirement_before: str = "") -> float | None:
@@ -279,6 +297,10 @@ class ModelDiagnoser:
     def __init__(self, dispatcher: Any) -> None:
         self.dispatcher = dispatcher
         self.name = f"{getattr(dispatcher, 'name', 'model')}:{getattr(dispatcher, 'model', '')}"
+
+    def time_limit(self, seconds: float) -> None:
+        """SR-310: the next call answers within ``seconds`` or there is no diagnosis."""
+        _cut_timeout(self.dispatcher, seconds)
 
     def diagnose(self, *, requirement: str, intents: list[dict[str, str]], link_id: str,
                  path: str, change: str, reason: str,

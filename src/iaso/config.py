@@ -198,7 +198,7 @@ LEVELS = ("haiku", "sonnet", "opus", "fable")   # SR-389: smallest to largest
 class UnderstandConfig:
     """SP8: the model-backed understanding layer."""
 
-    dispatch: str = "auto"       # auto | claude-code | hermes | openrouter
+    dispatch: str = "auto"       # auto | claude-code | codex | hermes | openrouter
     model: str = "haiku"
     judge_model: str = "haiku"       # SR-182: gives the verdict below JEV's threshold (or without JEV)
     repin_model: str = "sonnet"      # SR-111 EX-4: judges whether a stale link's change matters
@@ -248,6 +248,9 @@ class MergeConfig:
     default_base: str | None = None   # unset: the detected default branch
     prepush_run_full: bool = True
     guard_main: bool = True           # SR-384: the pre-tool hook refuses writes in main's checkout
+    # SR-296, SR-377: a build the landing job runs in main once per landing (argv; "{python}" is
+    # iaso's interpreter); what it changes rides the tidy commit. iaso's own: the plugin build
+    after_landing: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

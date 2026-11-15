@@ -1,8 +1,12 @@
-"""Dispatchers (ENGINE): ``configured(core)`` returns exactly one, never a second route.
+"""Dispatchers (ENGINE): ``configured(core)`` returns the one dispatcher the config names.
 
-``understand.dispatch`` in the config picks it: ``auto`` is ``claude-code`` under Claude Code and
-``hermes`` under Hermes (an error elsewhere), ``openrouter`` only when set. When the one
-dispatcher fails, the job fails with an error; nothing else is tried."""
+``understand.dispatch`` in the config picks it: one name, or several in order
+(``claude-code,codex``). ``auto`` is ``claude-code`` under Claude Code and ``hermes`` under
+Hermes (an error elsewhere); ``codex`` and ``openrouter`` only when set. Only when a host cannot
+serve (out of quota, not installed) does the next named host take the job
+(``FallbackDispatcher``); any other failure fails the job with an error and nothing else is
+tried. shortcut: ``understand.levels`` names one model for every host, so with several hosts
+leave the levels unmapped (each host then uses its own default per level)."""
 
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
-from iaso.contracts import Dispatcher, DispatchError, Job, NoModel
+from iaso.contracts import Dispatcher, DispatchError, Job, NoModel, host_unavailable
 
 
 class ScriptedDispatcher:
@@ -97,6 +101,39 @@ class Unlocked:
 budget_scale: ContextVar[int] = ContextVar("iaso_budget_scale", default=1)
 
 
+class FallbackDispatcher:
+    """report-6fb712c4: the hosts named in ``understand.dispatch`` (``claude-code,codex``), in
+    order. A job goes to the first; when that host cannot serve (out of quota, not installed:
+    ``host_unavailable``) the same job goes to the next and the step line says so. Any other
+    failure (a timeout, a bad answer) is not about the host and is not retried. When every host
+    fails, the error names each host and its cause."""
+
+    def __init__(self, hosts: list[Dispatcher]) -> None:
+        self.hosts = hosts
+        self.name = hosts[0].name
+
+    def available(self) -> str | None:
+        why = [f"{h.name}: {r}" for h in self.hosts if (r := h.available())]
+        return "; ".join(why) if len(why) == len(self.hosts) else None
+
+    def run(self, job: Job, *, system: str, user: str, schema: Mapping[str, Any],
+            on_step: Callable[[str], None]) -> Mapping[str, Any]:
+        failed: list[str] = []
+        for i, host in enumerate(self.hosts):
+            try:
+                answer = host.run(job, system=system, user=user, schema=schema, on_step=on_step)
+            except DispatchError as exc:
+                failed.append(f"{host.name}: {exc.message}")
+                if i + 1 < len(self.hosts) and host_unavailable(exc):
+                    on_step(f"{host.name} cannot serve ({exc.message[:80]}): "
+                            f"trying {self.hosts[i + 1].name}")
+                    continue
+                raise DispatchError(exc.step, "; ".join(failed)) from exc
+            self.name = host.name
+            return answer
+        raise DispatchError("run", "no host is configured")   # unreachable: hosts is not empty
+
+
 def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     """The one dispatcher; ``model`` overrides ``understand.model`` for one kind of job."""
     script = os.environ.get("IASO_FAKE_DISPATCH")
@@ -108,7 +145,12 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
     # SR-389: the stage settings name levels; a name that is no level is a model
     model = model_of(core.config if core is not None else Config(), model or settings.model)
     timeout_s = float(settings.timeout_s) * max(1, budget_scale.get())
-    choice = str(settings.dispatch or "auto").strip().lower()
+    choices = [c.strip() for c in str(settings.dispatch or "auto").lower().split(",") if c.strip()]
+    hosts = [_host(core, choice or "auto", model, timeout_s) for choice in choices or ["auto"]]
+    return hosts[0] if len(hosts) == 1 else FallbackDispatcher(hosts)
+
+
+def _host(core: Any, choice: str, model: str, timeout_s: float) -> Dispatcher:
     if choice == "auto":
         choice = host_dispatcher() or ""
         if not choice:
@@ -118,6 +160,12 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
         from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
         return ClaudeCodeDispatcher(model=model, timeout_s=timeout_s)
+    if choice == "codex":
+        from iaso.config import LEVELS
+        from iaso.understand.dispatch.codex import CodexDispatcher
+
+        # a level left unmapped (understand.levels) is no Codex model: Codex uses its own
+        return CodexDispatcher(model="" if model in LEVELS else model, timeout_s=timeout_s)
     if choice == "hermes":
         from iaso.understand.dispatch.hermes import HermesDispatcher
 
@@ -130,4 +178,4 @@ def configured(core: Any, *, model: str | None = None) -> Dispatcher:
             dispatcher.model = model
         return dispatcher
     raise NoModel(f"no model configured: {choice!r} is not a dispatcher "
-                  "(claude-code, hermes or openrouter)")
+                  "(claude-code, codex, hermes or openrouter)")

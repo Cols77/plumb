@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from iaso import debug
+from iaso.contracts import is_infra
 from iaso.heavy import heavy
 
 ISSUES_REPO = "Cols77/iaso"
@@ -42,7 +43,7 @@ READ_ONLY = "Read,Grep,Glob"       # SR-388: the diagnosis and the review get no
 
 @dataclass
 class Outcome:
-    state: str                  # fixed | landed | owner | held | reported | refused
+    state: str                  # fixed | landed | owner | held | reported | refused | waiting
     branch: str = ""
     detail: str = ""
     line: str = ""              # a line to say once (the judge could not be reached)
@@ -105,6 +106,8 @@ def landed(root: Path, branch: str) -> bool:
                            "HEAD"], cwd=root, capture_output=True).returncode == 0
 
 
+# The environment failed, not the case: such an error is no round, makes no report and leaves
+# no work copy; the case stays open and runs again when the cause is gone.
 FLOOR_GB = 5   # SR-402: refuse a new work copy below this free space (fixed; a setting if asked)
 
 
@@ -194,6 +197,25 @@ class FixerDispatcher:
 
     def __call__(self, *, round: int, worktree: Path, model: str, previous: list[str],
                  **given: Any) -> dict[str, Any]:
+        from iaso.config import load_config
+        from iaso.contracts import host_unavailable
+
+        user = json.dumps({"round": round, **given, "earlier_rounds": previous},
+                          ensure_ascii=False, indent=1)
+        # report-6fb712c4: the hosts of understand.dispatch in order; the next one takes the
+        # stage only when this one cannot serve (out of quota, not installed)
+        hosts = [h.strip() for h in load_config(Path(worktree)).understand.dispatch.split(",")]
+        for i, host in enumerate(hosts):
+            try:
+                if host == "codex":
+                    return self.run_codex(user, worktree, model)
+                return self.run_claude(user, worktree, model)
+            except Exception as exc:  # noqa: BLE001 - only a host that cannot serve moves on
+                if i + 1 == len(hosts) or not host_unavailable(exc):
+                    raise
+        raise RuntimeError("no host is configured")   # unreachable: hosts is not empty
+
+    def run_claude(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
         import shutil
 
         from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
@@ -201,13 +223,46 @@ class FixerDispatcher:
         binary = shutil.which("claude")
         if binary is None:
             raise RuntimeError("the claude command was not found on this machine")
-        user = json.dumps({"round": round, **given, "earlier_rounds": previous},
-                          ensure_ascii=False, indent=1)
         done = subprocess.run(self.command(binary, model), input=user, capture_output=True,
                               text=True, encoding="utf-8", cwd=worktree,
                               timeout=self.timeout_s)
         return dict(ClaudeCodeDispatcher.answer_of(done.stdout, done.returncode, done.stderr,
                                                    self.schema))
+
+    def run_codex(self, user: str, worktree: Path, model: str) -> dict[str, Any]:
+        """The same stage through ``codex exec`` (report-6fb712c4): the work copy is the working
+        directory; the run may write in it unless the stage is read-only (``tools`` set); no
+        model is named when ``model`` is a bare level, and Codex then uses its own."""
+        import shutil
+        import tempfile
+
+        from iaso.config import LEVELS
+        from iaso.understand import agents
+        from iaso.understand.dispatch.claude_code import cli_schema
+        from iaso.understand.dispatch.codex import CodexDispatcher, strict
+
+        binary = shutil.which("codex")
+        if binary is None:
+            raise RuntimeError("the codex command was not found on this machine")
+        scratch = Path(tempfile.mkdtemp(prefix="iaso-codex-"))     # outside the work copy
+        try:
+            (scratch / "schema.json").write_text(
+                json.dumps(strict(cli_schema(self.schema)), ensure_ascii=False), encoding="utf-8")
+            command = [binary, "exec", "--ephemeral", "--skip-git-repo-check", "--color", "never",
+                       "-s", "read-only" if self.tools else "workspace-write", "-C", str(worktree),
+                       "--output-schema", str(scratch / "schema.json"),
+                       "-o", str(scratch / "answer.json"),
+                       *([] if model in LEVELS else ["-m", model]), "-"]
+            done = subprocess.run(command, input=f"{agents.load(self.agent)}\n\n{user}",
+                                  capture_output=True, text=True, encoding="utf-8",
+                                  cwd=worktree, timeout=self.timeout_s)
+            try:
+                text = (scratch / "answer.json").read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        return dict(CodexDispatcher.answer_of(text, done.returncode, done.stderr, self.schema))
 
 
 @contextlib.contextmanager
@@ -381,6 +436,12 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
     if landed(root, branch):        # an earlier fix is in HEAD: nothing to run, nothing to merge
         debug.resolve(root, [case["id"]])
         return Outcome("landed", branch, f"already landed: {branch}")
+    import shutil
+
+    if shutil.which("claude") is None and fixer is None:   # no work copy for a missing command
+        return Outcome("waiting", branch, "the claude command was not found on this machine; "
+                       "the case stays open and runs again when it is found")
+    made = not (state_dir(root) / "wt" / f"debug-{_slug(case['id'])}").exists()
     try:
         wt, branch = _worktree(root, case["id"])
     except DiskShort as exc:
@@ -446,6 +507,12 @@ def fix(core: Any, case: dict[str, Any], *, rounds: int = 3, fixer: Any = None,
                         state, why = _verify(core, wt_core, wt, test, runner, judge, baseline,
                                              session, case)
                 except Exception as exc:  # noqa: BLE001 - a round that crashes is a failed round
+                    if is_infra(str(exc)) or getattr(exc, "errno", 0) == 28:
+                        if made and not _own_commits(root, branch) and not _changed(wt):
+                            _git(root, "worktree", "remove", "--force", str(wt), check=False)
+                        return Outcome("waiting", branch, f"{exc}; not counted as a round, "
+                                       "the case stays open and runs again when it is gone",
+                                       rounds=tried)
                     state, why = "fail", f"{type(exc).__name__}: {exc}"
                 if state == "owner":
                     end = "owner"

@@ -49,3 +49,5 @@ freeze:   # SR-380: asleep (Codex and Hermes are not frozen: owner, 2026-11-03)
   - src/iaso/evaluate
   - tests/evaluate
   - .iaso/eval
+merge:   # SR-377, DEC-548: only main builds the plugin, once per landing; branches commit no build
+  after_landing: ["{python}", scripts/build_plugin.py]

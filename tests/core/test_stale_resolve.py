@@ -183,7 +183,7 @@ def test_repin_never_confirms(project: Path) -> None:
 
 def test_cli_after_tests_refuses_without_a_model(project: Path, capsys, monkeypatch) -> None:
     _edit(project, REFORMATTED)
-    monkeypatch.setattr(links, "default_runner", lambda core: Runner())
+    monkeypatch.setattr(links, "default_runner", lambda core, budget_s=None: Runner())
     assert main(["repin", "--after-tests", LINK, "--root", str(project)]) == 1
     assert "no model" in capsys.readouterr().err
     assert _state(project) == "stale"

@@ -24,6 +24,7 @@ Runner = Callable[[Any], Any]
 # SR-108: the steps a merge check says it is on
 STEP_DECIDE = "checking the earlier full run"
 STEP_RUN = "running the full suite"
+STEP_DELTA = "running the tests the change since the last green full run affects"
 
 
 def _say(core: Any, step: str) -> None:
@@ -150,6 +151,138 @@ def _without_records(root: Any, tree: Any) -> str | None:
                      if line.split("\t", 1)[-1] != ".iaso")
 
 
+# --------------------------------------------------------------------------- after main moves
+
+DELTA_MARK = rb'"extends"\s*:'   # a covering run that brings a green full run up to date
+DELTA_BUDGET_S = 86400.0         # every covering test: such a run is never cut to a turn budget
+_ANCESTORS = 400                 # how far back in HEAD's history a full run's tree is looked for
+
+
+def _paths_between(root: Any, tree: Any, other: Any) -> list[str] | None:
+    """The paths that differ between two trees, outside ``.iaso/`` (records repinned after the
+    tests passed are the same code), except a pyproject.toml whose only change is its version;
+    None when git cannot tell."""
+    from iaso.verify.evidence import _git
+
+    from iaso.verify.select import is_pyproject, without_version
+
+    out = _git(root, "diff", "--name-only", "--no-renames", "-z", str(tree), str(other))
+    if out is None:
+        return None
+
+    def version_only(path: str) -> bool:   # the landing's version bump changes no test
+        if not is_pyproject(path):
+            return False
+        old, new = _git(root, "show", f"{tree}:{path}"), _git(root, "show", f"{other}:{path}")
+        return old is not None and new is not None and without_version(old) == without_version(new)
+
+    return sorted(p for p in out.split("\0")
+                  if p and not p.startswith(".iaso/") and not version_only(p))
+
+
+def _delta_selection(verify: Any, paths: Sequence[str]) -> Any:
+    """The covering tests of ``paths``, every one of them, or None when only a full run will do:
+    shared test infrastructure changed, a source file has no covering test, or nothing is
+    selected. shortcut: a change only to files no test covers (docs) needs a full run; let it
+    count with no run once such a change is common after main moves."""
+    selection = verify.select(list(paths), budget_s=DELTA_BUDGET_S)
+    if selection.infra_changed or selection.unknown_coverage or selection.deferred \
+            or not selection.nodes:
+        return None
+    return selection
+
+
+def _same_env(verify: Any, payload: Mapping[str, Any], env_now: dict[str, Any] | None
+              ) -> tuple[bool, dict[str, Any]]:
+    if env_now is None:
+        env_now = {"env_key": verify.env_key(), "identity": verify.identity(compute=True)}
+    env = payload.get("env") or {}
+    return all(env.get(k) == v for k, v in env_now.items()), env_now
+
+
+def delta_plan(core: Any, verify: Any, now: Mapping[str, Any]
+               ) -> tuple[Mapping[str, Any], list[str]] | None:
+    """SR-254 (owner, 2026-11-12, DEC-549): ``(base, paths)`` when a green full run of an earlier
+    tree of this branch (any checkout, same environment, the newest such run) can count for the
+    current clean tree once the covering tests of ``paths``, what differs since, pass; else None
+    (a full run is needed)."""
+    from iaso.log import full_runs_of_every_checkout
+    from iaso.normalize import canonical_json, sha256_bytes
+    from iaso.verify.evidence import _git
+
+    root = core.root
+    tree = now["tree"]
+    if tree.get("dirty") != sha256_bytes(canonical_json([])) or not tree.get("head_tree"):
+        return None
+    trees = set((_git(root, "log", "--format=%T", f"-n{_ANCESTORS}", "HEAD") or "").split())
+    env_now = None
+    for entry in full_runs_of_every_checkout(core.paths):
+        payload = entry.payload
+        run_tree = payload.get("tree") or {}
+        if run_tree.get("head_tree") not in trees or run_tree.get("head_tree") == \
+                tree["head_tree"] or run_tree.get("dirty") != tree["dirty"]:
+            continue
+        same, env_now = _same_env(verify, payload, env_now)
+        if not same:
+            continue
+        if not clean_pass(payload, core):
+            return None                      # the newest full run of this branch decides
+        paths = _paths_between(root, run_tree["head_tree"], tree["head_tree"])
+        if not paths or _delta_selection(verify, paths) is None:
+            return None
+        return payload, paths
+    return None
+
+
+def run_delta(core: Any, verify: Any, base: Mapping[str, Any], paths: Sequence[str]) -> Any:
+    """Run the covering tests of ``paths`` once, every one, recorded as extending ``base``."""
+    import sys
+
+    print(f"iaso: running the tests that {len(paths)} changed path(s) since the green full run "
+          f"{base.get('run_id')} affect (main moved; no new full run)", file=sys.stderr,
+          flush=True)
+    return verify.run(changed=list(paths), budget_s=DELTA_BUDGET_S, extends={
+        "run_id": base.get("run_id"), "tree": (base.get("tree") or {}).get("head_tree"),
+        "changed": list(paths)})
+
+
+def _delta_of_merged_tree(core: Any, verify: Any, merged: str, clean: str,
+                          env_now: dict[str, Any] | None) -> Mapping[str, Any] | None:
+    """A green covering run of the merged tree that extends a green full run (``run_delta``),
+    recorded in any checkout: it counts as that tree's full run when the paths it was given are
+    still exactly what differs since the full run's tree and it ran every covering test of
+    them. The newest such run decides."""
+    from iaso.log import full_runs_of_every_checkout
+
+    root = core.root
+    for entry in full_runs_of_every_checkout(core.paths, DELTA_MARK):
+        payload = entry.payload
+        extends, tree = payload.get("extends") or {}, payload.get("tree") or {}
+        if not extends or tree.get("dirty") != clean \
+                or _without_records(root, tree.get("head_tree")) != merged:
+            continue
+        same, env_now = _same_env(verify, payload, env_now)
+        if not same:
+            continue
+        if not clean_pass(payload, core):
+            return None
+        paths = _paths_between(root, extends.get("tree"), tree.get("head_tree"))
+        if paths is None or paths != sorted(extends.get("changed") or ()):
+            continue
+        base = next((e.payload for e in full_runs_of_every_checkout(core.paths)
+                     if e.payload.get("run_id") == extends.get("run_id")), None)
+        if base is None or not clean_pass(base, core) \
+                or (base.get("tree") or {}).get("head_tree") != extends.get("tree"):
+            continue
+        selection = _delta_selection(verify, paths)
+        ran = {str(n.get("id") or n.get("nodeid") or "").split("::", 1)[0]
+               for n in payload.get("nodes") or ()}
+        if selection is None or any(n.split("::", 1)[0] not in ran for n in selection.nodes):
+            continue
+        return payload
+    return None
+
+
 def run_of_merged_tree(core: Any, verify: Any) -> Mapping[str, Any] | None:
     """The green full run of the tree being merged that any checkout of this machine recorded,
     or None (SR-254, report-d188e19d). Each checkout logs its own runs, so main cannot otherwise
@@ -187,7 +320,8 @@ def run_of_merged_tree(core: Any, verify: Any) -> Mapping[str, Any] | None:
             return payload
         if completed_red(payload, core):
             return None
-    return None
+    # SR-254, DEC-549: main moved since the branch's green full run; its covering run counts
+    return _delta_of_merged_tree(core, verify, merged, clean, env_now)
 
 
 def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unverified: bool,
@@ -218,6 +352,16 @@ def full_run(core: Any, verify: Any, *, pending: bool, reasons: list[str], unver
     if latest is not None and not out["needed"]:
         out["run_id"] = latest.get("run_id")  # the run that satisfied full verification
     if not out["needed"] or not run_full:
+        return out
+    plan = delta_plan(core, verify, now)
+    if plan is not None:     # SR-254, DEC-549: only what changed since a green full run
+        _say(core, STEP_DELTA)
+        result = run_delta(core, verify, *plan)
+        out.update({"ran": True, "delta": plan[0].get("run_id"),
+                    "run_id": getattr(result, "run_id", None),
+                    "verdict": verdict_of(result, core),
+                    "failed": live_failures(list(getattr(result, "failed", None) or []),
+                                            core)[:50]})
         return out
     _say(core, STEP_RUN)
     import sys

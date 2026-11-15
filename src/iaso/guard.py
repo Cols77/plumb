@@ -66,6 +66,7 @@ TABLE: tuple[Row, ...] = (
     Row(("revoke",), _OWNER, legacy=True),
     Row(("tests", "waive"), _OWNER, legacy=True),
     Row(("config", "auto-approve"), _OWNER, legacy=True),
+    Row(("config", "evaluator"), _OWNER, legacy=True),   # SR-434
     Row(("config", "show"), _OWNER, legacy=True),
     Row(("turn", "start"), _LOG, legacy=True),
     Row(("hook", "prompt"), _LOG, legacy=True),

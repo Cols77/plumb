@@ -154,7 +154,7 @@ def evaluate_proofs(core: Any, ids: list[str], *, run: Any = evaluate,
     ids = list(dict.fromkeys(ids))
     records = [proof._requirement(core, i) for i in ids]
     for record in records:
-        if not proof.evaluator_picked(record):
+        if not proof.evaluator_picked(record, core):
             raise ValueError(f"the owner did not pick the evaluator for {record.id}: show the "
                              f"proof and ask them, iaso proof {record.id} --ask")
     def one(record: Any) -> Verdict:

@@ -213,7 +213,7 @@ def on_prompt(ctx: Any, core: Any, entry: Any) -> str | None:
 
     parsed = typed.parse(entry.get("text"))
     if parsed is not None:                # a typed "approve" is prose, read by meaning (SR-209)
-        if parsed.command == "auto-approve":
+        if parsed.command in ("auto-approve", "evaluator"):
             typed.switch_now(core, parsed, str(entry.get("digest") or ""), session)
         return None                       # auto-approve, undo, go, settle: no reading
     job = build(core, session, message=entry)
@@ -429,7 +429,9 @@ def confirmation_lines(core: Any, turn: Any = None) -> list[str]:
         digest = logged[-1].get("digest") if logged else None
     index = core.index()
     lines: list[str] = []
-    for entry in core.events():
+    from iaso import words
+
+    for entry in words.events_of(core, ("config", "approval")):
         payload = entry.payload
         if entry.kind == "config" and payload.get("via") == "typed" \
                 and payload.get("prompt_digest") == digest:

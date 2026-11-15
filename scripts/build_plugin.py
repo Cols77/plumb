@@ -2,7 +2,13 @@
 
     python scripts/build_plugin.py            # write every generated file and the wheel
     python scripts/build_plugin.py --check    # exit 1 naming what is stale; writes nothing
-    python scripts/build_plugin.py --no-wheel # the text files only (the wheel left as it is)
+    python scripts/build_plugin.py --no-wheel # the text files only: no version, no wheel
+    python scripts/build_plugin.py --check --no-wheel   # a branch's check: the text files only
+
+Only main builds the version and the wheel (SR-377, DEC-548): the landing job runs the full build
+once after each merge into main (``merge.after_landing``) and its tidy commit carries them. A
+branch commits neither; it runs ``--no-wheel`` after changing a template, and may build the
+whole plugin for a proof before merging, leaving that build uncommitted.
 
 GENERATED from the one source of each (so the legacy installer and the plugin never drift):
 
@@ -307,8 +313,9 @@ def manifest() -> dict[str, str]:
         return {}
 
 
-def stale() -> list[str]:
-    """What no longer matches its source (relative paths, with why)."""
+def stale(wheel: bool = True) -> list[str]:
+    """What no longer matches its source (relative paths, with why); ``wheel=False`` leaves out
+    the vendored wheel and its manifest, which only main rebuilds (SR-377)."""
     out = []
     expected = text_files()
     for path, content in expected.items():
@@ -326,11 +333,13 @@ def stale() -> list[str]:
                         (SRC / "__init__.py").read_text(encoding="utf-8"), re.MULTILINE)
     if not package or package.group(1) != version():
         out.append(f"{_rel(SRC / '__init__.py')}: version differs from pyproject.toml ({version()})")
+    if not wheel:
+        return out
     found = manifest()
-    wheel = VENDOR / wheel_name()
+    wheel_path = VENDOR / wheel_name()
     if found.get("version") != version() or found.get("wheel") != wheel_name():
         out.append("plugin/vendor/MANIFEST.json: names another version")
-    elif not wheel.is_file() or _sha256(wheel) != found.get("sha256"):
+    elif not wheel_path.is_file() or _sha256(wheel_path) != found.get("sha256"):
         out.append(f"plugin/vendor/{wheel_name()}: missing or not the one MANIFEST.json names")
     if found.get("source_digest") != source_digest():
         out.append("plugin/vendor: the wheel was built from another source (rebuild it)")
@@ -356,14 +365,16 @@ def build_wheel() -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true", help="name what is stale; write nothing")
-    parser.add_argument("--no-wheel", action="store_true", help="leave the wheel as it is")
+    parser.add_argument("--no-wheel", action="store_true",
+                        help="the text files only: the version and the wheel are main's (SR-377)")
     args = parser.parse_args(argv)
     if args.check:
-        found = stale()
+        found = stale(wheel=not args.no_wheel)
         for line in found:
             print(line)
         return 1 if found else 0
-    set_version(derived_version())
+    if not args.no_wheel:
+        set_version(derived_version())
     expected = text_files()
     for path, content in expected.items():
         path.parent.mkdir(parents=True, exist_ok=True)
