@@ -233,3 +233,17 @@ for (const surface of SURFACES) {
     })
   })
 }
+
+const WT = '/work/shop-wt'
+
+test('SR-291 EX-10: a loop handed to a worktree shows the worktree copy; its folder gone, main copy', async ($, on) => {
+  const handed = JSON.stringify({ ...JSON.parse(loop('clarify')), handed_to: { root: WT, session: 'sess-2' } })
+  const { w, ui } = await bandWith($, on, 'terminal', handed)
+  w.files[`${WT}/.iaso/session/sess-2/intent/aaaaaaaaaaaa.json`] = loop('build', { label: 'building', done: 7, total: 7, started_at: '2026-10-11T11:48:05Z' }, 'proof shown')
+  await $.turn.complete(TURN_DONE)
+  expect(await strip(ui)).toBe('clarify ✓  plan ✓  build ✗  proven ○ · stopped, waits for proof shown')
+  delete w.files[`${WT}/.iaso/session/sess-2/intent/aaaaaaaaaaaa.json`]
+  await $.turn.complete(TURN_DONE)
+  expect(await strip(ui)).toBe('clarify ●  plan ○  build ○  proven ○')
+  await ui.unmount()
+})
