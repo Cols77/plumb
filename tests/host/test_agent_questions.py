@@ -108,6 +108,74 @@ def test_one_wording_merges_two_questions_and_one_answer_settles_both(
     assert set(job.inputs["records"]) == {"SR-001", "INT-001"}
 
 
+FLAG_SHOWN = [{"label": "The change was needed (Recommended)", "description": "the flags go"},
+              {"label": "Not sure: restore the original check", "description": "they stay"}]
+FLAGGED = "Were the changes to the tests that failed needed, or made just to pass?"
+FLAGS = [("tests/test_a.py::test_one", ["SR-001"]),
+         ("tests/test_b.py::test_two[x y]", ["SR-001", "SR-002"])]
+
+
+def _reword_flags(repo: Path, *covers: str) -> int:
+    return question(repo, "reword", *(a for c in covers for a in ("--covers", c)),
+                    "--question", FLAGGED, "--header", "Changed tests",
+                    "--options", json.dumps(FLAG_SHOWN))
+
+
+def _needed(repo: Path) -> list[bool]:
+    from iaso.understand import testchange
+
+    answers = judge.answers_by_key(open_core(repo))
+    return [testchange.owner_needed(answers, node, srs) for node, srs in FLAGS]
+
+
+def test_one_wording_merges_two_flag_questions_and_one_answer_ends_both(
+        world: Path, hook_input) -> None:  # noqa: F811
+    """report-5f6565d7: the merge check's hidden-regression flag questions are in no session's
+    question file; a wording may cover them all the same, and the owner's one "needed" ends
+    every flag it covers (``testchange.owner_needed`` reads it by each flag's key)."""
+    from iaso.understand import testchange
+
+    texts = [testchange.flag_question(node, srs) for node, srs in FLAGS]
+    assert _reword_flags(world, *texts) == 0
+    (worded,) = judge.reworded(world, SESSION)
+    assert worded["covers"] == [judge.question_key(t) for t in texts]
+    assert _needed(world) == [False, False]
+    answer(world, hook_input, FLAGGED, FLAG_SHOWN[0]["label"], options=FLAG_SHOWN)
+    (entry,) = logged(world)
+    assert entry["asked"]["keys"] == worded["covers"] and entry["asked"]["records"] == []
+    assert _needed(world) == [True, True]
+    assert judge_jobs(world) == []                       # no record goes back to the judge
+    answer(world, hook_input, FLAGGED, FLAG_SHOWN[1]["label"], options=FLAG_SHOWN)
+    assert _needed(world) == [False, False]              # asked again: the later answer stands
+
+
+def test_a_flag_answer_given_before_the_rewording_ends_the_flags_it_covers(
+        world: Path, hook_input) -> None:  # noqa: F811
+    from iaso.understand import testchange
+
+    texts = [testchange.flag_question(node, srs) for node, srs in FLAGS]
+    answer(world, hook_input, FLAGGED, FLAG_SHOWN[0]["label"], options=FLAG_SHOWN)
+    assert _needed(world) == [False, False]
+    assert _reword_flags(world, *texts) == 0 and _reword_flags(world, *texts) == 0
+    (bound,) = events(world, "answer-bound")
+    assert bound["asked"]["keys"] == [judge.question_key(t) for t in texts]
+    assert _needed(world) == [True, True]
+
+
+def test_a_wording_covering_a_flag_and_a_judge_question_answers_both(
+        world: Path, hook_input) -> None:  # noqa: F811
+    from iaso.understand import testchange
+
+    flag = testchange.flag_question(*FLAGS[0])
+    judge_asks(world, (ASK, ["SR-001"]))
+    assert reword(world, ASK, flag) == 0
+    answer(world, hook_input, WORDED, "Every page", options=SHOWN)
+    (entry,) = logged(world)
+    assert entry["asked"]["keys"] == [judge.question_key(ASK), judge.question_key(flag)]
+    assert open_keys(world) == []
+    assert reword(world, "a flag nobody raised, or made just to pass?") == 1
+
+
 def test_a_wording_with_a_record_id_or_naming_no_open_question_is_refused(
         world: Path) -> None:  # noqa: F811
     """EX-1: the owner never sees an id; a key naming no open question records nothing."""
