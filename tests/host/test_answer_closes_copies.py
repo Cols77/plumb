@@ -148,3 +148,20 @@ def test_ex16_an_answer_to_a_registered_wording_closes_the_question_in_another_c
     (said,) = logged(world)
     assert said["asked"]["keys"] == [key]
     assert waiting(branch, "ended") == []
+
+
+def test_an_answer_in_a_worktree_reaches_main_past_the_worktree_cap(
+        world: Path, tmp_path: Path, monkeypatch: Any) -> None:
+    from iaso import log
+
+    _git(world, "add", "-A")
+    _git(world, "commit", "-q", "--no-verify", "-m", "records")
+    trees = [tmp_path / f"wt{i}" for i in range(4)]
+    for i, tree in enumerate(trees):
+        _git(world, "worktree", "add", "-q", "-b", f"wt{i}", str(tree))
+    ask(world, SESSION, ASK, "pages")
+    monkeypatch.setattr(log, "SIBLING_MAX", 1)   # main reads one worktree's words only
+    open_core(trees[0]).log_append_many("events", [("question-answer", {
+        "session": "elsewhere", "question": ASK, "answer": PICKED, "via": "question-tool",
+        "options": OPTIONS})])
+    assert waiting(world, SESSION) == []

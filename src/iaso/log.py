@@ -516,8 +516,19 @@ def sibling_roots(paths: IasoPaths) -> list[Path]:
 
 
 def _worktree_roots(paths: IasoPaths) -> list[Path]:
-    """``sibling_roots`` up to ``SIBLING_MAX``: what a read of the log may consult."""
-    return sibling_roots(paths)[:SIBLING_MAX]
+    """``sibling_roots`` up to ``SIBLING_MAX``: what a read of the log may consult. Those that
+    logged the owner's words last come first (report-307d2564: an answer given in a worktree's
+    session reaches the main checkout however many worktrees there are)."""
+    def last_words(root: Path) -> int:
+        times = [0]
+        for kind in OWNER_WORDS_KINDS:
+            try:
+                times.append(IasoPaths(root).log_kind_dir(kind).stat().st_mtime_ns)
+            except OSError:
+                continue
+        return max(times)
+
+    return sorted(sibling_roots(paths), key=last_words, reverse=True)[:SIBLING_MAX]
 
 
 def other_checkouts(paths: IasoPaths, kinds: Collection[str] | None = None) -> list[LogEntry]:
