@@ -543,12 +543,19 @@ def answers_by_key(core: Any) -> dict[str, str]:
     answer was bound to (``asked.key``, ``asked.keys``); free text and "Study it first" are
     no answer, and a closure the owner took back (``answer-unbound``) is gone."""
     out: dict[str, str] = {}
+    said: dict[str, str] = {}
     for e in core.events():
         if e.kind == "answer-unbound":
             out.pop(str(e.payload.get("key")), None)
+        elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping) \
+                and str(e.payload.get("answer")) in said:
+            # an answer given before its wording was registered (``_bind_earlier_answer``)
+            for key in e.payload["asked"].get("keys") or ():
+                out[str(key)] = said[str(e.payload.get("answer"))]
         elif e.kind == "question-answer" and not e.payload.get("free_text") \
                 and not e.payload.get("study"):
             answer = str(e.payload.get("answer") or "")
+            said[str(e.digest)] = answer
             out[question_key(str(e.payload.get("question") or ""))] = answer
             asked = e.payload.get("asked")
             if isinstance(asked, Mapping):
@@ -933,10 +940,16 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
     said = next((e for e in reversed(core.events()) if e.kind == "question-answer"
                  and e.payload.get("session") == session and not e.payload.get("asked")
                  and question_key(str(e.payload.get("question") or "")) == worded["key"]), None)
-    if not left or said is None:
+    if said is None:
         return
+    if not left:
+        _bind_flags(core, session, worded, said.digest)
+        return
+    from iaso.understand.testchange import flag_key
+
     asked = {"job": left[0].get("job"), "key": left[0].get("key"),
-             "keys": [q.get("key") for q in left],
+             "keys": [*(q.get("key") for q in left),
+                      *(k for k in worded["covers"] if flag_key(str(k)))],
              "records": list({(r.get("id"), r.get("hash")): r for q in left
                               for r in q.get("records") or () if isinstance(r, Mapping)}.values())}
     core.log_append_many("events", [("answer-bound", {"session": session, "answer": said.digest,
@@ -946,6 +959,22 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
     queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
         "records": list(dict.fromkeys(str(r.get("id")) for r in asked["records"])),
         "answered": [said.digest]}))
+
+
+def _bind_flags(core: Any, session: str, worded: Mapping[str, Any], digest: str) -> None:
+    """report-5f6565d7: the wording covers only hidden-regression flag questions (the merge
+    check's, in no session's question file): the earlier answer is pointed at each flag's key,
+    once; no record goes back to the judge, the next check reads it
+    (``testchange.owner_needed``)."""
+    from iaso.understand.testchange import flag_key
+
+    flags = [str(k) for k in worded["covers"] if flag_key(str(k))]
+    if not flags or any(e.kind == "answer-bound" and e.payload.get("answer") == digest
+                        for e in core.events()):
+        return
+    asked = {"job": None, "key": flags[0], "keys": flags, "records": []}
+    core.log_append_many("events", [("answer-bound", {"session": session, "answer": digest,
+                                                      "asked": asked})])
 
 
 def drop_settled_questions(core: Any, still_stale: Collection[str]) -> None:
