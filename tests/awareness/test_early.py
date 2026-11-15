@@ -408,3 +408,36 @@ def test_check_live_judges_the_opposite_even_when_wordier_records_outrank_it(
     lines = check_live(open_core(repo), ["SR-001"], backend=judge)
     assert any("never relays" in prompt for prompt, _ in judge.calls)
     assert any("SR-001 contradicts SR-007" in line for line in lines)
+
+
+def _merge_brings_the_other_version(tmp_path: Path, *, in_progress: bool) -> tuple[Path, bool]:
+    """main's checkout holds feat-x's SR-005 as a merge leaves it (``in_progress``: the merge
+    is not recorded yet); returns main and whether the turn-end claim wrote."""
+    import shutil
+    import subprocess
+
+    from iaso.awareness.publish import publish
+    from iaso.awareness.turn import claim_changes
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x version one")
+    shutil.copyfile(other / _SR005, main / _SR005)
+    if in_progress:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=other, capture_output=True,
+                              text=True, check=True).stdout
+        git_dir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=main,
+                                 capture_output=True, text=True, check=True).stdout.strip()
+        (Path(git_dir) / "MERGE_HEAD").write_text(head, encoding="utf-8")
+    return main, claim_changes(open_core(main), publish(open_core(main), [_SR005]))
+
+
+def test_a_merge_in_progress_claims_nothing_and_raises_no_decision(tmp_path: Path) -> None:
+    """Case report-fefe57f4: the records a merge brings into a checkout are the other
+    branch's; the turn end there writes no claim and no conflict decision file."""
+    main, wrote = _merge_brings_the_other_version(tmp_path, in_progress=True)
+    assert wrote is False and _decisions(main) == []
+
+
+def test_the_same_edit_outside_a_merge_is_still_claimed(tmp_path: Path) -> None:
+    main, wrote = _merge_brings_the_other_version(tmp_path, in_progress=False)
+    assert wrote is True
