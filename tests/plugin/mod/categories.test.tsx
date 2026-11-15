@@ -249,6 +249,48 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-412 EX-1: two open problems: the chip problems 2 in plum and no line per problem', async ($, on) => {
+      const { band } = await open($, on, surface, { known: [issue(1, 'open'), issue(2, 'open')] })
+      expect((await band.find({ type: 'Text', text: 'problems 2' }))?.props.color).toBe(PLUM.dark)
+      expect(await band.find({ type: 'Text', text: /problem \d|known problems/ })).toBeUndefined()
+      await band.unmount()
+    })
+
+    test('SR-412 EX-2: the problems chip opens problems bold; each problem a folded row with its state', async ($, on) => {
+      const { view, band } = await open($, on, surface, { known: [issue(1, 'open'), issue(2, 'fixed')] }, 'problems')
+      expect((await view.find({ type: 'Text', text: /^problems/ }))?.props.bold).toBe(true)
+      expect(await view.find({ type: 'Text', text: /problem 1.*open/ })).toBeDefined()
+      expect(await view.find({ type: 'Text', text: /problem 2.*fixed/ })).toBeDefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-412 EX-3: an expanded problem shows symptom, cause, fix, history; fixed rows are below, dim', async ($, on) => {
+      const { view, band } = await open($, on, surface, { known: [issue(2, 'fixed'), issue(1, 'open')] }, 'problems')
+      const rows = await view.findAll({ type: 'Text', text: /^.{0,3}problem \d/ })
+      expect(rows.map(t => t.text.match(/problem \d/)![0])).toEqual(['problem 1', 'problem 2'])
+      expect(rows[1]!.props.dimColor).toBe(true)
+      await view.press({ key: 'row:problems:KI-1' })
+      for (const s of ['symptom 1', 'cause 1', 'fix', 'history']) expect(await view.find({ type: 'Text', text: new RegExp(s) })).toBeDefined()
+      await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-412 EX-4: a fix lands while the pane is open: the row reads fixed and moves below', async ($, on) => {
+      const known = [issue(1, 'open'), issue(2, 'open')]
+      const { w, view, band } = await open($, on, surface, { known }, 'problems')
+      const fixed = [issue(1, 'fixed'), issue(2, 'open')]
+      w.files[REGISTER] = JSON.stringify({ issues: fixed })
+      const base = w.answer
+      w.answer = (a, v) => a === 'known' ? { exitCode: 0, data: { open: 1, issues: fixed } } : base(a, v)
+      await $.turn.complete({ answer: 'Done.', durationMs: 1000, isAborted: false, turnId: 't-1', reason: 'answer' as const })
+      const rows = await view.findAll({ type: 'Text', text: /problem \d/ })
+      expect(rows.map(t => t.text.match(/problem \d/)![0])).toEqual(['problem 2', 'problem 1'])
+      expect(rows[1]!.text).toMatch(/fixed/)
+      await view.unmount()
+      await band.unmount()
+    })
+
     const OLD = { lines: ["iaso 5ca4e4c is behind local main's 92d6d27: reload plugins"], unchecked: false }
 
     test('SR-413 EX-1: main rebuilt after the cache: one red build chip; the class names both builds and the fix', async ($, on) => {
