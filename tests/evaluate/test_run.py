@@ -78,7 +78,7 @@ def test_the_model_is_passed_and_named_in_the_folder(tmp_path):
 
 @pytest.mark.sr("SR-344")
 def test_no_claude_raises_before_any_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(run.shutil, "which", lambda name: None)
+    monkeypatch.setattr("iaso.hosts.claude_code.claude_binary", lambda path=None: None)
     with pytest.raises(RuntimeError, match="claude command was not found"):
         run.run_task(tmp_path / "root", task(tmp_path), model="haiku", owner=Owner(False),
                      runs_dir=tmp_path / "runs", claude=Claude())

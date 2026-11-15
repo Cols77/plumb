@@ -902,7 +902,8 @@ class Verify:
         return out
 
     def changed_paths(self) -> list[str]:
-        """``git status`` paths plus every session's touched list (spec 12.5)."""
+        """``git status`` paths plus every session's touched list (spec 12.5), a touched path
+        counting only while its file exists."""
         from iaso.verify.evidence import changed_paths_from_git
 
         paths = list(changed_paths_from_git(self.root))
@@ -916,7 +917,10 @@ class Verify:
                 lines = (d / "touched.txt").read_text(encoding="utf-8").splitlines()
             except OSError:
                 continue
-            paths.extend(line.strip() for line in lines if line.strip())
+            # report-818ae7ac: an old session's list can name a file long gone (renamed
+            # away); git's own list already carries every deletion that is still a change
+            paths.extend(line.strip() for line in lines
+                         if line.strip() and (self.root / line.strip()).exists())
         return list(dict.fromkeys(paths))
 
     # -- the run flow

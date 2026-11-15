@@ -3,6 +3,7 @@ never a shell command (R14). One test per surface, each rendering it for real.""
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -127,6 +128,9 @@ def test_choose_messages(repo: Path, capsys: pytest.CaptureFixture) -> None:
                     env={"IASO_AGENT_SESSION": "claude-code"})
     assert refused.returncode == 3
     _clean(refused.stderr)
+    # report-930cfffa: the agent gets the question itself, not a command to run
+    (asked,) = json.loads(refused.stdout)["questions"]
+    assert asked["header"] == "Conflict"
     assert cli.main(["conflict", "choose", "IC-001", "--take", "theirs",
                      "--root", str(repo)]) == 0
     applied = capsys.readouterr().out

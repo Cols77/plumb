@@ -92,9 +92,11 @@ def test_env_has_iaso_job(tmp_path: Path) -> None:
     assert "IASO_WORKER" not in call["env"]
 
 
-def test_missing_binary_is_a_plain_error(tmp_path: Path) -> None:
+def test_missing_binary_is_a_plain_error(tmp_path: Path, monkeypatch) -> None:
     empty = tmp_path / "nothing"
     empty.mkdir()
+    monkeypatch.setenv("HOME", str(empty))   # nor in the install folders
+    monkeypatch.delenv("APPDATA", raising=False)
     dispatcher = claude_code.ClaudeCodeDispatcher(
         model="haiku", timeout_s=5, env={"PATH": str(empty), "PATHEXT": ".EXE;.CMD"})
     reason = dispatcher.available()
