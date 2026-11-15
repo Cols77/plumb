@@ -819,7 +819,7 @@ def _branch_decisions(core: Any) -> list[Any]:
         return []
     own = state_dir(Path(core.root)) / "decisions"
     folders = [own, *(state_dir(Path(o)) / "decisions"
-                      for o in log.sibling_roots(core.paths)[:log.SIBLING_MAX])]
+                      for o in log._worktree_roots(core.paths))]
     times = []
     for folder in folders:
         try:
