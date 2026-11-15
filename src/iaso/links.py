@@ -479,8 +479,11 @@ def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
                                                          "MERGE_HEAD"]) else [])
     found: list[tuple[str, str]] = []
     for rev in revs:
-        # --full-history: a merge that kept one side's file hides the other side's versions
-        listing = _git_text(root, ["log", "--follow", "--full-history", f"-n{HISTORY_DEPTH}",
+        # --full-history: a merge that kept one side's file hides the other side's versions;
+        # --diff-merges: a merge names its files too, so a version only a merge made is found
+        # (report-645da35a)
+        listing = _git_text(root, ["log", "--follow", "--full-history",
+                                   "--diff-merges=first-parent", f"-n{HISTORY_DEPTH}",
                                    "--format=@%H", "--name-only", rev, "--", rel]) or ""
         sha = None
         for line in listing.splitlines():
