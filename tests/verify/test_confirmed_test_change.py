@@ -109,6 +109,30 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
     assert "regressed" not in entry
 
 
+def test_a_requirement_owns_only_the_tests_its_link_reaches(confirmed) -> None:
+    """SR-030: a file-level link covers the file's nodes, a node-level link only that node, so a
+    regressed test is flagged under the requirement linking that test, or its file, and not
+    under one linking another test."""
+    root, _base = confirmed
+    _rewrite_test_to_pass(root)
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["requirements"] == {"SR-001": ["EX-1"]}  # the file-level link reaches it
+
+    commit_all(root, "rewritten")
+    core = open_core(root)
+    [old] = [lk for lk in core.index()["SR-001"].links
+             if lk.kind == "verified_by" and lk.target.path == "tests/test_mod.py"]
+    from iaso.links import unlink
+    core.add_link("SR-001", "verified_by", Target(test="tests/test_mod.py::test_add_zero"),
+                  example="EX-1")
+    unlink(core, old.id, "node-level links under test")
+    assert open_verify(open_core(root)).masked_regressions() == []  # a link to another test
+    core.add_link("SR-001", "verified_by", Target(test="tests/test_mod.py::test_add"),
+                  example="EX-1")
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["requirements"] == {"SR-001": ["EX-1"]}
+
+
 # -- report-fba0ba92: a background judge reads the test change before the flag drops ------------
 
 
