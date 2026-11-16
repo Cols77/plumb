@@ -15,7 +15,8 @@ from typing import Any
 
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 REASON = ("iaso: edits in main's checkout are refused; create a branch in a worktree with "
-          "git worktree add, and land it by merge.")
+          "git worktree add, and land it by merge. A loop opened here is taken over in the "
+          "worktree with iaso intent adopt.")
 IASO_WRITES = frozenset({"capture", "decide", "link", "unlink", "relink", "repin", "proof"})
 GIT_WRITES = frozenset({"add", "apply", "rm", "mv", "stash", "cherry-pick", "revert", "rebase"})
 PATH_COMMANDS = frozenset({"rm", "mv", "cp", "touch", "mkdir", "chmod", "ln"})

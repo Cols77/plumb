@@ -120,7 +120,12 @@ def _find(root: Path, session: str | None, intent: str) -> tuple[Path, dict[str,
         if data.get("intent") is None:
             data["intent"] = intent
             return path, data
-    raise LookupError(f"no open loop for {intent}: iaso intent open comes first"
+    elsewhere = [r for r in _checkouts(root)[1:] for _p, d in loops(r)
+                 if d.get("intent") in (None, intent) and not d.get("handed_to")
+                 and not _passed(d, "build")]
+    hint = (f"; an open loop is in {elsewhere[0]}: run iaso intent adopt --intent {intent} here"
+            if elsewhere else "")
+    raise LookupError(f"no open loop for {intent}: iaso intent open comes first{hint}"
                       + ("" if session else " (or name the session with --session)"))
 
 
@@ -401,7 +406,7 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
              if not d.get("handed_to") and not _passed(d, "build")
              and (r != root or p.parent.parent.name != session)
              and (not args.from_session or p.parent.parent.name == args.from_session)
-             and (not args.intent or d.get("intent") == args.intent)
+             and (not args.intent or d.get("intent") in (None, args.intent))
              and (not args.digest or str(d["digest"]).removeprefix("sha256:").startswith(
                  args.digest.removeprefix("sha256:")))]
     if not found:
@@ -417,7 +422,12 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
     old_root, path, data = found[0]
     old_session = path.parent.parent.name
     mine = loop_path(root, session, data["digest"])
-    files.write_json_atomic(mine, {**data, "adopted_from": {"root": old_root.as_posix(),
+    if old_root.resolve() != root.resolve():   # answers live in the old checkout's log: carry them so none is asked twice
+        for e in open_core(old_root).events():
+            if e.kind == "question-answer" and e.payload.get("session") == old_session:
+                core.log_append("events", "question-answer", {**e.payload, "session": session})
+    files.write_json_atomic(mine, {**data, "intent": data.get("intent") or args.intent,
+                                "adopted_from": {"root": old_root.as_posix(),
                                                            "session": old_session}})
     files.write_json_atomic(path, {**data, "handed_to": {"root": root.as_posix(),
                                                          "session": session, "at": _now()}})
