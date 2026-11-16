@@ -344,7 +344,8 @@ def convert(root: Path) -> list[str]:
     old, new = root / OLD_DIR, root / ".iaso"
     seed: dict[str, str] = {}
     notes: list[str] = []
-    if new.exists():   # a merge placed the tracked .iaso files; the old folder keeps the untracked rest
+    merged = new.exists()
+    if merged:   # a merge placed the tracked .iaso files; the old folder keeps the untracked rest
         seed, notes = _adopt_leftovers(root, old, new)
     else:
         moved = _git(root, "mv", OLD_DIR, ".iaso")
@@ -372,6 +373,8 @@ def convert(root: Path) -> list[str]:
         text = p.read_text(encoding="utf-8", errors="replace")
         if rewrite_text(text) != text:
             p.write_text(rewrite_text(text), encoding="utf-8", newline="\n")
+    if merged:   # the move was file by file: stage it as the rename it is, not deletions beside untracked files
+        _git(root, "add", "-A", "--", OLD_DIR, ".iaso")
     return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/", *notes,
             *_carry_user_config(),
             "iaso: if Claude Code lists the old plugin, run /plugin marketplace remove " + OLD

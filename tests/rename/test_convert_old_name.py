@@ -295,3 +295,21 @@ def test_repair_gives_owner_messages_and_their_digests_back(tmp_path: Path) -> N
     opened = json.loads(gate.read_text())
     assert opened["payload"]["digest"] == prompt_digest(said) and opened["digest"] == entry_digest(opened)
     assert approval.read_bytes() == before
+
+
+@pytest.mark.sr("SR-432")
+def test_a_fresh_worktree_with_untracked_state_converts_to_a_staged_rename(
+        tmp_path: Path) -> None:
+    """A new worktree of an old-name repository gets local state in .iaso (a session) before
+    any conversion: the move must still leave a staged rename, not tracked deletions beside
+    untracked files, so the tree is not left dirty by half a conversion."""
+    repo = _old_project(tmp_path / "main")
+    work = tmp_path / "work"
+    _git(repo, "worktree", "add", "-q", "-b", "b", str(work))
+    (work / ".iaso" / "session" / "s1").mkdir(parents=True)
+    (work / ".iaso" / "session" / "s1" / "state.json").write_text("{}", encoding="utf-8")
+    assert _run("iaso", ["status"], work).returncode == 0
+    assert not (work / OLD_DIR).exists()
+    unstaged = [line for line in _git(work, "status", "--porcelain").splitlines()
+                if line[1] != " " or line.startswith("??")]
+    assert unstaged == [], unstaged
