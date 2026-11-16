@@ -102,5 +102,6 @@ def test_a_worktree_gate_names_the_loop_left_in_main_and_adopt_takes_an_unclaime
     assert _adopt(wt, "--intent", "INT-001") == 0
     assert files.read_json(cmd_intent.loop_path(wt, NEW, DIGEST))["intent"] == "INT-001"
     assert files.read_json(old)["handed_to"]["session"] == NEW
-    assert NEW in [e.payload["session"] for e in open_core(wt).events()
-                   if e.kind == "question-answer"]
+    answers = [e.payload["session"] for e in open_core(wt).events()
+               if e.kind == "question-answer"]
+    assert answers == [OLD]   # read through the other checkouts, never copied under the new session

@@ -429,10 +429,6 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
     old_root, path, data = found[0]
     old_session = path.parent.parent.name
     mine = loop_path(root, session, data["digest"])
-    if old_root.resolve() != root.resolve():   # answers live in the old checkout's log: carry them so none is asked twice
-        for e in open_core(old_root).events():
-            if e.kind == "question-answer" and e.payload.get("session") == old_session:
-                core.log_append("events", "question-answer", {**e.payload, "session": session})
     files.write_json_atomic(mine, {**data, "intent": data.get("intent") or args.intent,
                                 "adopted_from": {"root": old_root.as_posix(),
                                                            "session": old_session}})
