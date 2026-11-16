@@ -511,6 +511,7 @@ export async function readStatus(io: Io, link: IasoLink): Promise<IasoStatus> {
     judgeLines,
     judgeNames: down.map(([name]) => name),
     ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
+    ...(build?.version ? { version: String(build.version) } : {}), // SR-358 EX-6
     setAside,
   }
 }

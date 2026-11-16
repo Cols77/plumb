@@ -151,13 +151,18 @@ def _way(clone: str, ours: str, theirs: str) -> str:
 
 
 def check(root: Path | str) -> dict:
-    """``{"lines": [...], "unchecked": bool, "loaded": bool}``: one line per misalignment of
-    the running plugin, iaso's local main and iaso's repository main."""
+    """``{"lines": [...], "unchecked": bool, "loaded": bool, "version": str}``: one line per
+    misalignment of the running plugin, iaso's local main and iaso's repository main, and the
+    running plugin's version, which the band always shows (SR-358 EX-6)."""
+    from iaso import __version__
+
     loaded = _plugin(root)
+    meta = _read(Path(loaded) / ".claude-plugin" / "plugin.json") if loaded else {}
+    version = str(meta.get("version") or __version__)
     running = str(_read(Path(loaded) / "vendor" / "MANIFEST.json").get("source_digest") or "") \
         if loaded else ""
     if not running:
-        return {"lines": [], "unchecked": False, "loaded": False}
+        return {"lines": [], "unchecked": False, "loaded": False, "version": version}
     clone = str(root) if _git(root, "cat-file", "-e", f"main:{MANIFEST}") is not None else ""
     local = _digest(_git(clone, "show", f"main:{MANIFEST}")) if clone else ""
     lines = []
@@ -169,7 +174,7 @@ def check(root: Path | str) -> dict:
                      "another branch)",
             "differs": f"iaso {running[:7]} differs from local main's {local[:7]}: reload "
                        "plugins"}[way])
-    url = str(_read(Path(loaded) / ".claude-plugin" / "plugin.json").get("repository") or "")
+    url = str(meta.get("repository") or "")
     commit = _latest(url) if url else ""
     installed = _installed(root, loaded)
     head = (_git(clone, "rev-parse", "main") or "").strip() if local else ""
@@ -183,7 +188,7 @@ def check(root: Path | str) -> dict:
                "differs": "update the plugin, then reload plugins" if installed else
                "pull or push main"}[way]
         lines.append(f"{name} {ours[:7]} {how} its repository's {commit[:7]}: {fix}")
-    return {"lines": lines, "unchecked": not commit, "loaded": True}
+    return {"lines": lines, "unchecked": not commit, "loaded": True, "version": version}
 
 
 def outdated(root: Path | str) -> tuple[bool, str]:
