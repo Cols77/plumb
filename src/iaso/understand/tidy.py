@@ -179,7 +179,10 @@ def _close_questions(core: Any, session: str, verdicts: Any,
             core.log_append_many("events", [("answer-bound", {
                 "session": session, "by": "tidy", "quote": quote,
                 **({"answer": answer} if answer else {"record": record}),
+                # the principle: the closing reaches every copy of the question, whichever
+                # session or checkout filed it (``judge._closures``)
                 "asked": {"job": asked.get("job"), "key": key, "keys": [key],
+                          "principle": asked.get("principle") or "",
                           "records": list(asked.get("records") or ())}})])
             worker.say(core.root, session, QUESTION_CLOSED.format(
                 question=str(asked.get("question") or "").split("\n")[0][:120], quote=quote[:160]))
