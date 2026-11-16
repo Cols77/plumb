@@ -68,6 +68,14 @@ def applies(core: Any) -> str | None:
             else "this is not iaso's own repository")
 
 
+def route(core: Any) -> str:
+    """Issue #4: where a case of this repository can go when no fix runs here."""
+    repo = core.config.debug.issues_repo or ISSUES_REPO
+    return ("its defect report is on the case (iaso debug lists it); to hand it to iaso, set "
+            f"debug.report_issues: true in .iaso/config.yaml (files it as an issue on {repo}) "
+            "or debug.self_fix: true with debug.source: <an iaso checkout> (fixes it there)")
+
+
 def _git(cwd: Path, *args: str, check: bool = True) -> str:
     done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
                           encoding="utf-8", check=check)
