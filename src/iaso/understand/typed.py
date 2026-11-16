@@ -37,7 +37,7 @@ _PASTE = re.compile(r"^<pasted_content\b[^>]*>(.*?)</pasted_content\b[^>]*>(.*)$
 class Typed:
     """A parsed typed command."""
 
-    command: str          # undo | auto-approve | go | settle | clarify | intent
+    command: str          # undo | auto-approve | evaluator | go | settle | clarify | intent
     ids: tuple[str, ...] = ()          # undo: the ID it names
     words: str = ""                    # clarify/intent: the request
     state: str = ""                    # auto-approve: on | off
@@ -79,6 +79,8 @@ def parse(text: Any) -> Typed | None:
         return Typed("undo", tuple(tokens))
     if verb == "auto-approve" and len(tokens) == 1 and tokens[0] in ("on", "off"):
         return Typed("auto-approve", state=tokens[0])
+    if verb == "evaluator" and len(tokens) == 1 and tokens[0] in ("always", "ask"):
+        return Typed("evaluator", state=tokens[0])    # SR-434
     if verb == "go" and not tokens:
         return Typed("go")
     if verb in ("clarify", "intent") and rest:
@@ -106,6 +108,8 @@ def switch_now(core: Any, parsed: Typed, digest: str, session: str = "") -> Type
     from iaso.capture.jevcmd import auto_approve_typed
     from iaso.understand.read import logged_prompt
 
+    if parsed.command == "evaluator" and parsed.state in ("always", "ask"):
+        return _switch_evaluator(core, parsed, digest, session)    # SR-434
     if parsed.command != "auto-approve" or parsed.state not in ("on", "off"):
         return TypedResult()
     logged = logged_prompt(core, digest)
@@ -120,6 +124,23 @@ def switch_now(core: Any, parsed: Typed, digest: str, session: str = "") -> Type
                                              "at": logged.get("at")})
     auto_approve_typed(core, parsed.state == "on", prompt_digest=digest, quote=text)
     return TypedResult(lines=(owner_text.AUTO_APPROVE_SWITCHED.format(state=parsed.state),))
+
+
+def _switch_evaluator(core: Any, parsed: Typed, digest: str, session: str) -> TypedResult:
+    """The owner's typed ``/iaso evaluator always|ask`` (SR-434): the same checks as the typed
+    auto-approve switch, then the owner's ``config`` event, ``via: typed``."""
+    from iaso.capture import evaluatorpref
+    from iaso.understand.read import logged_prompt
+
+    logged = logged_prompt(core, digest)
+    if logged is None or logged.get("via") != "hook" or parse(str(logged["text"])) != parsed:
+        return TypedResult()
+    if digest not in {e.payload.get("digest") for e in core.events() if e.kind == "prompt"}:
+        core.log_append("events", "prompt", {"digest": digest,
+                                             "session": logged.get("session") or session,
+                                             "at": logged.get("at")})
+    evaluatorpref.set_typed(core, parsed.state, prompt_digest=digest, quote=str(logged["text"]))
+    return TypedResult(lines=(owner_text.EVALUATOR_SWITCHED[parsed.state],))
 
 
 def undo_now(core: Any, parsed: Typed, digest: str, session: str = "") -> TypedResult:

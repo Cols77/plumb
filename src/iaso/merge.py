@@ -32,6 +32,7 @@ Over ``<base>..HEAD`` plus uncommitted changes:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
@@ -366,14 +367,22 @@ def changed_test_lines(core: Core, fork: str, record_id: str,
     return lines
 
 
+def pytest_file(ref: Any) -> bool:
+    """A test iaso's runner runs: a ``test_*.py`` or ``*_test.py`` file. A helper module or a
+    ``.test.ts`` file linked as a test is never run, so it has no evidence (report-921ca986)."""
+    name = str(ref).split("::")[0].rsplit("/", 1)[-1]
+    return re.fullmatch(r"(test_.*|.*_test)\.py", name) is not None
+
+
 def live_verification(core: Core, found: Mapping[str, Any]) -> dict[str, Any]:
     """``found`` (``failing``, ``unverified``, ``regressions``) without any test of a frozen
-    part (SR-380, DEC-404): such a test counts in no merge hold, whatever the verify lane hands
+    part (SR-380, DEC-404) or any file iaso's runner never runs (report-921ca986, as the
+    landing's counts): such a test counts in no merge hold, whatever the verify lane hands
     over."""
     from iaso.frozen import is_frozen
 
     def awake(ref: Any) -> bool:
-        return not is_frozen(core.config, str(ref))
+        return pytest_file(ref) and not is_frozen(core.config, str(ref))
 
     def by_record(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[str, Any]:
         kept = {rid: [i for i in items if awake(i.get("test"))] for rid, items in rows.items()}

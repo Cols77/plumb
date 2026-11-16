@@ -220,7 +220,9 @@ def _new_run_dir(parent: Path, name: str) -> Path:
 def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | None = None,
              claude=claude_turn, now=time.monotonic, binary: str | None = None,
              limits: dict[str, int | None] | None = None) -> RunResult:
-    binary = binary or shutil.which("claude")
+    from iaso.hosts.claude_code import claude_binary
+
+    binary = binary or claude_binary()
     if binary is None:   # raised before any folder is made (SR-344 EX-3)
         raise RuntimeError("the claude command was not found on this machine")
     home = Path(tempfile.mkdtemp(prefix="iaso-eval-"))

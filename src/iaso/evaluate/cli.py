@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 
@@ -107,7 +106,9 @@ def run(command: str, argv: list[str]) -> int:
               "question tool, then pass --max-exchanges N --max-turns N --max-minutes N "
               "(any of them) or --no-limits")
         return 2
-    binary = shutil.which("claude")
+    from iaso.hosts.claude_code import claude_binary
+
+    binary = claude_binary()
     if binary is None:
         print("iaso: evaluate: the claude command was not found on this machine")
         return 1

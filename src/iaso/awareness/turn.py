@@ -77,6 +77,13 @@ def claim_changes(core: Any, data: Mapping[str, Any] | None, *,
     Returns whether it wrote."""
     if not data or not data.get("branch"):
         return False
+    from iaso.mergedriver.driver import git_operation
+
+    if git_operation(Path(core.root)) is not None:
+        # case report-fefe57f4: the records a merge in progress brings are the other branch's
+        # work, already claimed there; claiming them here raised a conflict against that
+        # very branch and left its decision file in a checkout whose merge was then held
+        return False
     index = core.index()
     changed = {i: item for i, item in (data.get("records") or {}).items()
                if isinstance(item, Mapping) and item.get("how") in ("edited", "new")

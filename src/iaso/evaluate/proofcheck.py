@@ -90,6 +90,33 @@ def _fingerprint(root: Path) -> str:
     return seen.hexdigest()
 
 
+def live(root: Path, binary: str, env: dict[str, str]) -> str:
+    """SR-397 EX-10: the evaluator's sandbox drives claude and the judge. The folder of the
+    installed ``claude`` goes first on ``env``'s PATH, so the evaluator's shell and its
+    ``iaso evaluate case`` runs find it. The judge's key is read where it already lives (the
+    environment or the user's own store, under the unchanged HOME): only the place is named
+    here, the key is never copied, printed or written. Returns the brief's line saying what the
+    sandbox can drive."""
+    from iaso.config import load_config
+    from iaso.judgment.jev import credential_env, key_source
+
+    found = shutil.which(binary, path=env.get("PATH")) or shutil.which(binary) or binary
+    env["PATH"] = os.pathsep.join(filter(None, [os.path.dirname(os.path.abspath(found)),
+                                                env.get("PATH", "")]))
+    config = load_config(root)
+    backend = config.judgment.backend or "jev"   # a scratch repository names jev by default
+    name = credential_env(config)
+    source = {"env": "environment", "env-file": "user's env file",
+              "user-store": "user's store"}.get(key_source(root, env=env, name=name) or "")
+    judge = (f"the judge is {backend} in this tree" if backend != "jev" else
+             f"the judge is set up: iaso reads its key {name} from the {source} itself; "
+             "never read, print or copy it" if source else
+             f"no judge key is set up on this machine ({name} is in neither the environment "
+             "nor the user's store): a case that needs the judge is \"could not check\"")
+    return (f"\nThe installed claude command is on your PATH ({found}) and {judge}. A case run "
+            "(`iaso evaluate case`) drives live sessions and the judge with them.\n")
+
+
 def _read_verdict(workspace: Path) -> tuple[str, str, str]:
     """The verdict, what the evaluator saw, and what its case checked."""
     try:
@@ -108,7 +135,9 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
              runs_dir: Path | None = None) -> Verdict:
     """SR-397 EX-7: one fresh session (no ``--resume``) in a folder outside the repository."""
     root = Path(root)
-    binary = binary or shutil.which("claude")
+    from iaso.hosts.claude_code import claude_binary
+
+    binary = binary or claude_binary()
     if binary is None:
         return Verdict(name, "could not check", "the claude command was not found on this machine",
                        Path())
@@ -121,8 +150,9 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
         if (root / "src" / "iaso").is_dir():   # the case and the scratch hooks run the tree
             env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(root / "src"),
                                                               env.get("PYTHONPATH", "")]))
+        system = BRIEF + live(root, binary, env)
         got = claude(binary, workspace, f"{subject}\nThe built tree is at {root}.", model=model,
-                     session_id=None, system=BRIEF, timeout_s=minutes * 60, env=env,
+                     session_id=None, system=system, timeout_s=minutes * 60, env=env,
                      max_turns=None, extra=["--add-dir", str(root)],
                      tools=["Read", "Glob", "Grep", "Write", "Edit"])
         verdict, summary, checked = _read_verdict(workspace)
@@ -159,7 +189,7 @@ def evaluate_proofs(core: Any, ids: list[str], *, run: Any = evaluate,
     ids = list(dict.fromkeys(ids))
     records = [proof._requirement(core, i) for i in ids]
     for record in records:
-        if not proof.evaluator_picked(record):
+        if not proof.evaluator_picked(record, core):
             raise ValueError(f"the owner did not pick the evaluator for {record.id}: show the "
                              f"proof and ask them, iaso proof {record.id} --ask")
     def one(record: Any) -> Verdict:

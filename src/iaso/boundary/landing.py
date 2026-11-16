@@ -104,7 +104,7 @@ def proof_lines(root: Path, ids: Iterable[str]) -> list[tuple[str, str]]:
         if record is None or confirmed(core, i):
             continue
         plan = " ".join(str((proof_of(record) or {}).get("plan") or "").split())
-        if evaluator_picked(record):    # SR-396 EX-4
+        if evaluator_picked(record, core):    # SR-396 EX-4, SR-434
             out.append((f"post-merge-proof:{i}",
                         f"iaso: {i} has landed and its proof was agreed as post-merge; the "
                         f"owner picked the independent evaluator: run iaso evaluate proof "
@@ -460,9 +460,9 @@ def status_cases(core: Any, session: str, queued_line: str) -> list[dict]:
         verify = open_verify(core)
         mapped = verify.tests_for([i for i, r in core.index().items()
                                    if r.kind == "requirement"])
-        # only pytest files count: helpers and the .test.tsx files iaso never runs have no evidence
-        nodes = sorted({n for found in mapped.values() for n in found if re.fullmatch(
-            r"(test_.*|.*_test)\.py", n.split("::")[0].rsplit("/", 1)[-1])})
+        from iaso.merge import pytest_file
+
+        nodes = sorted({n for found in mapped.values() for n in found if pytest_file(n)})
         for node, ev in (verify.evidence(nodes) if nodes else {}).items():
             if ev.state in ("fresh-fail", "none"):
                 kind = "failing-test" if ev.state == "fresh-fail" else "unrun-test"

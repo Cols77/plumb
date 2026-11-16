@@ -1,0 +1,8 @@
+SR-376 EX-6 (report-a0ad55c8), 2026-11-14, branch fix/rejection-no-owner-words
+$ pytest -q tests/logs/test_tracked_rejection_no_owner_words.py   (on the branch)
+exit 0 (0: passed)
+
+$ the test body on main (2ad054930), counting tracked rejection entries or archive lines whose records hold a premise
+80 holding
+$ the same count on the branch
+0 holding

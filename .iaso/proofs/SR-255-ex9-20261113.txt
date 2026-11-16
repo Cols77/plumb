@@ -1,0 +1,4 @@
+SR-255 EX-9 (reworded by SR-254 EX-24), 2026-11-13T04:30:05Z, intent/version-bump-not-infra 36bc397c5
+$ PYTHONPATH=src python -m pytest -rA tests/verify/test_pyproject_version_only.py
+PASSED tests/verify/test_pyproject_version_only.py::test_only_a_change_beyond_the_version_sets_full_pending
+1 passed in 1.13s
