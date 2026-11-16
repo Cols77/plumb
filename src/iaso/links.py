@@ -668,9 +668,10 @@ def repin_after_tests(core: Core, selector: str, *,
         judge = meaning_check.open_judge(core)
     if jev is None:
         jev = meaning_check.open_jev_tier(core)
-    if judge is None and jev is None:
-        result.refused += [(s.link.id, NO_MODEL) for s in candidates]
+    if judge is None and jev is None:   # issue #5: the case says why, not only that
         result.unreachable = meaning_check.judge_gap(core)
+        result.refused += [(s.link.id, f"{NO_MODEL}: {result.unreachable}")
+                           for s in candidates]
         return result
     untested = ""
     paths = sorted({p for p in (target_path(s.link.target) for s in candidates) if p})
@@ -692,6 +693,7 @@ def repin_after_tests(core: Core, selector: str, *,
     from iaso.understand.judge import record_text
 
     index = core.index()
+    gap = ""
     for state in candidates:
         link = state.link
         if out_of_time(link.id):   # SR-310: a judge call past the deadline outlives the hook
@@ -730,7 +732,9 @@ def repin_after_tests(core: Core, selector: str, *,
             _repinned(core, result, link.id, "jev", why + untested, dry_run)
             continue
         if judge is None:   # EX-6 leads to Sonnet; without it nothing is repinned on a guess
-            result.refused.append((link.id, NO_MODEL))
+            gap = gap or meaning_check.judge_gap(core)
+            result.refused.append((link.id, f"{NO_MODEL}: JEV gave it less than its threshold "
+                                   f"and the meaning judge cannot run ({gap})"))
             continue
         if out_of_time(link.id):   # JEV used the time up: Sonnet does not start
             continue
