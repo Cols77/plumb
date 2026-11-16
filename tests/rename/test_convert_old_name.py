@@ -313,3 +313,14 @@ def test_a_fresh_worktree_with_untracked_state_converts_to_a_staged_rename(
     unstaged = [line for line in _git(work, "status", "--porcelain").splitlines()
                 if line[1] != " " or line.startswith("??")]
     assert unstaged == [], unstaged
+
+
+@pytest.mark.sr("SR-432")
+def test_conversion_stages_only_what_it_moved(tmp_path: Path) -> None:
+    repo = _old_project(tmp_path / "main")
+    work = tmp_path / "work"
+    _git(repo, "worktree", "add", "-q", "-b", "b", str(work))
+    (work / ".iaso" / "session").mkdir(parents=True)
+    (work / ".iaso" / "note.md").write_text("mine\n", encoding="utf-8")   # not moved by it
+    assert _run("iaso", ["status"], work).returncode == 0
+    assert "?? .iaso/note.md" in _git(work, "status", "--porcelain").splitlines()

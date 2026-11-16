@@ -255,15 +255,16 @@ def _outside(root: Path) -> list[Path]:
     return [p for p in out if p.is_file()]
 
 
-def _merge_dirs(src: Path, dst: Path, left: list[str]) -> None:
+def _merge_dirs(src: Path, dst: Path, left: list[str], moved: list[Path]) -> None:
     """Move what ``src`` holds into ``dst``: a path ``dst`` lacks is renamed over, folders merge,
     a file both hold stays in ``src`` (named in ``left``)."""
     for child in sorted(src.iterdir()):
         target = dst / child.name
         if not target.exists() and not target.is_symlink():
             child.rename(target)
+            moved.append(target)
         elif child.is_dir() and target.is_dir() and not child.is_symlink():
-            _merge_dirs(child, target, left)
+            _merge_dirs(child, target, left, moved)
         else:
             left.append(str(child))
     try:
@@ -272,7 +273,8 @@ def _merge_dirs(src: Path, dst: Path, left: list[str]) -> None:
         pass
 
 
-def _adopt_leftovers(root: Path, old: Path, new: Path) -> tuple[dict[str, str], list[str]]:
+def _adopt_leftovers(root: Path, old: Path, new: Path,
+                     shifted: list[Path]) -> tuple[dict[str, str], list[str]]:
     """A merge into a checkout that keeps untracked state (sessions, local log kinds, caches,
     work copies) put the tracked ``.iaso`` files beside the old folder: move each registered
     work copy of ``old/wt`` with ``git worktree move``, then the rest into ``new``. Returns the
@@ -312,7 +314,7 @@ def _adopt_leftovers(root: Path, old: Path, new: Path) -> tuple[dict[str, str], 
                         continue
         seed = _hash_map(texts)
     left: list[str] = []
-    _merge_dirs(old, new, left)
+    _merge_dirs(old, new, left, shifted)
     if left:
         notes.append(f"iaso: {len(left)} files stayed in {OLD_DIR}/ because .iaso/ holds one: {left[:3]}")
     return seed, notes
@@ -344,9 +346,10 @@ def convert(root: Path) -> list[str]:
     old, new = root / OLD_DIR, root / ".iaso"
     seed: dict[str, str] = {}
     notes: list[str] = []
+    shifted: list[Path] = []
     merged = new.exists()
     if merged:   # a merge placed the tracked .iaso files; the old folder keeps the untracked rest
-        seed, notes = _adopt_leftovers(root, old, new)
+        seed, notes = _adopt_leftovers(root, old, new, shifted)
     else:
         moved = _git(root, "mv", OLD_DIR, ".iaso")
         if moved.returncode:   # not tracked (or not a repository): a plain rename
@@ -374,7 +377,7 @@ def convert(root: Path) -> list[str]:
         if rewrite_text(text) != text:
             p.write_text(rewrite_text(text), encoding="utf-8", newline="\n")
     if merged:   # the move was file by file: stage it as the rename it is, not deletions beside untracked files
-        _git(root, "add", "-A", "--", OLD_DIR, ".iaso")
+        _git(root, "add", "-A", "--ignore-errors", "--", OLD_DIR, *map(str, shifted))
     return [f"iaso: {root} is an old project ({OLD_DIR}/); converted to .iaso/", *notes,
             *_carry_user_config(),
             "iaso: if Claude Code lists the old plugin, run /plugin marketplace remove " + OLD
