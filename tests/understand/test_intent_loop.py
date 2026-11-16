@@ -230,3 +230,22 @@ def test_without_a_loop_verb_the_command_captures_an_intent(
     monkeypatch.setattr(capture_cli, "run", lambda command, argv: seen.append(argv) or 0)
     assert cmd_intent.run("intent", ["--quote", "q", "--readback", "r"]) == 0
     assert seen == [["--quote", "q", "--readback", "r"]]
+
+
+def test_a_superseded_requirement_no_longer_counts_and_its_heir_does(
+        intent: Path, write_record: Any, tmp_path: Path,
+        capsys: pytest.CaptureFixture) -> None:
+    """The owner reversed SR-040 in a second capture (new intent, SR-041 supersedes SR-040):
+    the first loop's done check asks for SR-041's proof, not the retired SR-040's."""
+    write_record(intent, int_text(2))
+    write_record(intent, record_text(41))
+    core = open_core(intent)
+    core.add_link("SR-041", "derives_from", Target(record="INT-002"))
+    core.add_link("SR-041", "supersedes", Target(record="SR-040"))
+    assert cmd_intent.requirements_of(open_core(intent), "INT-001") == ["SR-041"]
+    low = _findings(tmp_path, "low")
+    _run(intent, "gate", "clarify", "--intent", "INT-001", "--findings", low)
+    _run(intent, "gate", "plan", "--intent", "INT-001", "--findings", low)
+    assert _run(intent, "done", "--intent", "INT-001") == 1
+    err = capsys.readouterr().err
+    assert "SR-041" in err and "SR-040" not in err

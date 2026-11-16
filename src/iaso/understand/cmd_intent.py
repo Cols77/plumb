@@ -148,10 +148,17 @@ def _intent(core: Any, intent: str) -> None:
 
 
 def requirements_of(core: Any, intent: str) -> list[str]:
-    """The requirements linked to ``intent`` (derives_from or decides)."""
-    return sorted(r.id for r in core.index().values() if r.kind == "requirement" and any(
+    """The live requirements linked to ``intent`` (derives_from or decides). A superseded one
+    no longer counts; the requirement that replaces it does, wherever it was captured."""
+    from iaso.query import superseded_ids
+
+    index = core.index()
+    own = {r.id for r in index.values() if r.kind == "requirement" and any(
         link.kind in ("derives_from", "decides") and link.target.record == intent
-        for link in r.links))
+        for link in r.links)}
+    heirs = {r.id for r in index.values() if r.kind == "requirement" and any(
+        link.kind == "supersedes" and link.target.record in own for link in r.links)}
+    return sorted((own | heirs) - superseded_ids(index))
 
 
 def _draw_proofs(core: Any, data: dict[str, Any]) -> bool:
