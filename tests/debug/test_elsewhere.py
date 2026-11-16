@@ -176,3 +176,20 @@ def test_ex5_issue_reporting_off_or_without_gh_files_no_issue(
     selfdebug.report_elsewhere(open_core(case_repo), _case(case_repo))
     assert not gh.exists() and "issue" not in _case(case_repo)
     assert "Missing:" in _case(case_repo)["report"]
+
+
+def test_ex6_a_reported_case_here_says_where_it_goes_not_that_a_fix_runs(
+        repo: Path, gh: Path, capsys) -> None:
+    """Issue #4: outside iaso's own repository no fix runs, so ``debug report`` ends the case
+    with its report at once and names the route; ``debug fix`` says the same."""
+    assert main(["debug", "--root", str(repo), "report", "the band shows no version"]) == 0
+    out = capsys.readouterr().out
+    assert "the fix runs in the background" not in out
+    assert "no fix runs here" in out and "debug.report_issues: true" in out
+    row = next(c for c in debug.all_cases(repo) if c["kind"] == "report")
+    assert "the band shows no version" in row["report"] and not gh.exists()
+    assert main(["debug", "--root", str(repo), "fix", row["id"]]) == 1
+    assert "debug.self_fix: true with debug.source" in capsys.readouterr().out
+    _config(repo, "debug:\n  report_issues: true\n")
+    assert main(["debug", "--root", str(repo), "report", "another wrong result"]) == 0
+    assert "filed as https://github.com/Cols77/iaso/issues/1" in capsys.readouterr().out
