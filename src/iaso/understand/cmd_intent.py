@@ -156,8 +156,13 @@ def requirements_of(core: Any, intent: str) -> list[str]:
     own = {r.id for r in index.values() if r.kind == "requirement" and any(
         link.kind in ("derives_from", "decides") and link.target.record == intent
         for link in r.links)}
-    heirs = {r.id for r in index.values() if r.kind == "requirement" and any(
-        link.kind == "supersedes" and link.target.record in own for link in r.links)}
+    heirs: set[str] = set()
+    while True:   # a heir may itself be superseded: follow the chain to its end
+        more = {r.id for r in index.values() if r.kind == "requirement" and any(
+            link.kind == "supersedes" and link.target.record in own | heirs for link in r.links)}
+        if more <= heirs:
+            break
+        heirs |= more
     return sorted((own | heirs) - superseded_ids(index))
 
 

@@ -249,3 +249,13 @@ def test_a_superseded_requirement_no_longer_counts_and_its_heir_does(
     assert _run(intent, "done", "--intent", "INT-001") == 1
     err = capsys.readouterr().err
     assert "SR-041" in err and "SR-040" not in err
+
+
+def test_supersession_is_followed_along_the_whole_chain(
+        intent: Path, write_record: Any) -> None:
+    write_record(intent, record_text(41))
+    write_record(intent, record_text(42))
+    core = open_core(intent)
+    core.add_link("SR-041", "supersedes", Target(record="SR-040"))
+    core.add_link("SR-042", "supersedes", Target(record="SR-041"))
+    assert cmd_intent.requirements_of(open_core(intent), "INT-001") == ["SR-042"]
