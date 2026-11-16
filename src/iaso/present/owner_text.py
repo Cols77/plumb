@@ -133,8 +133,7 @@ PREMERGE_VERIFY_UNAVAILABLE = ("  the test evidence could not be read ({error});
                                "merge: green needs test evidence")
 PREMERGE_FULL_PENDING = ("  the full test suite is pending ({reasons}); it holds the merge until "
                          "a full run passes or you waive it for this change (the agent asks "
-                         "you once with the question tool: iaso tests ask-waiver --merge "
-                         "<branch merged into> prints it; your answer is the waiver)")
+                         "you once with the question tool; your answer is the waiver)")
 PREMERGE_REGRESSION = "  {test} passed before and now fails (it holds the merge)"
 PREMERGE_CLAIMS_UNREADABLE_HEADER = ("the claims check could not read everything (listed; this "
                                      "does not hold the merge):")
