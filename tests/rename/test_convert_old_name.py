@@ -128,13 +128,30 @@ _LOGGED_OLD = (
     "004658.656699Z-140b2d32",
     "004705.523773Z-6bd06806",
     "004737.072783Z-1d6177b7",
-    "004813.971419Z-07acaf22",)
+    "004813.971419Z-07acaf22",
+    # the same, logged on fix/sr206-checks (c8869c0a3); later entries point at them too
+    "011221.614844Z-b5f3abb4",
+    "011244.904020Z-a52cdbee",
+    "011256.764229Z-5b1f7392",
+    "011322.965393Z-aeb1d313",
+    "011331.152813Z-ad3ca187",
+    "011340.109499Z-eef50012",
+    "011347.446145Z-de26ead7",
+    "011401.043312Z-2acd78ab",
+    "011412.575535Z-fc7f4869",
+    "011435.788310Z-81b7cf12",
+    "011446.642864Z-7ee2fe5f",
+    "011459.870800Z-3973e997",
+    "011553.791279Z-fb4125c2",
+    "011605.584323Z-78841780",
+    "011639.505574Z-5d246d0f",
+)
 
 
 @pytest.mark.sr("SR-430")
 @pytest.mark.sr("SR-432")
 def test_no_tracked_file_mentions_the_old_name() -> None:
-    # owner 2026-11-16 ("Allow these 14, prevent new ones"): judge reasons logged before the
+    # owner 2026-11-16 ("Allow these 14, prevent new ones", DEC-580): judge reasons logged before the
     # rewrite at logging; the log is hash-chained, so they stay until the history rewrite
     skip = {"uv.lock", *(f".iaso/log/test-change-verdict/20261116T{n}.json" for n in _LOGGED_OLD)}
     bad = []
