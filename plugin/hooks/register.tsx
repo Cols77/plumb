@@ -54,7 +54,9 @@ function statusLine(view: IasoView): string {
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   const judged = view.status?.judged ? T.judged(view.status.judged) : '' // SR-251
-  return [`${view.status?.name || T.name} ${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
+  // SR-358 EX-6: the running plugin's version, always, last so the line still begins with the name (SR-415)
+  return [`${view.status?.name || T.name} ${glyph} ${word}`, judged, view.status?.progress, view.status?.version]
+    .filter(Boolean).join(' · ')
 }
 
 /** The band's status read again (files only, no process): null when nothing moved (SR-291).

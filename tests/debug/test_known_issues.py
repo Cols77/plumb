@@ -181,3 +181,27 @@ def test_ex4_the_owning_session_is_told_its_problem_came_back_elsewhere(
     ((key, text),) = debug.lines(repo, "s1")
     assert key.startswith("back:") and "came back in another session" in text
     assert debug.lines(repo, "s3") == []
+
+
+@pytest.mark.sr("SR-412")
+def test_ex5_the_owning_session_is_told_once_at_its_next_prompt(repo: Path, plugin) -> None:
+    """SR-412: debug.py is the one sender; the prompt shows its line once, to the owner only."""
+    from iaso.hosts.claude_code.hookio import Deadline, HookContext
+    from iaso.present.delta import Line, emit
+
+    plugin(True)
+    debug.open_case(repo, id=CASE, kind="report", target="flagged",
+                    detail="answers dropped after the upgrade", session="s1")
+    debug._update(repo, [CASE], branch="debug/x", state="resolved", landed="abc",
+                  proven="2026-10-25")
+
+    def prompt(session: str) -> list[str]:
+        ctx = HookContext(name="prompt", data={}, root=repo, session_id=session,
+                          deadline=Deadline(10_000))
+        return emit(ctx, [Line(t, subject=f"landing:{k}", must=True)
+                          for k, t in debug.lines(repo, session)], "prompt")
+
+    first = prompt("s1")
+    assert len(first) == 1 and "proven fixed" in first[0]
+    assert prompt("s1") == []   # told once, not at every prompt
+    assert prompt("s3") == []   # a session that does not own the case is not told

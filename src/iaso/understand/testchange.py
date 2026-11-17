@@ -225,8 +225,11 @@ def enqueue(core: Any, item: Mapping[str, Any], head: str | None, deleted: bool)
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
+    from iaso.convert import rewrite_text
+
     return Applied(job=job.id, entries=({"kind": VERDICT_KIND, "payload": {
         "key": list(job.inputs["key"]), "subject": str(job.inputs["item"]["node"]),
         "verdict": str(answer.get("verdict")),
         "probability": float(answer.get("probability") or 0.0),
-        "reason": str(answer.get("reason") or "")}},))
+        # owner 2026-11-16: a judge quoting a rename diff must not log the old name
+        "reason": rewrite_text(str(answer.get("reason") or ""))}},))
