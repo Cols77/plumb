@@ -220,11 +220,11 @@ def _new_run_dir(parent: Path, name: str) -> Path:
 def run_task(root: Path, task: Any, *, model: str, owner: Any, runs_dir: Path | None = None,
              claude=claude_turn, now=time.monotonic, binary: str | None = None,
              limits: dict[str, int | None] | None = None) -> RunResult:
-    from iaso.hosts.claude_code import claude_binary
+    from iaso.hosts.claude_code import claude_binary, claude_missing
 
     binary = binary or claude_binary()
     if binary is None:   # raised before any folder is made (SR-344 EX-3)
-        raise RuntimeError("the claude command was not found on this machine")
+        raise RuntimeError(claude_missing())
     home = Path(tempfile.mkdtemp(prefix="iaso-eval-"))
     try:   # the run folder keeps what is needed; the scratch repository never outlives the run
         return _run_task(root, task, home, model=model, owner=owner, runs_dir=runs_dir,

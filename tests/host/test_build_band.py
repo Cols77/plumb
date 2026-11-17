@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from fakes import FakeBackend, FakeVerify
 
-from iaso import build
+from iaso import __version__, build
 from iaso.hosts.claude_code import prompt
 
 pytestmark = pytest.mark.sr("SR-358")
@@ -96,7 +96,8 @@ def test_ex1_installed_plugin_behind_its_repository_the_band_gets_both_commits(
     line = (f"installed plugin {first[:7]} is behind its repository's "
             f"{repository['commit'][:7]}: update the plugin, then reload plugins")
     assert build.outdated(repo) == (True, line)
-    assert _turn(repo, hook_input) == {"lines": [line], "unchecked": False}
+    assert _turn(repo, hook_input) == {"lines": [line], "unchecked": False,
+                                         "version": __version__}
 
 
 def test_installed_plugin_ahead_of_its_repository_says_push(
@@ -123,7 +124,8 @@ def test_ex2_installed_plugin_equal_to_its_repository_the_line_is_gone(
     repository["commit"] = _build(repo, "aaa-0000")
     loaded("aaa-0000", installed=repository["commit"])
     assert build.outdated(repo) == (False, "")
-    assert _turn(repo, hook_input) == {"lines": [], "unchecked": False}
+    assert _turn(repo, hook_input) == {"lines": [], "unchecked": False,
+                                         "version": __version__}
     monkeypatch.delenv("IASO_PLUGIN_ROOT")                      # not run from a plugin
     assert build.check(repo)["lines"] == []
 
@@ -164,7 +166,21 @@ def test_the_plugin_built_from_a_branch_is_ahead_of_local_main(
 def test_ex5_an_unknown_repository_is_unchecked_not_red(
         repo: Path, loaded, hook_input) -> None:
     loaded("old-0000", installed="fead6e89" + "0" * 32)
-    assert _turn(repo, hook_input) == {"lines": [], "unchecked": True}
+    assert _turn(repo, hook_input) == {"lines": [], "unchecked": True,
+                                         "version": __version__}
+
+
+def test_ex6_the_band_always_gets_the_running_plugins_version(
+        repo: Path, loaded, repository, hook_input, tmp_path: Path) -> None:
+    """SR-358 EX-6: aligned or unchecked, build.json names the version of the plugin the session
+    runs (its plugin.json), so the band always shows it."""
+    meta = tmp_path / "cache" / "plugin" / ".claude-plugin" / "plugin.json"
+    meta.write_text(json.dumps({"repository": URL, "version": "0.1.1717"}), encoding="utf-8")
+    loaded("old-0000", installed="fead6e89" + "0" * 32)       # the repository unknown yet
+    assert _turn(repo, hook_input) == {"lines": [], "unchecked": True, "version": "0.1.1717"}
+    repository["commit"] = _build(repo, "aaa-0000")
+    loaded("aaa-0000", installed=repository["commit"])          # aligned: no line, the version
+    assert _turn(repo, hook_input) == {"lines": [], "unchecked": False, "version": "0.1.1717"}
 
 
 @pytest.fixture

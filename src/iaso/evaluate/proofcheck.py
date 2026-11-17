@@ -135,12 +135,11 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
              runs_dir: Path | None = None) -> Verdict:
     """SR-397 EX-7: one fresh session (no ``--resume``) in a folder outside the repository."""
     root = Path(root)
-    from iaso.hosts.claude_code import claude_binary
+    from iaso.hosts.claude_code import claude_binary, claude_missing
 
     binary = binary or claude_binary()
     if binary is None:
-        return Verdict(name, "could not check", "the claude command was not found on this machine",
-                       Path())
+        return Verdict(name, "could not check", claude_missing(), Path())
     workspace = Path(tempfile.mkdtemp(prefix="iaso-proof-"))
     try:
         before = _fingerprint(root)

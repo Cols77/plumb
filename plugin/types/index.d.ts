@@ -75,6 +75,8 @@ export type IasoStatus = {
   judgeNames?: string[]
   /** SR-358: iaso's repository could not be read, so the build is not checked (never red) */
   unchecked?: string
+  /** SR-358 EX-6: the version of the plugin the session runs, always on the band's line */
+  version?: string
   /** the judge's questions iaso set aside, and why: shown apart, never as unreachable (SR-359 EX-2) */
   setAside?: string[]
 }

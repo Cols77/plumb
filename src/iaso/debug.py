@@ -479,7 +479,7 @@ def _fix(core: Any, ids: list[str], proof_evaluator: bool = False) -> int:
     from iaso import selfdebug
 
     if (why := selfdebug.applies(core)) is not None:
-        print(f"iaso: debug fix: {why}")
+        print(f"iaso: debug fix: {why}: no fix runs here; {selfdebug.route(core)}")
         return 1
     todo = [c for c in open_cases(core.root) if not ids or c["id"] in ids]
     outcomes = [(c["id"], selfdebug.fix(core, c)) for c in todo]
@@ -609,13 +609,24 @@ def run(command: str, argv: list[str]) -> int:
         if not words:
             print("usage: iaso debug report <what is wrong, in words>", file=sys.stderr)
             return 2
-        from iaso import stale
+        from iaso import selfdebug, stale
 
         case_id = flag(core.root, words)   # SR-357: a known issue's symptom is that issue
         said = [text for key, text in lines(core.root, stale.current_session(core.root))
                 if key.split(":")[1] == case_id]
-        print("\n".join(said) or f"iaso: debug: case {case_id} opened; the fix runs in the "
-              "background")
+        if said:
+            print("\n".join(said))
+        elif (why := selfdebug.applies(core)) is None:
+            print(f"iaso: debug: case {case_id} opened; the fix runs in the background")
+        else:   # issue #4: no fix can run here, so the case ends with its report at once
+            row = next((c for c in all_cases(core.root) if c["id"] == case_id), None)
+            if row and not row.get("report"):
+                selfdebug.report_elsewhere(core, row)
+            issue = next((c.get("issue") for c in all_cases(core.root)
+                          if c["id"] == case_id), None)
+            print(f"iaso: debug: case {case_id} opened; no fix runs here ({why}): "
+                  + (f"its defect report is filed as {issue}" if issue
+                     else selfdebug.route(core)))
         return 0
     found = _pass(core, args.selector, args.dry_run)
     if not args.selector:

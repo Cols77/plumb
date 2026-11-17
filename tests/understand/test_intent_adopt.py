@@ -85,3 +85,23 @@ def test_ex1_tasks_and_progress_fields_carry_over_verbatim(repo: Path) -> None:
     assert _adopt(repo) == 0
     mine = files.read_json(cmd_intent.loop_path(repo, NEW, DIGEST))
     assert mine["tasks"] == data["tasks"] and mine["progress"] == data["progress"]
+
+
+def test_a_worktree_gate_names_the_loop_left_in_main_and_adopt_takes_an_unclaimed_one(
+        repo: Path, tmp_path: Path) -> None:
+    """A loop opened in main's checkout holds no intent yet: the worktree's gate says where it
+    is and how to take it, adopt matches it by the intent, and the owner's answers follow."""
+    old = cmd_intent.open_loop(repo, OLD, DIGEST)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", "-b", "impl/x", str(wt))
+    with pytest.raises(LookupError, match="intent adopt --intent INT-001"):
+        cmd_intent._find(wt, NEW, "INT-001")
+    from iaso.api import open_core
+
+    open_core(repo).log_append("events", "question-answer", {"session": OLD, "question": "q?"})
+    assert _adopt(wt, "--intent", "INT-001") == 0
+    assert files.read_json(cmd_intent.loop_path(wt, NEW, DIGEST))["intent"] == "INT-001"
+    assert files.read_json(old)["handed_to"]["session"] == NEW
+    answers = [e.payload["session"] for e in open_core(wt).events()
+               if e.kind == "question-answer"]
+    assert answers == [OLD]   # read through the other checkouts, never copied under the new session
