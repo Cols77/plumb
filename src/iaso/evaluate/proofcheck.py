@@ -134,11 +134,11 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
     stamp = time.strftime("%Y%m%dT%H%M%S")
     run_dir = runmod._new_run_dir(runs_dir or state_dir(root) / "eval" / "runs",
                                   f"{stamp}-proof-{name}")
-    from iaso.hosts.claude_code import claude_binary
+    from iaso.hosts.claude_code import claude_binary, claude_missing
 
     binary = binary or claude_binary()
     if binary is None:
-        verdict, summary = "could not check", "the claude command was not found on this machine"
+        verdict, summary = "could not check", claude_missing()
         return _keep(run_dir, None, name, verdict, summary, "")
     workspace = Path(tempfile.mkdtemp(prefix="iaso-proof-"))
     try:

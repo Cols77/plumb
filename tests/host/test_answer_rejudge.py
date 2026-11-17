@@ -132,22 +132,22 @@ def test_ex6_an_answer_is_kept_with_its_question_and_the_record_stays_proposed(
     assert rebuilt["premise"]["answers"] == [{"digest": digest, "question": ASK,
                                               "options": entry["options"],
                                               "answer": "yes, that is what I meant"}]
-    assert [q["key"] for q in judge.open_questions(core, SESSION)] == [judge.question_key(ASK)]
+    # report-307d2564: the owner's own words answer it once and for all
+    assert judge.open_questions(core, SESSION) == []
 
 
 @pytest.mark.sr("SR-212")
-def test_free_text_leaves_the_question_open_and_is_logged_verbatim(
+def test_free_text_closes_the_question_and_is_logged_verbatim(
         world: Path, hook_input) -> None:
-    """SR-212: a reply that is none of the options shown, even one asking back, is logged
-    verbatim and the judge rereads, but the question stays open."""
+    """SR-212 EX-13, report-307d2564: a reply that is none of the options shown, even one asking
+    back, is logged verbatim and closes the question; the judge rereads the record with it."""
     judge_asks(world, (ASK, ["SR-001"]))
     text = "I need more explanations, your question is unclear."
     answer(world, hook_input, ASK, text)
     (entry,) = logged(world)
-    assert entry["answer"] == text
+    assert entry["answer"] == text and entry["free_text"] is True
     assert len(judge_jobs(world)) == 1
-    assert [q["key"] for q in judge.open_questions(world_core(world), SESSION)] == [
-        judge.question_key(ASK)]
+    assert judge.open_questions(world_core(world), SESSION) == []
 
 
 @pytest.mark.sr("SR-212")

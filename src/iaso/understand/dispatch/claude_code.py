@@ -44,7 +44,9 @@ class ClaudeCodeDispatcher:
 
     def available(self) -> str | None:
         if self._binary() is None:
-            return "the claude command was not found on this machine"
+            from iaso.hosts.claude_code import claude_missing
+
+            return claude_missing(self._env.get("PATH", ""))
         return None
 
     def command(self, binary: str, job: Job, system: str, schema: Mapping[str, Any]
