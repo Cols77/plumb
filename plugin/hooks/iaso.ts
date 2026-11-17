@@ -472,7 +472,7 @@ export async function readStatus(io: Io, link: IasoLink): Promise<IasoStatus> {
     .filter(([, d]) => d?.line)
   const buildLines: string[] = Array.isArray(build?.lines) ? build.lines.map(String) : []
   // SR-413 EX-6: a judge that ran but gave an unusable answer could not settle a record: plain, not broken
-  const ran = down.filter(([, d]) => d.code === 'unusable-answer')
+  const ran = down.filter(([, d]) => d.ran === true || d.code === 'unusable-answer')
   const broken = down.filter(e => !ran.includes(e))
   const judgeLines = broken.map(([, d]) => String(d.line))
   const red = [...buildLines, ...judgeLines]
