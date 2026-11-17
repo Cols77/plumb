@@ -332,6 +332,15 @@ for (const surface of SURFACES) {
       await band.unmount()
     })
 
+    test('SR-413 EX-6: a judge ran and could not settle a record: a plain row with the cause, no red chip', async ($, on) => {
+      const { view, band } = await open($, on, surface, { judges: { down: { model: { code: 'unusable-answer', line: 'fake judge, an unusable answer (the answer was not JSON)' } } } }, 'judge')
+      expect(await view.find({ type: 'Text', text: /an unusable answer/ })).toBeDefined()
+      expect((await view.find({ type: 'Text', text: /an unusable answer/ }))?.props.color).not.toBe(RED)
+      expect((await band.find({ type: 'Text', text: /^judge/ }))?.props.color).not.toBe(RED)
+      await view.unmount()
+      await band.unmount()
+    })
+
     test('SR-413 EX-5: a question set aside: one plum row naming it, expanded to why; never called unreachable', async ($, on) => {
       const { view, band } = await open($, on, surface, { judges: { down: {}, set_aside: [{ question: 'Was this settled?', why: "a question names iaso's own words" }] } }, 'judge')
       const row = await view.find({ type: 'Text', text: /Was this settled\?/ })
