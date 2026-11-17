@@ -479,19 +479,21 @@ def cmd_drop(core: Any, args: argparse.Namespace) -> int:
             print(f"  session {p.parent.parent.name}: {d.get('intent') or 'no intent yet'} "
                   f"({str(d['digest']).removeprefix('sha256:')[:12]})", file=sys.stderr)
         return EXIT_FINDINGS
-    old_root, path, data = found[0]
-    session = path.parent.parent.name
+    _r, path, data = found[0]
+    holders = []  # every session that held a copy, the one it was taken over from too
     for r in _checkouts(root):
         for p, d in loops(r):
             if d.get("digest") == data["digest"]:
                 p.unlink(missing_ok=True)
+                holders.append((r, p.parent.parent.name))
         touch(r)
-    reset_head(old_root, session)
-    held = gate.state(old_root, session)
-    if held.state == "closed":
-        gate.open(open_core(old_root), session, held.message_digest, "handover",
-                  "the owner dropped the loop")
-    print(f"iaso: {data.get('intent') or 'the loop'} of session {session} dropped")
+    for r, held_by in holders:
+        reset_head(r, held_by)
+        held = gate.state(r, held_by)
+        if held.state == "closed":
+            gate.open(open_core(r), held_by, held.message_digest, "handover",
+                      "the owner dropped the loop")
+    print(f"iaso: {data.get('intent') or 'the loop'} of session {path.parent.parent.name} dropped")
     return 0
 
 

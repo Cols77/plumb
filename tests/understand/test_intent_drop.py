@@ -23,10 +23,12 @@ def test_drop_removes_every_copy_and_lets_the_session_go(
     old = cmd_intent.open_loop(repo, OLD, DIGEST)
     gate.close(repo, OLD, DIGEST, gate.INTENT_CHANGE)
     assert cmd_intent.run("intent", ["adopt", "--root", str(repo), "--session", NEW]) == 0
+    gate.close(repo, OLD, DIGEST, gate.INTENT_CHANGE)  # adopt opened it; the drop must too
+    gate.close(repo, NEW, DIGEST, gate.INTENT_CHANGE)
     assert _drop(repo, "--digest", "b" * 12) == 0
     assert "dropped" in capsys.readouterr().out
     assert not old.exists() and not cmd_intent.loop_path(repo, NEW, DIGEST).exists()
-    assert not gate.is_closed(repo, OLD)
+    assert not gate.is_closed(repo, OLD) and not gate.is_closed(repo, NEW)
 
 
 def test_drop_never_guesses_between_two_loops(repo: Path, capsys: pytest.CaptureFixture) -> None:
