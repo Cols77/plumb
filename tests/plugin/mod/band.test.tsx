@@ -34,6 +34,17 @@ for (const surface of SURFACES) {
       await ui.unmount()
     })
 
+    test('SR-358 EX-6: the running version ends the line, aligned or unchecked', async ($, on) => {
+      const w = world()
+      w.files[STATUS] = JSON.stringify({ state: 'aligned' })
+      w.files[`${ROOT}/.iaso/session/${SESSION}/build.json`] = JSON.stringify({ lines: [], unchecked: true, version: '0.1.1717' })
+      install(on, w)
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      expect(await ui.find({ type: 'Text', text: 'iaso ✓ aligned · 0.1.1717' })).toBeDefined()
+      await ui.unmount()
+    })
+
     test('idle in a repository iaso has not adopted: no process, no band', async ($, on) => {
       const w = world({ files: {} })
       install(on, w)

@@ -114,10 +114,46 @@ def test_ex3_this_repository_holds_dot_iaso_and_no_old_folder() -> None:
     assert not any(t.startswith(OLD_DIR + "/") for t in tracked)
 
 
+_LOGGED_OLD = (
+    "004304.610235Z-bdebd260",
+    "004304.624780Z-5a5a72fc",
+    "004304.638336Z-07aa4065",
+    "004316.504833Z-49edf5b5",
+    "004316.558479Z-ec292e5a",
+    "004316.606428Z-37cbb76f",
+    "004617.346298Z-e096c0f7",
+    "004627.636014Z-0545df1c",
+    "004643.264417Z-8fc9ef68",
+    "004651.154218Z-e6706292",
+    "004658.656699Z-140b2d32",
+    "004705.523773Z-6bd06806",
+    "004737.072783Z-1d6177b7",
+    "004813.971419Z-07acaf22",
+    # the same, logged on fix/sr206-checks (c8869c0a3); later entries point at them too
+    "011221.614844Z-b5f3abb4",
+    "011244.904020Z-a52cdbee",
+    "011256.764229Z-5b1f7392",
+    "011322.965393Z-aeb1d313",
+    "011331.152813Z-ad3ca187",
+    "011340.109499Z-eef50012",
+    "011347.446145Z-de26ead7",
+    "011401.043312Z-2acd78ab",
+    "011412.575535Z-fc7f4869",
+    "011435.788310Z-81b7cf12",
+    "011446.642864Z-7ee2fe5f",
+    "011459.870800Z-3973e997",
+    "011553.791279Z-fb4125c2",
+    "011605.584323Z-78841780",
+    "011639.505574Z-5d246d0f",
+)
+
+
 @pytest.mark.sr("SR-430")
 @pytest.mark.sr("SR-432")
 def test_no_tracked_file_mentions_the_old_name() -> None:
-    skip = {"uv.lock"}
+    # owner 2026-11-16 ("Allow these 14, prevent new ones", DEC-580): judge reasons logged before the
+    # rewrite at logging; the log is hash-chained, so they stay until the history rewrite
+    skip = {"uv.lock", *(f".iaso/log/test-change-verdict/20261116T{n}.json" for n in _LOGGED_OLD)}
     bad = []
     for name in _git(ROOT, "ls-files").splitlines():
         path = ROOT / name
@@ -295,3 +331,46 @@ def test_repair_gives_owner_messages_and_their_digests_back(tmp_path: Path) -> N
     opened = json.loads(gate.read_text())
     assert opened["payload"]["digest"] == prompt_digest(said) and opened["digest"] == entry_digest(opened)
     assert approval.read_bytes() == before
+
+
+@pytest.mark.sr("SR-432")
+def test_a_fresh_worktree_with_untracked_state_converts_to_a_staged_rename(
+        tmp_path: Path) -> None:
+    """A new worktree of an old-name repository gets local state in .iaso (a session) before
+    any conversion: the move must still leave a staged rename, not tracked deletions beside
+    untracked files, so the tree is not left dirty by half a conversion."""
+    repo = _old_project(tmp_path / "main")
+    work = tmp_path / "work"
+    _git(repo, "worktree", "add", "-q", "-b", "b", str(work))
+    (work / ".iaso" / "session" / "s1").mkdir(parents=True)
+    (work / ".iaso" / "session" / "s1" / "state.json").write_text("{}", encoding="utf-8")
+    assert _run("iaso", ["status"], work).returncode == 0
+    assert not (work / OLD_DIR).exists()
+    unstaged = [line for line in _git(work, "status", "--porcelain").splitlines()
+                if line[1] != " " or line.startswith("??")]
+    assert unstaged == [], unstaged
+
+
+@pytest.mark.sr("SR-432")
+def test_conversion_stages_only_what_it_moved(tmp_path: Path) -> None:
+    repo = _old_project(tmp_path / "main")
+    work = tmp_path / "work"
+    _git(repo, "worktree", "add", "-q", "-b", "b", str(work))
+    (work / ".iaso" / "session").mkdir(parents=True)
+    (work / ".iaso" / "note.md").write_text("mine\n", encoding="utf-8")   # not moved by it
+    assert _run("iaso", ["status"], work).returncode == 0
+    assert "?? .iaso/note.md" in _git(work, "status", "--porcelain").splitlines()
+
+
+@pytest.mark.sr("SR-432")
+def test_a_judge_reason_quoting_the_old_name_is_logged_without_it() -> None:
+    from types import SimpleNamespace
+
+    from iaso.understand import testchange
+
+    job = SimpleNamespace(id="j", inputs={"key": ["k"], "item": {"node": "t.py::t"}})
+    reason = f"the diff renames {OLD} to iaso and {OLD.capitalize()} to Iaso"
+    applied = testchange.apply(None, job, {"verdict": "real", "probability": 0.9,
+                                           "reason": reason})
+    logged = applied.entries[0]["payload"]["reason"]
+    assert OLD not in logged.lower() and logged.startswith("the diff renames")

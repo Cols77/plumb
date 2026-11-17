@@ -723,13 +723,23 @@ class Verify:
                 now = core.hash_target(link.target)
                 if now is not None and now in pinned.get(end, ()):
                     continue  # the owner confirmed this exact test content
-                examples = changed.setdefault(end.split("::", 1)[0], {}).setdefault(
-                    record_id, [])
+                examples = changed.setdefault(strip_param(end), {}).setdefault(record_id, [])
                 if link.example and link.example not in examples:
                     examples.append(link.example)
         if not changed:
             return []
         wanted = None if files is None else {f.split("::", 1)[0] for f in files}
+
+        def reaching(node_id: str, test_file: str) -> dict[str, list[str]]:
+            """The requirements a link reaches the node through: a file-level link covers
+            the file's nodes, a node-level link only that node."""
+            found: dict[str, list[str]] = {}
+            for end in (test_file, strip_param(node_id)):
+                for record_id, exs in changed.get(end, {}).items():
+                    got = found.setdefault(record_id, [])
+                    got.extend(e for e in exs if e not in got)
+            return found
+
         from iaso.understand import testchange
         from iaso.understand.judge import answers_by_key as judge_answers
 
@@ -739,7 +749,8 @@ class Verify:
         for node_id, entry in sorted(self.index().get("nodes", {}).items()):
             regressed = entry.get("regressed") or {}
             test_file = node_id.split("::", 1)[0]
-            if not regressed or test_file not in changed:
+            requirements = reaching(node_id, test_file) if regressed else {}
+            if not requirements:
                 continue
             if wanted is not None and test_file not in wanted:
                 continue
@@ -750,7 +761,7 @@ class Verify:
             item = {"node": node_id, "passed_in": regressed.get("passed_in"),
                     "failed_in": regressed.get("failed_in"),
                     "masked_by": regressed.get("masked_by"),
-                    "requirements": changed[test_file]}
+                    "requirements": requirements}
             item["judge"] = self._judge_test_change(item, regressed.get("head"), deleted)
             if item["judge"].get("real"):
                 continue  # a judge read the change: real and needed, not made just to pass
