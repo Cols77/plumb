@@ -29,6 +29,10 @@ If they agree, the code moved away from what the owner wants. Then look at the t
   owner already confirmed (both can no longer hold), answer "contradicts": put the other
   record's id in "other" and give 2 to 4 short "options" that say which one wins.
 
+With "owner" or "contradicts", put the option you recommend first, give "consequences", one
+per option in the same order (what picking it does and what it leaves undone), and "why", the
+reason the first option is recommended. The owner is never asked a question without them.
+
 Never send a change back to development on a guess: when unsure, it is "owner".
 
 "explanation" says what is wrong in plain words for the owner: the intent, the requirement,

@@ -514,6 +514,32 @@ def test_end_texts_finds_a_pin_made_on_the_side_a_merge_dropped(setup: Path) -> 
     assert links.end_texts(setup, pinned) == ("x = 2\n", "x = 3\n")
 
 
+def test_end_texts_finds_a_pin_made_on_a_version_only_a_merge_holds(setup: Path) -> None:
+    """report-645da35a: a merge that combined both sides' edits made a version no other commit
+    has; ``git log --name-only`` names no file for a merge, so the pin made on it is found only
+    when merges are listed against their first parent."""
+    from tests.conftest import git
+
+    (setup / "src" / "mod.py").write_bytes(b"a = 1\n\n\n\nb = 1\n")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "mod")
+    base = git(setup, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    git(setup, "checkout", "-q", "-b", "other")
+    (setup / "src" / "mod.py").write_bytes(b"a = 2\n\n\n\nb = 1\n")
+    git(setup, "commit", "-q", "-am", "a")
+    git(setup, "checkout", "-q", base)
+    (setup / "src" / "mod.py").write_bytes(b"a = 1\n\n\n\nb = 2\n")
+    git(setup, "commit", "-q", "-am", "b")
+    git(setup, "merge", "-q", "--no-ff", "-m", "merge", "other")   # a = 2 and b = 2: only here
+    open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py"))
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "link")
+    (setup / "src" / "mod.py").write_bytes(b"x = 3\n")
+    git(setup, "commit", "-q", "-am", "later")
+    pinned = open_core(setup).index()["SR-001"].links[0]
+    assert links.end_texts(setup, pinned) == ("a = 2\n\n\n\nb = 2\n", "x = 3\n")
+
+
 def test_end_texts_follows_a_file_moved_after_the_pin(setup: Path) -> None:
     """A pin made before the file was moved (the IASO rename moved every file) is still found."""
     from tests.conftest import git
