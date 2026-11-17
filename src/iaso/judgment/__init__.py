@@ -258,6 +258,9 @@ def _keep(path: Path, held: Mapping[str, Any]) -> None:
         pass
 
 
+RAN = frozenset({"unusable-answer"})    # SR-413 EX-6, DEC-582: the judge ran but could not settle: plain, not red
+
+
 def judge_down(root: Path, judge: str, cause: str, *, code: str = "", detail: str = "",
                slot: str = "", now: float | None = None) -> None:
     """SR-359 EX-1: note in ``session/judges.json`` that ``judge`` cannot settle a
@@ -275,8 +278,8 @@ def judge_down(root: Path, judge: str, cause: str, *, code: str = "", detail: st
     line = f"{judge} judge, {plain} ({detail})"
     was = down.get(slot) if isinstance(down.get(slot), dict) else {}
     if was.get("line") != line or _stale(was, now):
-        _keep(path, {**held, "down": {**down, slot: {"code": code, "cause": cause,
-                                                     "line": line, "checked": now}}})
+        _keep(path, {**held, "down": {**down, slot: {"code": code, "cause": cause, "line": line,
+                                                     "ran": code in RAN, "checked": now}}})
 
 
 def judge_up(root: Path, slot: str) -> None:
