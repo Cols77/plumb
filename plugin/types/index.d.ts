@@ -73,6 +73,9 @@ export type IasoStatus = {
   judgeLines?: string[]
   /** the name of each judge in judgeLines, in the same order: its row's key in the pane (SR-413) */
   judgeNames?: string[]
+  /** judges that ran but could not settle a record, plain colour with the cause, and their names (SR-413 EX-6) */
+  unsettledLines?: string[]
+  unsettledNames?: string[]
   /** SR-358: iaso's repository could not be read, so the build is not checked (never red) */
   unchecked?: string
   /** SR-358 EX-6: the version of the plugin the session runs, always on the band's line */
