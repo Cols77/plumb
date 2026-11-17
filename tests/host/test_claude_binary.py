@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from iaso.hosts.claude_code import claude_binary
+from iaso.hosts.claude_code import claude_binary, claude_missing
 from iaso.understand.dispatch.claude_code import ClaudeCodeDispatcher
 
 pytestmark = pytest.mark.sr("SR-397")
@@ -45,3 +45,17 @@ def test_the_path_comes_first_and_nothing_installed_is_none(home: Path, tmp_path
     assert claude_binary(str(tmp_path / "empty")) == str(home / ".local" / "bin" / "claude")
     (home / ".local" / "bin" / "claude").unlink()
     assert claude_binary() is None
+
+
+def test_an_update_caught_halfway_says_so_not_missing(home: Path) -> None:
+    """Claude Code's auto-update leaves the installer's ``.claude-*`` file where the command
+    was: the evaluator, the fixer and the dispatcher say it is being updated, not missing."""
+    folder = home / ".npm-global" / "bin"
+    folder.mkdir(parents=True)
+    (folder / "codex").write_text("#!/bin/sh\n", encoding="utf-8")
+    assert claude_missing() == "the claude command was not found on this machine"
+    (folder / ".claude-Xq3k9a").write_text("", encoding="utf-8")
+    assert claude_binary() is None
+    assert claude_missing() == "the claude command is being updated: try again in a minute"
+    reason = ClaudeCodeDispatcher(env={"PATH": "/usr/bin:/bin"}).available()
+    assert reason == "the claude command is being updated: try again in a minute"
