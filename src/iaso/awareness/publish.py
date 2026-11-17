@@ -225,16 +225,19 @@ def moved_since(data: Mapping[str, Any], branch: str | None, head: str | None) -
 
 
 def still_changed(root: Path, paths: Sequence[str]) -> list[str]:
-    """The ``paths`` that differ from HEAD or git does not track (one git call): a path put
-    back as HEAD holds it (an aborted merge, an undone edit) is no longer being changed."""
-    if not paths:
-        return []
+    """``paths`` less the record files put back as HEAD holds them (an aborted merge, an
+    undone edit): those no longer count as edited. One git call, only when a record file is
+    pending; any other path is kept with no git call (SR-258)."""
+    prefix = state_dir(root).name + "/"
+    records = [p for p in paths if p.startswith(prefix)]
+    if not records:
+        return list(paths)
     out = _git(root, "status", "--porcelain", "-z", "--no-renames",
-               "--untracked-files=all", "--", *paths)
+               "--untracked-files=all", "--", *records)
     if out is None:
         return list(paths)
     changed = {entry[3:] for entry in out.split("\0") if len(entry) > 3}
-    return [p for p in paths if p in changed]
+    return [p for p in paths if not p.startswith(prefix) or p in changed]
 
 
 def publish(core: Any, changed_paths: Sequence[str], *, head_moved: bool | None = None

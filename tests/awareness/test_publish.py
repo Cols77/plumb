@@ -75,13 +75,13 @@ def test_committed_part_recomputed_only_when_head_moved(tmp_path: Path,
     calls.clear()
     pub.publish(core, ["src/relay.py"])
     pub.publish(core, [])
-    assert [c for c in calls if c[0] == "git" and c[1] != "status"] == []  # HEAD did not move
+    assert [c for c in calls if c[0] == "git"] == []           # HEAD did not move
     monkeypatch.setattr(subprocess, "run", real)
     requirement(other, "SR-002", "status card", "changed too")
     commit_all(other, "edit 2")
     monkeypatch.setattr(subprocess, "run", counting)
     data = pub.publish(open_core(other), [])
-    assert len([c for c in calls if c[0] == "git" and c[1] != "status"]) == 2
+    assert len([c for c in calls if c[0] == "git"]) == 2
     assert data is not None and set(data["records"]) >= {"SR-001", "SR-002"}
 
 
