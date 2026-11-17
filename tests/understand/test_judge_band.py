@@ -170,3 +170,16 @@ def test_ex3_the_status_refresh_rechecks_the_judges(
         assert "JEV" not in judges(world).get("down", {})
     finally:
         stub.close()
+
+
+@pytest.mark.sr("SR-413")
+def test_sr413_ex6_a_judge_that_ran_but_could_not_settle_is_kept_plain_not_broken(
+        tmp_path: Path) -> None:
+    from iaso.judgment import judge_down
+
+    (tmp_path / ".iaso").mkdir()
+    judge_down(tmp_path, "JEV", "the answer was not JSON")
+    judge_down(tmp_path, "model", "no answer within 120 seconds")
+    down = judges(tmp_path)["down"]
+    assert down["JEV"]["ran"] is True and down["JEV"]["code"] == "unusable-answer"
+    assert down["model"]["ran"] is False
