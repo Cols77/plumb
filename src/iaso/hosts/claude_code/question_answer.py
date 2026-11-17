@@ -131,14 +131,24 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                   for r in q.get("records") or () if isinstance(r, dict)
                               }.values()))}
             if covers:
-                entry["asked"]["keys"] = [*(q.get("key") for q in merged), *flags]
+                # every key it covers, whichever checkout's session filed it (report-307d2564)
+                entry["asked"]["keys"] = list(dict.fromkeys(
+                    [*(q.get("key") for q in merged), *map(str, covers)]))
             if _free_text(entry):
-                entry["free_text"] = True   # SR-212: logged and reread, the question stays open
-        elif flags and entry["answer"] != owner_text.STUDY_FIRST:
-            # only flags covered: no record goes back to the judge; the next check reads the
-            # answer by each flag's key (``testchange.owner_needed``)
-            entry["asked"] = {"job": None, "key": flags[0], "principle": "", "records": [],
-                              "keys": flags}
+                # SR-212: the owner's own words close the question and go to the judge with it;
+                # its copies on the same topic still open here close with it
+                entry["free_text"] = True
+                about = judge._topics_of(entry["asked"])
+                copies = [q.get("key") for q in left if about & judge._topics_of(q)]
+                if copies:
+                    entry["asked"]["keys"] = list(dict.fromkeys(
+                        [*entry["asked"].get("keys", [found.get("key")]), *copies]))
+        elif covers and entry["answer"] != owner_text.STUDY_FIRST:
+            # none of the questions covered is open in this checkout (flags, or another
+            # checkout's): no record goes back to the judge here; each key takes the answer
+            # (``testchange.owner_needed`` reads a flag's)
+            entry["asked"] = {"job": None, "key": str(covers[0]), "principle": "",
+                              "records": [], "keys": list(map(str, covers))}
             if _free_text(entry):
                 entry["free_text"] = True
     _apply_conflicts(core, ctx.session_id, entries, key_of)
@@ -181,7 +191,8 @@ def _carried(core: Any, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _free_text(entry: dict[str, Any]) -> bool:
     """Options were shown and the answer is none of their labels (a multi-select answer joins
-    labels): the owner's own words, which do not by themselves close the question."""
+    labels): the owner's own words. They close the question and its copies open now
+    (report-307d2564), and go to the judge with the record (SR-212)."""
     labels = [str(o.get("label")) for o in entry.get("options") or () if o.get("label")]
     if not labels:
         return False

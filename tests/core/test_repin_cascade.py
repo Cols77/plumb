@@ -391,3 +391,32 @@ def test_sr166_untested_end_repins_on_meaning_with_the_gap_in_the_note(project: 
     result = links.repin_after_tests(open_core(project), LINK, judge=Judge(False, "sums"),
                                      runner=lambda paths: (True, untested))
     assert result.changes == []
+
+
+@pytest.mark.parametrize("tier", [None, "below"])
+def test_no_model_says_why_the_meaning_judge_cannot_run(project: Path, monkeypatch,
+                                                         tier) -> None:
+    """Issue #5: a link no model could judge names why, so a healthy JEV probe and a refusal
+    are not a riddle."""
+    _edit(project, REFORMATTED)
+    monkeypatch.setattr(repin, "open_judge", lambda core: None)
+    monkeypatch.setattr(repin, "judge_gap", lambda core: "the claude command was not found")
+    result, _ = _resolve(project, jev=JevTier(Backend(0.4), 0.8) if tier else None)
+    ((link, why),) = result.refused
+    assert why.startswith(links.NO_MODEL) and "the claude command was not found" in why
+    assert ("less than its threshold" in why) == bool(tier)
+
+
+def test_an_owner_question_without_consequences_is_still_complete(project: Path) -> None:
+    """Issue #5: a diagnosis that gives no consequences or reason still files a question the
+    question tool's check lets through, so the owner sees it."""
+    from iaso.hosts.claude_code.pretool import incomplete_question
+
+    _edit(project, CHANGED, turn=TURN)
+    _resolve(project, judge=Judge(False, "add now multiplies"), answer=OWNER)
+    from iaso.understand import judge
+
+    (q,) = [q for q in judge._logged_questions(project, "s1")
+            if str(q.get("job") or "").startswith("stale:")]
+    assert all(o["description"] for o in q["options"])
+    assert incomplete_question({"questions": [q]}) == ""

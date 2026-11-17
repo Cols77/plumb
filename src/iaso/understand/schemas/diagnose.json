@@ -9,6 +9,8 @@
     "topic": {"type": "string"},
     "proposed_wording": {"type": "string"},
     "options": {"type": "array", "items": {"type": "string"}},
+    "consequences": {"type": "array", "items": {"type": "string"}},
+    "why": {"type": "string"},
     "broken_example": {"type": "string"},
     "other": {"type": "string"}
   }

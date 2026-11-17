@@ -99,9 +99,9 @@ def test_the_job_reads_waiting_questions(repo: Path, world) -> None:
     assert tidy.build(open_core(repo), SESSION) is not None
 
 
-def test_a_typed_reply_is_not_asked_again_until_the_job_read_it(repo: Path, world) -> None:
-    """SR-212: a reply in the owner's own words leaves the question open; no session is told to
-    ask it until the job has read the reply; a reply that settled nothing brings it back."""
+def test_a_typed_reply_closes_the_question_and_it_is_never_asked_again(repo: Path, world) -> None:
+    """SR-212 EX-14, report-307d2564: a reply in the owner's own words closes the question; no
+    session is told to ask it again, before the job read the reply or after."""
     from iaso.understand import judge
 
     _waiting(repo)
@@ -110,8 +110,8 @@ def test_a_typed_reply_is_not_asked_again_until_the_job_read_it(repo: Path, worl
         "session": "cli", "question": ASKED, "answer": "I need more explanations",
         "via": "question-tool", "free_text": True, "options": [],
         "asked": {"key": key, "records": []}})])
-    assert [q["key"] for q in judge.open_questions(open_core(repo), "cli")] == [key]
+    assert judge.open_questions(open_core(repo), "cli") == []
     assert judge.to_ask(open_core(repo), "cli") == []
     world.dispatcher.script = {"tidy": {"questions": []}}
     _tidy(repo)
-    assert [q["key"] for q in judge.to_ask(open_core(repo), "cli")] == [key]
+    assert judge.to_ask(open_core(repo), "cli") == []

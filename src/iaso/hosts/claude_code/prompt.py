@@ -387,12 +387,13 @@ def queued_for_agent(ctx: HookContext) -> list[str]:
 
 
 def write_build(ctx: HookContext) -> None:
-    """SR-358: each misalignment red, every prompt; unchecked is not."""
+    """SR-358: each misalignment red, every prompt; unchecked is not; the version always."""
     from iaso.build import check
 
     found = check(ctx.root)
     write_json_atomic(ctx.session_dir / ctx.session_id / "build.json",
-                      {"lines": found["lines"], "unchecked": found["unchecked"]})
+                      {"lines": found["lines"], "unchecked": found["unchecked"],
+                       "version": found["version"]})
 
 
 def handle(ctx: HookContext, *, verify: Any = LAZY, backend: Any = LAZY) -> HookOutput:
