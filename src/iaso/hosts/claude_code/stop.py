@@ -640,9 +640,15 @@ def stale_hold(ctx: HookContext, core: Any, index: Mapping[str, Any],
     turn nothing is held. Never fails the stop."""
     try:
         from iaso import main_guard, stale
+        from iaso.mergedriver.driver import git_operation
 
-        if main_guard.main_checkout(Path(ctx.root) / str(ctx.data.get("cwd") or "."), ctx.root):
-            return [], []   # SR-384: in main's checkout a stale link is resolved on a branch
+        cwd = Path(ctx.root) / str(ctx.data.get("cwd") or ".")
+        if any(main_guard.main_checkout(d, ctx.root) for d in {cwd, Path(ctx.root)}):
+            # SR-384: in main's checkout a stale link is resolved on a branch; the repins
+            # write where the hook is rooted, whatever the session's directory (report-8f8dd5df)
+            return [], []
+        if git_operation(Path(ctx.root)) is not None:
+            return [], []   # report-8f8dd5df: a merge's stale links are the merge's to settle
         turn_id = turn.get("turn_id")
         state = stale.turn_state(core, ctx.session_id, str(turn_id) if turn_id else None)
         if not state.valid:
