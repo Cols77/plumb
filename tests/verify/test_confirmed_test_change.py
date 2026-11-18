@@ -390,6 +390,43 @@ def test_owner_waiver_of_the_full_run_covers_exactly_this_change(confirmed, caps
     capsys.readouterr()
 
 
+def test_the_owners_waive_answer_through_the_question_tool_is_the_waiver(
+        confirmed, monkeypatch, capsys, hook_input) -> None:
+    """SR-254 EX-11: the agent asks run-or-waive once through the question tool; the owner's
+    waive answer, logged by the question-answer hook, waives exactly this change."""
+    from iaso.hosts.claude_code import question_answer
+    from iaso.verify.policy import RUN, WAIVE
+
+    root, base = confirmed
+    write(root, "pyproject.toml", (root / "pyproject.toml").read_text("utf-8") + "# note\n")
+    commit_all(root, "pyproject comment")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
+    assert _check(root, base) == 5
+    capsys.readouterr()
+
+    def answer(pick: str) -> None:
+        assert cli.main(["tests", "ask-waiver", "--merge", base, "--root", str(root)]) == 0
+        asked = json.loads(capsys.readouterr().out)
+        q = asked["questions"][0]
+        assert "pyproject.toml changed" in q["question"]
+        assert [o["label"] for o in q["options"]] == [RUN, WAIVE]
+        payload = hook_input("PostToolUse", tool_name="AskUserQuestion", tool_input=asked,
+                             tool_response={"answers": {q["question"]: pick}}, session_id="s1")
+        assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                    root=root) == 0
+
+    answer(RUN)                                  # "run it" waives nothing
+    assert _check(root, base) == 5
+    capsys.readouterr()
+    answer(WAIVE)
+    assert _check(root, base) == 0
+    assert "waived by the owner for this exact change" in capsys.readouterr().out
+    write(root, "src/pkg/lonely.py", "VALUE = 2\n")  # any later edit voids it
+    assert _check(root, base) == 5
+    capsys.readouterr()
+
+
 def test_waiver_is_refused_under_the_agent_marker(confirmed, monkeypatch, capsys) -> None:
     root, base = confirmed
     monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
