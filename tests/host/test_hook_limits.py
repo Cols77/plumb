@@ -90,6 +90,18 @@ def test_host_timeouts_sit_above_the_hard_limit_and_grace() -> None:
     assert all(v < hookio.HARD_LIMIT_S * 1000 for v in budgets.values())
 
 
+def test_codex_hook_timeouts_sit_above_the_hard_limit_and_grace(tmp_path: Path) -> None:
+    """EX-5 for Codex: the timeouts iaso hosts install codex writes exceed the same sum."""
+    from iaso.hosts.claude_code.stop import STOP_GRACE_S
+    from iaso.hosts.codex import install as codex
+
+    data = codex._hooks_data(tmp_path / "hooks.json", ["uv", "run", "iaso"])
+    timeouts = [h["timeout"] for groups in data["hooks"].values() for g in groups
+                for h in g["hooks"]]
+    assert len(timeouts) == 3
+    assert min(timeouts) > hookio.HARD_LIMIT_S + STOP_GRACE_S
+
+
 def _host_limit() -> float:
     """The longest hard limit the host allows: its shortest hook timeout less the stop grace."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))

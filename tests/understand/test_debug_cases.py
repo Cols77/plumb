@@ -44,3 +44,28 @@ def test_ex2_a_resolved_case_is_counted_and_no_longer_told(repo: Path) -> None:
     assert "2 debug cases open, 1 resolved" in text and "c2" not in text and key == "cases:2:1"
     assert summary.resolve_cases(repo, ["c1", "c3"]) == 2
     assert landing.lines(repo) == []
+
+
+def test_a_case_repeated_by_later_landings_counts_once(repo: Path) -> None:
+    """Every landing writes its own file and repeats the cases still open: one case, once."""
+    from iaso.boundary import landing
+
+    summary.write_cases(open_core(repo), "abc123", CASES)
+    summary.write_cases(open_core(repo), "def456", CASES[:2])
+    ((key, text),) = landing.lines(repo)
+    assert key == "cases:3:0" and text.startswith("iaso: 3 debug cases open")
+
+
+def test_a_long_list_names_twenty_and_counts_the_rest(repo: Path, capsys, monkeypatch) -> None:
+    many = [{"id": f"c{n}", "kind": "unrun-test" if n % 2 else "stale-link", "target": f"t{n}",
+             "detail": "d", "state": "open"} for n in range(500)]
+    text = summary.cases_text(many, workflow="debug-cases")
+    assert "500 debug cases open" in text and len(text) < 4000
+    assert "- c19 " in text and "- c20 " not in text and "c20," not in text
+    assert "480 more (240 stale-link, 240 unrun-test)" in text
+    assert "iaso understand debug list" in text
+    summary.write_cases(open_core(repo), "abc123", many)
+    monkeypatch.chdir(repo)
+    assert summary.run_debug(["list"]) == 0
+    out = capsys.readouterr().out
+    assert "- c499 (unrun-test) t499: d" in out and "500 open, 0 resolved" in out

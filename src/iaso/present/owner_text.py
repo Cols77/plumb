@@ -219,6 +219,9 @@ OVERLAP = 'iaso: {id} "{title}" is also being changed on branch {branch}'
 OVERLAP_WORKTREE = " (worktree {worktree})"
 OVERLAP_CLAIMED = ' (intent in flight there: "{summary}")'
 MORE_OVERLAPS = "iaso: +{n} more also being changed elsewhere (/iaso status)"
+# one line per record however many branches change it (each old self-fix branch carries it)
+OVERLAP_MANY = 'iaso: {id} "{title}" is also being changed on {n} branches: {branches}'
+OVERLAP_MORE_BRANCHES = " and {n} more (/iaso status)"
 OVERLAP_CARD = "{n} also changed on {labels}"
 OVERLAP_CARD_ASCII = "overlap {n} ({labels})"
 # R17: a change that already landed on the default branch after this branch started from

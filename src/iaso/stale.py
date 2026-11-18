@@ -586,8 +586,10 @@ def sessions(root: Path | str) -> list[str]:
 
 
 # Where a shell command learns its session: iaso's own variable, then the id Claude Code
-# gives every command it runs (the same id its hooks receive as ``session_id``).
-SESSION_ENV = ("IASO_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID")
+# gives every command it runs (the same id its hooks receive as ``session_id``), then
+# Codex's thread id (its hooks receive it as ``session_id`` too).
+SESSION_ENV = ("IASO_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID",
+               "CODEX_THREAD_ID")
 _NOT_A_TURN = frozenset({"default", "cli"})
 _SESSION_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
 

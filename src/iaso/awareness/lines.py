@@ -139,9 +139,9 @@ def delta_lines(core: Any, ids: Iterable[str]) -> list[Any]:
 
     if not _config(core).enabled:
         return []
-    out = [Line(overlap_line(item), subject=overlap_subject(item),
-                state=item.other_hash or item.at or "-", record=item.record)
-           for item in overlaps(core, ids)]
+    out = grouped_lines(overlaps(core, ids))
+    if len(out) > TOLD_RECORDS:  # the rest: a later prompt, or /iaso status
+        out = [*out[:TOLD_RECORDS], Line(text.MORE_OVERLAPS.format(n=len(out) - TOLD_RECORDS))]
     try:
         out += [Line(line, subject=subject, state=state)
                 for subject, state, line in raised_lines(core)]
@@ -153,6 +153,44 @@ def delta_lines(core: Any, ids: Iterable[str]) -> list[Any]:
                 for subject, state, line in superseded_lines(core)]
     except Exception:  # noqa: BLE001 - advisory
         pass
+    return out
+
+
+TOLD_BRANCHES = 3   # branches one record's line names; /iaso status lists them all
+TOLD_RECORDS = 10   # records a prompt's overlap lines name, then "+N more"
+
+
+def grouped_lines(found: Sequence[Overlap]) -> list[Any]:
+    """One ``Line`` per record, in the order found: a record several branches change is one
+    line naming the first ``TOLD_BRANCHES`` and counting the rest (54 branches once made a
+    prompt 508 lines, 72 KB). A change since the fork stays its own line."""
+    from iaso.present.delta import Line
+
+    groups: dict[str, list[Overlap]] = {}
+    order: list[str | Overlap] = []
+    for item in found:
+        if item.how == inflight.SINCE_FORK:
+            order.append(item)
+        else:
+            if item.record not in groups:
+                order.append(item.record)
+            groups.setdefault(item.record, []).append(item)
+    out = []
+    for entry in order:
+        items = [entry] if isinstance(entry, Overlap) else groups[entry]
+        first = items[0]
+        state = ",".join(i.other_hash or i.at or "-" for i in items)
+        if len(items) == 1:
+            out.append(Line(overlap_line(first), subject=overlap_subject(first), state=state,
+                            record=first.record))
+            continue
+        line = text.OVERLAP_MANY.format(
+            id=first.record, title=first.title, n=len(items),
+            branches=", ".join(i.branch for i in items[:TOLD_BRANCHES]))
+        if len(items) > TOLD_BRANCHES:
+            line += text.OVERLAP_MORE_BRANCHES.format(n=len(items) - TOLD_BRANCHES)
+        out.append(Line(line, subject=f"overlap:{first.record}", state=state,
+                        record=first.record))
     return out
 
 

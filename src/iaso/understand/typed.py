@@ -27,8 +27,9 @@ _ID = re.compile(r"^(?:(?:INT|SR|DEC|FEAT)-\d+|NC-\d+)$")
 PREFIX = r"/iaso(?::iaso)?"
 _PREFIX_HEAD = re.compile(r"^" + PREFIX + r"(?=[ \t])")
 _HEAD = re.compile(r"^" + PREFIX + r"[ \t]+([a-z][a-z-]*)(?:[ \t]+(.*))?$", re.DOTALL)
-# the plugin's skills answer to /iaso:iaso-intent and /iaso:iaso-clarify: the same commands
-_SKILL_SPELLING = re.compile(r"^/iaso:iaso-(intent|clarify)(?=[ \t])")
+# the plugin's skills answer to /iaso:iaso-intent and /iaso:iaso-clarify, and Codex
+# invokes the same skills as $iaso-intent and $iaso-clarify: the same commands
+_SKILL_SPELLING = re.compile(r"^(?:/iaso:|\$)iaso-(intent|clarify)(?=[ \t])")
 # SR-304: a pasted command arrives wrapped as <pasted_content ...>body</pasted_content ...>
 _PASTE = re.compile(r"^<pasted_content\b[^>]*>(.*?)</pasted_content\b[^>]*>(.*)$", re.DOTALL)
 

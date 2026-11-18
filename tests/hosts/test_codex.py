@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -60,7 +61,20 @@ def test_install_idempotent_preserves_foreign(project: Path) -> None:
     config = _config(project)
     assert config["mcp_servers"]["other"]["command"] == "other"
     assert config["shell_environment_policy"]["set"]["IASO_AGENT_SESSION"] == "codex"
-    assert config["notify"][-1] == "--notify" and "codex" in config["notify"]
+    assert "notify" not in config        # Codex ignores it in a project's config
+    for event in ("SessionStart", "UserPromptSubmit", "Stop"):
+        ours = [h["command"] for g in hooks[event] for h in g["hooks"] if "--host" in h["command"]]
+        assert Path(shlex.split(ours[0])[0]).is_absolute()   # no PATH lookup by the host
+
+
+def test_hook_program_is_absolute(project: Path) -> None:
+    """The app-server daemon runs hooks with systemd's PATH: a bare uv exits 127."""
+    found = {"uv": "/home/me/.local/bin/uv"}
+    assert codex.host_argv(project, ["uv", "run", "--no-sync", "iaso"], which=found.get) == [
+        "/home/me/.local/bin/uv", "run", "--no-sync", "iaso"]
+    assert codex.host_argv(project, [".venv/bin/python", "-m", "iaso"])[0] == (
+        project.resolve() / ".venv/bin/python").as_posix()
+    assert codex.host_argv(project, ["/opt/iaso"]) == ["/opt/iaso"]
 
 
 def test_uninstall_removes_only_iaso(project: Path) -> None:
@@ -102,13 +116,12 @@ def test_status_names_missing_marker(project: Path, monkeypatch, capsys) -> None
     assert "UserPromptSubmit" in out
 
 
-def test_user_notify_kept(project: Path, tmp_path: Path) -> None:
-    home = tmp_path / "codex-home"
-    home.mkdir()
-    (home / "config.toml").write_text('notify = ["mine"]\n', "utf-8")
-    report = codex.install(project)
+def test_an_old_notify_line_is_removed(project: Path) -> None:
+    (project / ".codex" / "config.toml").write_text(
+        '# >>> iaso (iaso hosts install codex) >>>\nnotify = ["uv", "run", "iaso"]\n'
+        '# <<< iaso <<<\n' + FOREIGN_TOML, "utf-8")
+    codex.install(project)
     assert "notify" not in _config(project)
-    assert any("notify kept" in line for line in report.lines)
 
 
 def _link_running_venv(project: Path) -> None:

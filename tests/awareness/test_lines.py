@@ -68,3 +68,35 @@ def test_snapshot_fields_and_status_card_text(tmp_path: Path) -> None:
     data = {"requirements_total": 1, "proposed": 0, "conflicts": 1, "overlaps": 0}
     assert status_card(data).endswith("· 1 conflict awaits you")
     assert "overlap" not in status_card({"requirements_total": 1})
+
+
+def test_many_branches_on_one_record_are_one_line() -> None:
+    """54 old branches each carrying the same records once made a prompt 508 lines."""
+    from iaso.awareness.lines import grouped_lines
+    from iaso.contracts import Overlap
+
+    found = [Overlap(record="SR-267", title="A question stands alone", branch=f"debug/b{n}",
+                     other_hash=f"h{n}") for n in range(25)]
+    found.append(Overlap(record="SR-300", title="Debug cases", branch="feat/x"))
+    lines = grouped_lines(found)
+    assert [line.text for line in lines] == [
+        'iaso: SR-267 "A question stands alone" is also being changed on 25 branches: '
+        "debug/b0, debug/b1, debug/b2 and 22 more (/iaso status)",
+        'iaso: SR-300 "Debug cases" is also being changed on branch feat/x']
+    assert lines[0].subject == "overlap:SR-267" and lines[1].subject == "overlap:SR-300:feat/x"
+
+
+def test_a_prompt_names_ten_records_then_more(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from iaso.awareness import lines as mod
+    from iaso.contracts import Overlap
+
+    found = [Overlap(record=f"SR-{n}", title="t", branch="b") for n in range(14)]
+    monkeypatch.setattr(mod, "overlaps", lambda core, ids: found)
+    monkeypatch.setattr(mod, "raised_lines", lambda core: [])
+    monkeypatch.setattr(mod, "superseded_lines", lambda core: [])
+    core = SimpleNamespace(config=SimpleNamespace(awareness=None))
+    texts = [line.text for line in mod.delta_lines(core, [])]
+    assert len(texts) == 11 and texts[-1] == ("iaso: +4 more also being changed elsewhere "
+                                              "(/iaso status)")
