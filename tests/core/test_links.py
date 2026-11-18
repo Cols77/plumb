@@ -701,3 +701,34 @@ def test_end_texts_finds_a_pin_made_before_the_conversion_to_iaso(setup: Path) -
     git(setup, "commit", "-q", "-m", "convert")
     pinned = open_core(setup).index()["SR-001"].links[0]
     assert links.end_texts(setup, pinned) == (convert.rewrite_text(v1), convert.rewrite_text(v2))
+
+
+def _merge_main(setup: Path, text: bytes) -> None:
+    """Main commits ``src/mod.py`` as ``text``; the side branch merges it, taking main's file."""
+    from tests.conftest import git
+
+    git(setup, "checkout", "-q", "main")
+    (setup / "src" / "mod.py").write_bytes(text)
+    git(setup, "commit", "-qam", "main")
+    git(setup, "checkout", "-q", "side")
+    git(setup, "merge", "-q", "-X", "theirs", "-m", "merge main", "main")
+
+
+def test_end_texts_finds_a_pin_older_than_many_merges_carrying_one_version(setup: Path) -> None:
+    """report-a425a319: a branch merging main often lists the file at hundreds of merge commits
+    over a few contents; the pinned version lies past the first ``HISTORY_DEPTH`` commits."""
+    from dataclasses import replace
+
+    from tests.conftest import git
+
+    git(setup, "branch", "-M", "main")
+    git(setup, "add", "-A")
+    git(setup, "commit", "-q", "-m", "base")
+    git(setup, "checkout", "-q", "-b", "side")
+    (setup / "src" / "mod.py").write_bytes(b"x = 2\n")
+    git(setup, "commit", "-qam", "pinned version")
+    link = replace(open_core(setup).add_link("SR-001", "implemented_by", Target(path="src/mod.py")))
+    for i in range(links.HISTORY_DEPTH + 2):
+        _merge_main(setup, b"x = %d\n" % (10 + i % 2))
+    assert links.end_texts(setup, link) == ("x = 2\n", "x = 11\n")
+
