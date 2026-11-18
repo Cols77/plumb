@@ -441,3 +441,33 @@ def test_a_merge_in_progress_claims_nothing_and_raises_no_decision(tmp_path: Pat
 def test_the_same_edit_outside_a_merge_is_still_claimed(tmp_path: Path) -> None:
     main, wrote = _merge_brings_the_other_version(tmp_path, in_progress=False)
     assert wrote is True
+
+
+@pytest.mark.parametrize("how", ["merge aborted", "edit undone"])
+def test_a_record_put_back_as_head_holds_it_is_not_claimed(tmp_path: Path, how: str) -> None:
+    """Case report-8f8dd5df: a merge's paths never become this checkout's pending edits, and
+    a pending record that is again what HEAD holds (the merge aborted, the edit undone)
+    counts as edited no more; the next turn end writes no claim and no decision file."""
+    import shutil
+    import subprocess
+
+    from iaso.awareness.publish import note_edit, publish
+    from iaso.awareness.turn import claim_changes
+
+    main, other = setup(tmp_path)
+    change(other, "feat-x version one")
+    shutil.copyfile(other / _SR005, main / _SR005)
+    git_dir = Path(subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=main,
+                                  capture_output=True, text=True, check=True).stdout.strip())
+    if how == "merge aborted":
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=other, capture_output=True,
+                              text=True, check=True).stdout
+        (git_dir / "MERGE_HEAD").write_text(head, encoding="utf-8")
+        assert publish(open_core(main), [_SR005])["pending"] == []
+        (git_dir / "MERGE_HEAD").unlink()
+    else:
+        note_edit(main, _SR005)
+    subprocess.run(["git", "checkout", "HEAD", "--", _SR005], cwd=main, check=True)
+    data = publish(open_core(main), [])
+    assert data is not None and data["pending"] == [] and "SR-005" not in data["records"]
+    assert claim_changes(open_core(main), data) is False and _decisions(main) == []
