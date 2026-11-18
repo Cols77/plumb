@@ -280,6 +280,17 @@ def test_ex1_a_decision_that_settles_a_stale_link_question_refreshes_the_link(
 
 
 @pytest.mark.sr("SR-217")
+def test_no_settlement_repins_while_a_merge_is_in_progress(
+        project: Path, write_record, engine_standins, monkeypatch) -> None:  # noqa: F811
+    """Case report-8f8dd5df: mid-merge the link is the merge's; the question waits."""
+    key = _stale_question(project, write_record)
+    monkeypatch.setenv("GITHEAD_" + "a" * 40, "main")       # inside git merge
+    _run(project, engine_standins, {"questions": [], "settlements": [
+        {"question": key, "action": "repin", "decision": "DEC-900", "quote": DECIDED}]})
+    assert _link_state(project) == "stale" and len(_left(project)) == 1
+
+
+@pytest.mark.sr("SR-217")
 def test_a_decision_may_reword_the_requirement_it_settles(
         project: Path, write_record, engine_standins) -> None:  # noqa: F811
     key = _stale_question(project, write_record)

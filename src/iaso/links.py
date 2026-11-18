@@ -471,6 +471,30 @@ def _git_text(root: Path, args: list[str]) -> str | None:
         return None
 
 
+def _log_versions(root: Path, rev: str, flags: list[str], rel: str) -> list[tuple[str, str]]:
+    """One ``git log`` listing of ``rel``: ``(commit, path)`` of each distinct content, newest
+    first, at most ``HISTORY_DEPTH`` of them. A branch that merges main often has hundreds of
+    merge commits carrying one version; counting commits (``-n``) ran out before the pinned
+    version, so contents are counted (report-a425a319)."""
+    listing = _git_text(root, ["log", *flags, "--format=@%H", "--raw", "--no-abbrev", rev, "--",
+                               rel]) or ""
+    found: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    sha = None
+    for line in listing.splitlines():
+        if line.startswith("@"):
+            sha = line[1:]
+        elif line.startswith(":") and sha:
+            meta, *paths = line.split("\t")
+            blob = meta.split()[3]
+            if blob not in seen and set(blob) != {"0"}:   # a deletion has no content
+                seen.add(blob)
+                found.append((sha, paths[-1]))
+                if len(found) >= HISTORY_DEPTH:
+                    break
+    return found
+
+
 def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
     """``(commit, path)`` of ``rel``'s last versions, newest first: HEAD's, then, during a merge,
     the incoming side's, whose history HEAD does not reach until the merge is recorded. The path
@@ -481,24 +505,18 @@ def _versions(root: Path, rel: str) -> list[tuple[str, str]]:
     for rev in revs:
         # --full-history: a merge that kept one side's file hides the other side's versions;
         # --diff-merges: a merge names its files too, so a version only a merge made is found
-        # (report-645da35a)
-        listing = _git_text(root, ["log", "--follow", "--full-history",
-                                   "--diff-merges=first-parent", f"-n{HISTORY_DEPTH}",
-                                   "--format=@%H", "--name-only", rev, "--", rel]) or ""
-        sha = None
-        for line in listing.splitlines():
-            if line.startswith("@"):
-                sha = line[1:]
-            elif line.strip() and sha and (sha, line.strip()) not in found:
-                found.append((sha, line.strip()))
+        # (report-645da35a). --follow alone loses a merge that renamed and changed the file
+        # (the IASO rename merged into a branch), so the plain path is listed too.
+        flags = ["--full-history", "--diff-merges=first-parent"]
+        listings = [_log_versions(root, rev, ["--follow", *flags], rel),
+                    _log_versions(root, rev, flags, rel)]
         from iaso.convert import restore_old
 
         # --follow misses a small file whose conversion to IASO changed too much of it (SR-432)
         before = restore_old(rel)
         if before != rel:
-            listing = _git_text(root, ["log", "--full-history", f"-n{HISTORY_DEPTH}", "--format=%H",
-                                       rev, "--", before]) or ""
-            found += [(sha, before) for sha in listing.split() if (sha, before) not in found]
+            listings.append(_log_versions(root, rev, flags, before))
+        found += [v for listing in listings for v in listing if v not in found]
     return found
 
 

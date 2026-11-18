@@ -123,6 +123,18 @@ def test_ex3_unresolved_link_holds_the_turn_and_names_it(project: Path, hook_inp
     assert "iaso repin --after-tests" in reason and "Held 1 of 3" in reason
 
 
+def test_a_merge_in_progress_holds_and_repins_nothing(project: Path, hook_input,
+                                                      monkeypatch) -> None:
+    """Case report-8f8dd5df: a merge's stale links are the merge's to settle."""
+    from iaso import links
+
+    start_turn(project)
+    edit(project, "src/calc.py", CHANGED)
+    monkeypatch.setattr(links, "repin", lambda *a, **k: pytest.fail("repinned mid-merge"))
+    monkeypatch.setenv("GITHEAD_" + "a" * 40, "main")       # inside git merge
+    assert _block(run_stop(project, hook_input, verify=_verify())) is None
+
+
 def test_pre_existing_stale_listed_once_not_blocking(project: Path, hook_input) -> None:
     (project / "src" / "calc.py").write_text(CHANGED, "utf-8")   # stale before the turn
     start_turn(project)

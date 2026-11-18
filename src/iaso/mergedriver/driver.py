@@ -51,9 +51,13 @@ def git_operation(root: Path) -> str | None:
     if under_git_merge():
         return "merge"
     found = _git(Path(root), "rev-parse", "--absolute-git-dir")
-    if not found:
-        return None
-    gitdir = Path(found)
+    return operation_at(Path(found)) if found else None
+
+
+def operation_at(gitdir: Path) -> str | None:
+    """``git_operation`` read from a worktree's git directory: no git process."""
+    if under_git_merge():
+        return "merge"
     if (gitdir / "rebase-merge").is_dir() or (gitdir / "rebase-apply").is_dir():
         return "rebase"
     for name, operation in (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"),

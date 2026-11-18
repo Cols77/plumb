@@ -1,6 +1,6 @@
 [project]
 name = "iaso"
-version = "0.1.1934"
+version = "0.1.1957"
 description = "Keep a coding agent's work aligned with the owner's intent, grounded in the project's own records."
 readme = "README.md"
 authors = [
