@@ -70,6 +70,20 @@ def test_plan_then_evidence_printed_by_show(sr: Path, capsys) -> None:
     assert not [f for f in validate(open_core(sr)) if f.code == "proof"]
 
 
+def test_evidence_outside_the_repository_is_named_not_located(sr: Path, tmp_path_factory,
+                                                             capsys) -> None:
+    """A scratchpad file's absolute path (it names the repository folder) stays out of the
+    tracked record: only its file name, marked not kept."""
+    outside = tmp_path_factory.mktemp("scratchpad") / "proof-run.txt"
+    outside.write_text("23 of 23 found\n", encoding="utf-8")
+    assert run(sr, "proof", "SR-001", "--evidence", str(outside), "--summary", "found",
+               "--passed") == 0
+    where = open_core(sr).index()["SR-001"].fields["evidence"]["where"]
+    assert where == "proof-run.txt (not kept)"
+    assert str(outside.parent) not in (sr / ".iaso" / "requirements" / "SR-001.md").read_text()
+    assert not [f for f in validate(open_core(sr)) if f.code == "proof"]
+
+
 def test_recording_proof_neither_confirms_nor_unconfirms(sr: Path) -> None:
     core = open_core(sr)
     before = core.index()["SR-001"].hash

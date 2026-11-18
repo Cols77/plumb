@@ -83,9 +83,21 @@ def scratch_repo(parent: Path, host: Path | None = None) -> Path:
     _git(root, "commit", "-q", "--allow-empty", "-m", "initial")
     init_repo(root)
     _name_the_judge(root, host)
+    _test_with_the_hosts_python(root, host)
     install.install(root)
     _hear_stand_in(root)
     return root
+
+
+def _test_with_the_hosts_python(scratch: Path, host: Path | None) -> None:
+    """report-e1a601a7: the scratch repository has no .venv, so its tests would run in the
+    interpreter iaso runs in, which may have no pytest; they run in the host project's."""
+    from iaso.capture.configfile import update_section
+    from iaso.config import load_config
+    from iaso.verify.envid import test_interpreter
+
+    python = test_interpreter(host, load_config(host).verify.python) if host else sys.executable
+    update_section(scratch, "verify", {"python": python})
 
 
 def _hear_stand_in(root: Path) -> None:
@@ -267,7 +279,7 @@ def _run_task(root: Path, task: Any, home: Path, *, model: str, owner: Any,
         if state["out_of_time"]:
             break
     issues = issues_mod.collect(scratch, run_dir, root, run_dir.name, task.name, model)
-    shutil.copytree(state_dir(scratch), run_dir / "iaso", dirs_exist_ok=True)
+    shutil.copytree(state_dir(scratch), run_dir / ".iaso", dirs_exist_ok=True)
     (run_dir / "transcript.jsonl").write_text(
         "".join(json.dumps(asdict(t), ensure_ascii=False) + "\n" for t in transcript),
         encoding="utf-8")
