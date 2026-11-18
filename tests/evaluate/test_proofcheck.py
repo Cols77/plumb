@@ -74,8 +74,14 @@ def test_sr397_ex1_verified_records_evidence_and_confirms(core) -> None:
     rows = go(core, ["SR-001"], Fake())
     core = open_core(core.root)
     assert proof.confirmed(core, "SR-001") and proof.shown_working(core.index()["SR-001"])
+    report = Path(rows[0]["report"])
+    # owner 2026-11-12: a small report in the repository, by its repository path; no run folder
     assert core.index()["SR-001"].fields["evidence"]["where"] == \
-        Path(rows[0]["run_dir"]).relative_to(core.root).as_posix()
+        report.relative_to(core.root).as_posix()
+    assert report.parent == core.root / ".iaso" / "proofs" and report.suffix == ".md"
+    text = report.read_text(encoding="utf-8")
+    assert "Verdict: verified" in text and "Saw: saw SR-001 work" in text and "Checked:" in text
+    assert not (core.root / ".iaso" / "eval" / "runs").exists()
     line = proofcheck.lines(rows)[0]
     assert "SR-001 verified" in line and "ask nothing" in line
 
@@ -158,8 +164,7 @@ def test_sr397_ex10_the_sandbox_finds_claude_and_reaches_the_judge(core, tmp_pat
     rows = proofcheck.evaluate_proofs(core, ["SR-001"], claude=sandbox, binary=str(claude))
     assert seen["out"] == [str(claude), "user-store"]
     assert str(claude) in seen["system"] and "the judge is set up" in seen["system"]
-    kept = [f.read_text(encoding="utf-8", errors="ignore")
-            for f in Path(rows[0]["run_dir"]).rglob("*") if f.is_file()]
+    kept = [Path(rows[0]["report"]).read_text(encoding="utf-8")]   # SR-397: only the report
     assert all(key not in text for text in (seen["system"], seen["message"], *kept))
     monkeypatch.setattr(jev, "user_store_path", lambda: tmp_path / "no-key")
     assert "no judge key is set up" in proofcheck.live(core.root, str(claude), {"PATH": "/bin"})
@@ -258,7 +263,7 @@ def test_sr399_ex1_three_evaluators_run_at_the_same_time(core) -> None:
     core = open_core(core.root)
     fake = Fake(barrier=threading.Barrier(3, timeout=10))
     rows = go(core, IDS, fake)
-    assert len(fake.calls) == 3 and len({r["run_dir"] for r in rows}) == 3
+    assert len(fake.calls) == 3 and len({r["report"] for r in rows}) == 3
     assert [r["id"] for r in rows] == list(IDS)
 
 

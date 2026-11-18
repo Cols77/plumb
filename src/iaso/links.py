@@ -596,6 +596,8 @@ def default_runner(core: Core,
         if report.run_id is None:
             # SR-166: an untested end is judged on meaning alone; the judge below still gates
             return True, "no test covers " + ", ".join(paths) + ": judged on meaning only"
+        if report.ok and report.flaky:   # SR-254 EX-22: a link rests on a clean first-attempt pass
+            return False, "needed a retry to pass: " + ", ".join(report.flaky)
         if report.ok:
             return True, "passed"
         if report.failed:

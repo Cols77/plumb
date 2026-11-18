@@ -4,6 +4,10 @@ What to run when the owner asks about a merge. Each step is the owner's request 
 words; say in their terms what holds the merge, never paste the hook's output as it is.
 
 - "what holds the merge?": `{iaso} merge-check`, then say what it names in their terms.
+- A full run pending holds it: ask the owner once, with the question tool, the JSON
+  `{iaso} tests ask-waiver --merge <branch merged into>` prints (run the full suite now, or
+  waive it for this exact change). Their waive answer is the waiver; never ask it again, and
+  on "run it" run `{iaso} merge-check --run <branch>`.
 - "merge <branch>" into the main branch: `git merge --no-ff <branch>`. Never a fast-forward:
   the post-merge hook puts the main branch back when a fast-forward brings in what the quick
   check holds, and says so.
