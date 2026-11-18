@@ -604,6 +604,7 @@ class Verify:
         changed since it regressed, and the owner has not confirmed the change; it counts
         as a failing regression (``masked_regressions``)."""
         from iaso.frozen import is_frozen
+        from iaso.merge import pytest_file
 
         index = self.core.index()
         wanted = list(ids) if ids is not None else sorted(
@@ -642,6 +643,8 @@ class Verify:
             items = []
             for ref, examples in tests.items():
                 if is_frozen(self.core.config, ref):    # SR-380: a frozen part has no evidence due
+                    continue
+                if not pytest_file(ref):    # SR-254 EX-27: a file the runner never runs
                     continue
                 ev = evidence[ref]
                 hidden = record_id in masked.get(ref.split("::", 1)[0], ())

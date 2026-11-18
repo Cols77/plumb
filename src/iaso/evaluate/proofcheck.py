@@ -47,6 +47,7 @@ with each tool's own option (git -C, iaso's --root, a path given to pytest).
 
 Be strict: verified only when you saw what the proof states. End by writing verdict.json in \
 your working folder: {"verdict": "verified" | "not verified" | "could not check", \
+"checked": "<what your case checked, in one or two sentences>", \
 "summary": "<what you saw, or what was not shown, or why you could not check>"}.
 """
 
@@ -56,7 +57,8 @@ class Verdict:
     name: str
     verdict: str
     summary: str
-    run_dir: Path
+    report: Path   # SR-397: the small report kept as evidence; the run folder is not kept
+    checked: str = ""
 
 
 def subject(record: Any) -> str:
@@ -115,15 +117,17 @@ def live(root: Path, binary: str, env: dict[str, str]) -> str:
             "(`iaso evaluate case`) drives live sessions and the judge with them.\n")
 
 
-def _read_verdict(workspace: Path) -> tuple[str, str]:
+def _read_verdict(workspace: Path) -> tuple[str, str, str]:
+    """The verdict, what the evaluator saw, and what its case checked."""
     try:
         data = json.loads((workspace / "verdict.json").read_text(encoding="utf-8"))
         verdict, summary = data["verdict"], str(data["summary"]).strip()
-    except (OSError, ValueError, KeyError, TypeError):
-        return "could not check", "the evaluator wrote no valid verdict.json"
+        checked = str(data.get("checked") or "").strip()
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return "could not check", "the evaluator wrote no valid verdict.json", ""
     if verdict not in VERDICTS or not summary:
-        return "could not check", "the evaluator wrote no valid verdict.json"
-    return verdict, summary
+        return "could not check", "the evaluator wrote no valid verdict.json", ""
+    return verdict, summary, checked
 
 
 def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minutes: int = 30,
@@ -131,15 +135,11 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
              runs_dir: Path | None = None) -> Verdict:
     """SR-397 EX-7: one fresh session (no ``--resume``) in a folder outside the repository."""
     root = Path(root)
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    run_dir = runmod._new_run_dir(runs_dir or state_dir(root) / "eval" / "runs",
-                                  f"{stamp}-proof-{name}")
     from iaso.hosts.claude_code import claude_binary, claude_missing
 
     binary = binary or claude_binary()
     if binary is None:
-        verdict, summary = "could not check", claude_missing()
-        return _keep(run_dir, None, name, verdict, summary, "")
+        return Verdict(name, "could not check", claude_missing(), Path())
     workspace = Path(tempfile.mkdtemp(prefix="iaso-proof-"))
     try:
         before = _fingerprint(root)
@@ -154,25 +154,29 @@ def evaluate(root: Path, name: str, subject: str, *, model: str = "sonnet", minu
                      session_id=None, system=system, timeout_s=minutes * 60, env=env,
                      max_turns=None, extra=["--add-dir", str(root)],
                      tools=["Read", "Glob", "Grep", "Write", "Edit"])
-        verdict, summary = _read_verdict(workspace)
+        verdict, summary, checked = _read_verdict(workspace)
         if got.get("error"):
             verdict, summary = "could not check", f"the evaluator's session failed: {got['error']}"
         elif _fingerprint(root) != before:
             verdict, summary = "could not check", TREE_NOT_HELD
-        return _keep(run_dir, workspace, name, verdict, summary, str(got.get("text") or ""))
+        return Verdict(name, verdict, summary, Path(), checked)
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _keep(run_dir: Path, workspace: Path | None, name: str, verdict: str, summary: str,
-          reply: str) -> Verdict:
-    if workspace is not None:
-        shutil.copytree(workspace, run_dir, dirs_exist_ok=True)
-    (run_dir / "evaluator.txt").write_text(reply, encoding="utf-8")
-    (run_dir / "verdict.json").write_text(
-        json.dumps({"name": name, "verdict": verdict, "summary": summary}, indent=1),
-        encoding="utf-8")
-    return Verdict(name, verdict, summary, run_dir)
+def _report(folder: Path, stamp: str, v: Verdict) -> Verdict:
+    """SR-397 (owner 2026-11-12): the evidence is a small report in the repository (the
+    verdict, what was checked, what was seen); the evaluator's run folder is not kept."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{v.name}-evaluator-{stamp}.md"
+    n = 1
+    while path.exists():
+        n += 1
+        path = folder / f"{v.name}-evaluator-{stamp}-{n}.md"
+    path.write_text(f"# {v.name}: the evaluator's verdict\n\nVerdict: {v.verdict}\n\n"
+                    f"Checked: {v.checked or 'not stated'}\n\nSaw: {v.summary}\n",
+                    encoding="utf-8")
+    return Verdict(v.name, v.verdict, v.summary, path, v.checked)
 
 
 def evaluate_proofs(core: Any, ids: list[str], *, run: Any = evaluate,
@@ -196,6 +200,11 @@ def evaluate_proofs(core: Any, ids: list[str], *, run: Any = evaluate,
 
     with ThreadPoolExecutor(max_workers=len(ids)) as pool:
         verdicts = list(pool.map(one, records))
+    # written once every evaluator is done: a report in the tree while another runs would read
+    # to that evaluator as the built tree changing under it (DEC-471)
+    folder, stamp = kw.get("runs_dir") or state_dir(Path(core.root)) / "proofs", \
+        time.strftime("%Y%m%dT%H%M%S")
+    verdicts = [_report(folder, stamp, v) for v in verdicts]
     given = {r.id: r.hash for r in records}
     from iaso.api import open_core
 
@@ -205,10 +214,10 @@ def evaluate_proofs(core: Any, ids: list[str], *, run: Any = evaluate,
         if v.verdict != "could not check" and core.index()[v.name].hash != given[v.name]:
             # SR-397 EX-6: a verdict counts only for the words the evaluator was given
             v = Verdict(v.name, "could not check",
-                        "the requirement was reworded while the evaluator ran", v.run_dir)
-        got = proof.record_verdict(core, v.name, v.verdict, v.summary, str(v.run_dir))
+                        "the requirement was reworded while the evaluator ran", v.report)
+        got = proof.record_verdict(core, v.name, v.verdict, v.summary, str(v.report))
         rows.append({"id": v.name, "verdict": v.verdict, "summary": v.summary,
-                     "run_dir": str(v.run_dir), "retry_left": got.get("retry_left", False)})
+                     "report": str(v.report), "retry_left": got.get("retry_left", False)})
     return rows
 
 
@@ -218,7 +227,7 @@ def lines(rows: list[dict[str, Any]]) -> list[str]:
     for r in rows:
         i, why = r["id"], r["summary"]
         if r["verdict"] == "verified":
-            out.append(f"iaso: {i} verified: {why} (evidence: {r['run_dir']}); tell the owner "
+            out.append(f"iaso: {i} verified: {why} (evidence: {r['report']}); tell the owner "
                        "this verdict and where the evidence is; ask nothing")
         elif r["verdict"] == "not verified" and r["retry_left"]:
             out.append(f"iaso: {i} not verified: {why}; fix it and run iaso evaluate proof "

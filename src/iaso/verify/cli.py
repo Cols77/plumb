@@ -301,7 +301,31 @@ _TESTS_HELP = """usage: iaso tests {map,select,run} [options]
   run      run covering tests (--changed, --paths, --nodes) or --full; records evidence
            (alias: iaso verify)
   waive    owner waiver pinned to a diff digest (owner only)
+  ask-waiver  the agent's form: print the run-or-waive question for the question tool;
+           the owner's waive answer is the waiver of exactly this change
 """
+
+
+def cmd_ask_waiver(prog: str, argv: list[str]) -> int:
+    """SR-254 EX-11: file the run-or-waive question and print its question-tool JSON; only
+    the owner's WAIVE answer, logged by the question-answer hook, records the waiver."""
+    parser = _parser(prog, "Print the question-tool JSON asking the owner to run the full "
+                     "suite now or waive it for exactly this change; their answer is the "
+                     "waiver (the agent asks it once).")
+    parser.add_argument("--merge", metavar="BASE", required=True,
+                        help="the branch the change merges into (its merge base pins it)")
+    args = parser.parse_args(argv)
+    from iaso.api import open_core
+    from iaso.stale import current_session
+    from iaso.verify.policy import ask_waiver
+
+    core = open_core(resolve_root(args.root))
+    try:
+        emit(ask_waiver(core, args.merge, current_session(core.root)), True)
+    except ValueError as exc:
+        print(f"iaso: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    return EXIT_OK
 
 
 def run(command: str, argv: list[str]) -> int:
@@ -323,5 +347,7 @@ def run(command: str, argv: list[str]) -> int:
         return cmd_run("iaso tests run", rest)
     if sub == "waive":
         return cmd_waive("iaso tests waive", rest)
+    if sub == "ask-waiver":
+        return cmd_ask_waiver("iaso tests ask-waiver", rest)
     print(f"iaso: unknown tests command '{sub}' (map, select, run)", file=sys.stderr)
     return EXIT_USAGE
