@@ -111,6 +111,10 @@ the iaso-study-video skill; a topic no record covers: say so. Then `{iaso} study
 reads it in the room when they choose. Never open the room, and never take 'I know this' or
 'Go deeper' as an answer: they correct the picture only.
 
+A loop the owner no longer wants (a probe, an idea given up) goes on their word only:
+`{iaso} intent drop --digest <id>` (or `--from-session`, `--intent`) removes every copy, so no
+new session reopens it, and lets go the session it held.
+
 The loop's gates approve nothing. Speak in the owner's terms; paste nothing capture prints.
 
 Questions to the owner: follow iaso-records.
