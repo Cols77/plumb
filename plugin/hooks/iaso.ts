@@ -471,7 +471,10 @@ export async function readStatus(io: Io, link: IasoLink): Promise<IasoStatus> {
   const down = (judges?.down && typeof judges.down === 'object' ? Object.entries(judges.down) as [string, any][] : [])
     .filter(([, d]) => d?.line)
   const buildLines: string[] = Array.isArray(build?.lines) ? build.lines.map(String) : []
-  const judgeLines = down.map(([, d]) => String(d.line))
+  // SR-413 EX-6: a judge that ran but gave an unusable answer could not settle a record: plain, not broken
+  const ran = down.filter(([, d]) => d.ran === true || d.code === 'unusable-answer')
+  const broken = down.filter(e => !ran.includes(e))
+  const judgeLines = broken.map(([, d]) => String(d.line))
   const red = [...buildLines, ...judgeLines]
   const setAside = (Array.isArray(judges?.set_aside) ? judges.set_aside : [])
     .map((q: any) => T.setAside(String(q?.question ?? ''), String(q?.why ?? '')))
@@ -509,8 +512,11 @@ export async function readStatus(io: Io, link: IasoLink): Promise<IasoStatus> {
     red,
     buildLines,
     judgeLines,
-    judgeNames: down.map(([name]) => name),
+    judgeNames: broken.map(([name]) => name),
+    unsettledLines: ran.map(([, d]) => String(d.line)),
+    unsettledNames: ran.map(([name]) => name),
     ...(build?.unchecked === true ? { unchecked: T.unchecked } : {}),
+    ...(build?.version ? { version: String(build.version) } : {}), // SR-358 EX-6
     setAside,
   }
 }

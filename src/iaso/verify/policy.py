@@ -96,13 +96,55 @@ def range_digest(root: Any, fork: str) -> str:
 
 
 def waived(core: Any, digest: str) -> bool:
-    """Whether an owner waiver (written outside the agent session marker) pins ``digest``."""
+    """Whether an owner waiver pins ``digest``: written outside the agent session marker
+    (``iaso tests waive``), or by the question-answer hook from the owner's WAIVE answer to
+    the question ``ask_waiver`` filed (SR-254 EX-11, as a proof's yes is: DEC-257)."""
     for entry in core.events():
-        if (entry.kind == "waiver" and entry.marker == "none"
+        if (entry.kind == "waiver"
+                and (entry.marker == "none" or entry.payload.get("via") == "question-tool")
                 and entry.payload.get("by") == "owner"
                 and entry.payload.get("diff_digest") == digest):
             return True
     return False
+
+
+# SR-254 EX-11: the run-or-waive question the agent asks once through the question tool
+WAIVE = "Waive it for this exact change"
+RUN = "Run the full suite now"
+WAIVER_QUESTIONS_FILE = "waiver_questions.json"
+
+
+def ask_waiver(core: Any, base: str, session: str) -> dict[str, Any]:
+    """File the owner's run-or-waive question for the change from the merge base of ``base``
+    as a pending ``{key, diff_digest}`` in the session's ``waiver_questions.json`` and return
+    the question-tool JSON; the question-answer hook turns a WAIVE answer into the owner's
+    ``waiver`` of that digest (any later edit moves the digest, so it no longer counts)."""
+    import subprocess
+
+    from iaso.understand import files
+    from iaso.understand.judge import question_key
+    from iaso.verify import open_verify
+
+    fork = subprocess.run(["git", "merge-base", base, "HEAD"], cwd=core.root,
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if fork.returncode != 0:
+        raise ValueError(f"cannot find the merge base of {base} and HEAD")
+    digest = range_digest(core.root, fork.stdout.strip())
+    reasons = ", ".join(open_verify(core).full_pending().reasons) or "the full run is pending"
+    question = (f"The full test suite has not run on this change ({reasons}). Run it now, "
+                "or waive it for this exact change?")
+    key = question_key(question)
+    path = files.session_dir(core.root, session) / WAIVER_QUESTIONS_FILE
+    raw = files.read_json(path)
+    kept = [q for q in raw if isinstance(q, dict) and q.get("key") != key] \
+        if isinstance(raw, list) else []
+    files.write_json_atomic(path, [*kept, {"key": key, "diff_digest": digest}])
+    return {"questions": [{
+        "question": question, "header": "Full run", "multiSelect": False,
+        "options": [{"label": RUN, "description": "the merge waits until a full run passes "
+                     "(iaso merge-check --run runs it once)"},
+                    {"label": WAIVE, "description": "the merge goes ahead without the full "
+                     "run; any later edit brings this question back"}]}]}
 
 
 def waive(core: Any, diff_digest: str, reason: str) -> Any:

@@ -20,6 +20,7 @@ import re
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from iaso.contracts import IntentConflict
@@ -544,6 +545,78 @@ def choose_owner(core: Any, ref: str, take: str,
     require_owner("conflict choose",
                   f"Keep {side} of {conflict.record} \"{conflict.title}\"?")
     return conflict, apply_choice(core, conflict, take, by="owner", values=values)
+
+
+# --------------------------------------------------------------------------- the question tool
+
+QUESTIONS_FILE = "conflict_questions.json"
+
+
+def _asked(conflict: IntentConflict) -> tuple[dict[str, Any], dict[str, str | None]]:
+    """SR-211 EX-7, EX-10: the conflict as one question-tool question (both versions; keep one
+    side, the other, or both; the agent's suggestion first, marked recommended with its
+    reason), and the side each option label keeps (None: nothing is applied)."""
+    from iaso.understand import conflict_items
+
+    ours, theirs = conflict.labels
+    said = "\n".join(owner_text.CONFLICT_SIDE.format(side=label, text=_side_text(conflict, side))
+                     for label, side in ((ours, "ours"), (theirs, "theirs")))
+    suggested = conflict.suggested or {}
+    options, takes = [], {}
+    for choice in conflict_items.item(conflict)["choices"]:
+        take = conflict_items.take_of(choice)
+        first = bool(take) and take == suggested.get("take")
+        label = str(choice.get("change") or choice.get("label")) + (
+            " (Recommended)" if first else "")
+        why = f" {suggested.get('why')}" if first and suggested.get("why") else ""
+        options.append({"label": label, "description": str(choice.get("consequence")) + why})
+        takes[label] = take
+    # SR-267: a question names the requirement by its title, never its id
+    return {"question": f'"{conflict.title}": '
+                        f"{owner_text.CONFLICT_ISSUE.format(ours=ours, theirs=theirs)}. "
+                        f"Which version holds?\n\n{said}",
+            "header": "Conflict", "multiSelect": False, "options": options}, takes
+
+
+def question_of(conflict: IntentConflict) -> dict[str, Any]:
+    return _asked(conflict)[0]
+
+
+def pending(root: Any, session: str) -> list[dict[str, Any]]:
+    from iaso.understand import files
+
+    raw = files.read_json(files.session_dir(Path(root), session) / QUESTIONS_FILE)
+    return [dict(q) for q in raw if isinstance(q, Mapping)] if isinstance(raw, list) else []
+
+
+def ask(core: Any, ref: str, session: str) -> dict[str, Any]:
+    """report-cee7804c: file the conflict's question as pending in THIS checkout (``{key,
+    ic}``) and return the question-tool JSON; the question-answer hook applies the owner's
+    pick here, whichever checkout the session runs in."""
+    from iaso.understand import files
+    from iaso.understand.judge import question_key
+
+    conflict = find(core, ref)
+    question = question_of(conflict)
+    kept = [q for q in pending(core.root, session) if q.get("ic") != conflict.ic]
+    files.write_json_atomic(files.session_dir(Path(core.root), session) / QUESTIONS_FILE,
+                            [*kept, {"key": question_key(question["question"]),
+                                     "ic": conflict.ic}])
+    return {"questions": [question]}
+
+
+def answer_asked(core: Any, ic: Any, question: str, answer: str) -> dict[str, Any] | None:
+    """The owner's question-tool answer applied (``by: owner``): only when the question
+    asked is ``question_of`` that conflict now and the answer is one of its options, so a
+    pending entry written by hand cannot point the owner's pick at another conflict."""
+    try:
+        conflict = find(core, str(ic))
+    except ConflictError:
+        return None
+    built, takes = _asked(conflict)
+    if built["question"] != question or not takes.get(answer):
+        return None
+    return apply_choice(core, conflict, str(takes[answer]), by="owner", quote=answer)
 
 
 # --------------------------------------------------------------------------- the stop hook

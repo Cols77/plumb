@@ -604,6 +604,7 @@ class Verify:
         changed since it regressed, and the owner has not confirmed the change; it counts
         as a failing regression (``masked_regressions``)."""
         from iaso.frozen import is_frozen
+        from iaso.merge import pytest_file
 
         index = self.core.index()
         wanted = list(ids) if ids is not None else sorted(
@@ -642,6 +643,8 @@ class Verify:
             items = []
             for ref, examples in tests.items():
                 if is_frozen(self.core.config, ref):    # SR-380: a frozen part has no evidence due
+                    continue
+                if not pytest_file(ref):    # SR-254 EX-27: a file the runner never runs
                     continue
                 ev = evidence[ref]
                 hidden = record_id in masked.get(ref.split("::", 1)[0], ())
@@ -723,13 +726,23 @@ class Verify:
                 now = core.hash_target(link.target)
                 if now is not None and now in pinned.get(end, ()):
                     continue  # the owner confirmed this exact test content
-                examples = changed.setdefault(end.split("::", 1)[0], {}).setdefault(
-                    record_id, [])
+                examples = changed.setdefault(strip_param(end), {}).setdefault(record_id, [])
                 if link.example and link.example not in examples:
                     examples.append(link.example)
         if not changed:
             return []
         wanted = None if files is None else {f.split("::", 1)[0] for f in files}
+
+        def reaching(node_id: str, test_file: str) -> dict[str, list[str]]:
+            """The requirements a link reaches the node through: a file-level link covers
+            the file's nodes, a node-level link only that node."""
+            found: dict[str, list[str]] = {}
+            for end in (test_file, strip_param(node_id)):
+                for record_id, exs in changed.get(end, {}).items():
+                    got = found.setdefault(record_id, [])
+                    got.extend(e for e in exs if e not in got)
+            return found
+
         from iaso.understand import testchange
         from iaso.understand.judge import answers_by_key as judge_answers
 
@@ -739,7 +752,8 @@ class Verify:
         for node_id, entry in sorted(self.index().get("nodes", {}).items()):
             regressed = entry.get("regressed") or {}
             test_file = node_id.split("::", 1)[0]
-            if not regressed or test_file not in changed:
+            requirements = reaching(node_id, test_file) if regressed else {}
+            if not requirements:
                 continue
             if wanted is not None and test_file not in wanted:
                 continue
@@ -750,7 +764,7 @@ class Verify:
             item = {"node": node_id, "passed_in": regressed.get("passed_in"),
                     "failed_in": regressed.get("failed_in"),
                     "masked_by": regressed.get("masked_by"),
-                    "requirements": changed[test_file]}
+                    "requirements": requirements}
             item["judge"] = self._judge_test_change(item, regressed.get("head"), deleted)
             if item["judge"].get("real"):
                 continue  # a judge read the change: real and needed, not made just to pass
@@ -902,7 +916,8 @@ class Verify:
         return out
 
     def changed_paths(self) -> list[str]:
-        """``git status`` paths plus every session's touched list (spec 12.5)."""
+        """``git status`` paths plus every session's touched list (spec 12.5), a touched path
+        counting only while its file exists."""
         from iaso.verify.evidence import changed_paths_from_git
 
         paths = list(changed_paths_from_git(self.root))
@@ -916,7 +931,10 @@ class Verify:
                 lines = (d / "touched.txt").read_text(encoding="utf-8").splitlines()
             except OSError:
                 continue
-            paths.extend(line.strip() for line in lines if line.strip())
+            # report-818ae7ac: an old session's list can name a file long gone (renamed
+            # away); git's own list already carries every deletion that is still a change
+            paths.extend(line.strip() for line in lines
+                         if line.strip() and (self.root / line.strip()).exists())
         return list(dict.fromkeys(paths))
 
     # -- the run flow

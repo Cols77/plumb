@@ -52,7 +52,9 @@ function statusLine(view: IasoView): string {
   const glyph = waiting ? GLYPHS['awaits you'] : GLYPHS[state] ?? '·'
   const word = waiting ? T.awaiting(waiting) : state || T.nothingAwaits
   const judged = view.status?.judged ? T.judged(view.status.judged) : '' // SR-251
-  return [`${view.status?.name || T.name} ${glyph} ${word}`, judged, view.status?.progress].filter(Boolean).join(' · ')
+  // SR-358 EX-6: the running plugin's version, always, last so the line still begins with the name (SR-415)
+  return [`${view.status?.name || T.name} ${glyph} ${word}`, judged, view.status?.progress, view.status?.version]
+    .filter(Boolean).join(' · ')
 }
 
 /** The band's status read again (files only, no process): null when nothing moved (SR-291).
@@ -195,7 +197,7 @@ function classCounts(view: IasoView, loops: IasoLoops, known: IasoKnown): Record
   return { loops: loops.live + loops.idle,
     studies: (st?.ideas?.length ?? 0) + (st?.studies?.length ?? 0) + (st?.writing ? 1 : 0) + (st?.outdated?.length ?? 0),
     problems: known.open,
-    judge: (st?.judgeLines?.length ?? 0) + (st?.setAside?.length ?? 0), build: (st?.buildLines?.length ?? 0) + (st?.unchecked ? 1 : 0) }
+    judge: (st?.judgeLines?.length ?? 0) + (st?.unsettledLines?.length ?? 0) + (st?.setAside?.length ?? 0), build: (st?.buildLines?.length ?? 0) + (st?.unchecked ? 1 : 0) }
 }
 
 /** The problems class's rows (SR-412): open ones first, fixed dim below; expanded, symptom, cause, fix, history. */
@@ -217,11 +219,11 @@ function buildRows(st: IasoStatus | undefined): Row[] {
 
 /** The judge class's rows (SR-413): a judge that cannot settle red with its cause; a set-aside question in plum, expanded to why. */
 function judgeRows(st: IasoStatus | undefined, plum: string): Row[] {
-  const row = (id: string, line: string, color: string): Row => {
+  const row = (id: string, line: string, color?: string): Row => {
     const m = /^(.*?) \((.*)\)$/.exec(line)
     return { id, glyph: '●', title: m ? m[1]! : line, state: '', live: true, details: [m ? m[2]! : line], actions: [], color }
   }
-  return [...(st?.judgeLines ?? []).map((l, i) => row(st?.judgeNames?.[i] ?? String(i), l, RED)), ...(st?.setAside ?? []).map((l, i) => row(`aside:${i}`, l, plum))]
+  return [...(st?.judgeLines ?? []).map((l, i) => row(st?.judgeNames?.[i] ?? String(i), l, RED)), ...(st?.unsettledLines ?? []).map((l, i) => row(st?.unsettledNames?.[i] ?? `unsettled:${i}`, l)), ...(st?.setAside ?? []).map((l, i) => row(`aside:${i}`, l, plum))]
 }
 
 /** The loops class's rows (SR-410): the type shown, this session's loop first, live before idle. */
@@ -359,7 +361,7 @@ function drawBand(ui: Ui, view: IasoView, band: IasoBand, known: number, loops: 
   // SR-409: one chip per class that has something; brass wants a choice, plum informs, red is broken
   const waiting = (st?.ideas?.length ?? 0) + (st?.studies?.length ?? 0) + (st?.outdated?.length ?? 0)
   const buildN = (st?.buildLines?.length ?? 0) + (st?.unchecked ? 1 : 0)
-  const judgeN = (st?.judgeLines?.length ?? 0) + (st?.setAside?.length ?? 0)
+  const judgeN = (st?.judgeLines?.length ?? 0) + (st?.unsettledLines?.length ?? 0) + (st?.setAside?.length ?? 0)
   const chips = [
     loops.live + loops.idle > 0 ? { key: 'loops', text: T.loopsLive(loops.live, loops.idle) + (loops.updating ? ` · ${T.loopsUpdating}` : ''), color } : null,
     waiting || st?.writing ? { key: 'studies', text: waiting ? T.studiesChip(waiting) : T.studiesWriting, color: waiting ? brass : color } : null,

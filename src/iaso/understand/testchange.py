@@ -7,6 +7,7 @@ job or a doubtful one keeps the hidden-regression flag. It approves nothing."""
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -129,6 +130,20 @@ def flag_question(node: str, requirements: Sequence[str]) -> str:
             f"{', '.join(sorted(requirements))}). Was the change needed, or made just to pass?")
 
 
+def flag_key(words: str) -> str | None:
+    """The key of ``words`` when they are a flag's question as ``flag_question`` words it,
+    else None. The merge check builds these questions (``flag_questions``) and no session's
+    question file holds them, so ``iaso question reword`` and the question-answer hook take
+    such a key as coverable: one merged question settles every flag it covers
+    (report-5f6565d7)."""
+    from iaso.understand.judge import question_key
+
+    shape = re.escape(question_key(flag_question("@node@", ["@covers@"])))
+    shape = shape.replace("@node@", r"\S.*").replace("@covers@", r"[^()]+")
+    key = question_key(words)
+    return key if re.fullmatch(shape, key) else None
+
+
 def flag_questions(core: Any, verification: Mapping[str, Any]) -> list[dict[str, Any]]:
     """One question row per hidden-regression flag a judge left standing (read as made just to
     pass, or real but unsure), in the merge check's ``questions`` shape with the question's
@@ -210,8 +225,11 @@ def enqueue(core: Any, item: Mapping[str, Any], head: str | None, deleted: bool)
 
 
 def apply(core: Any, job: Job, answer: Mapping[str, Any]) -> Applied:
+    from iaso.convert import rewrite_text
+
     return Applied(job=job.id, entries=({"kind": VERDICT_KIND, "payload": {
         "key": list(job.inputs["key"]), "subject": str(job.inputs["item"]["node"]),
         "verdict": str(answer.get("verdict")),
         "probability": float(answer.get("probability") or 0.0),
-        "reason": str(answer.get("reason") or "")}},))
+        # owner 2026-11-16: a judge quoting a rename diff must not log the old name
+        "reason": rewrite_text(str(answer.get("reason") or ""))}},))

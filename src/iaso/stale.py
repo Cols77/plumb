@@ -543,7 +543,11 @@ def ask_owner(core: Core, session: str, *, link: str, record: str, topic: str, i
         return False
     found = core.index().get(record)
     text = f"{topic}: {issue}"
-    described = [*consequences, *[""] * len(options)][:len(options)]
+    # issue #5: a question without each option's consequence and the recommendation's reason is
+    # refused by the question tool's check (SR-267 EX-5), so the owner would never see it
+    described = [str(c).strip() or f"Goes this way: {o}; the other options are left undone."
+                 for c, o in zip([*consequences, *[""] * len(options)], options)]
+    why = why.strip() or "the model that read the change put it first"
     judge.add_question(core, session, {
         "key": judge.question_key(text), "job": _job(link),
         "records": [{"id": found.id, "hash": found.hash}] if found is not None else [],

@@ -30,6 +30,7 @@ from __future__ import annotations
 from iaso.paths import state_dir
 
 import json
+import os
 import re
 from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
@@ -514,17 +515,17 @@ def unanswered(core: Any, session: str) -> list[Mapping[str, Any]]:
     asked = _logged_questions(core.root, session)
     if not asked:
         return []
-    answered = _answered_keys(core)
-    return [q for q in asked if q.get("key") not in answered]
+    keys, topics = _closures(core)
+    return [q for q in asked if not _closed(q, keys, topics)]
 
 
 def unanswered_anywhere(core: Any) -> list[Mapping[str, Any]]:
     """Every session folder's unanswered judge questions, once per key: an answer given in a
     live session settles a question an ended session or the CLI ("cli") filed."""
-    answered, out = _answered_keys(core), {}
+    (keys, topics), out = _closures(core), {}
     for path in sorted((state_dir(Path(core.root)) / "session").glob(f"*/{QUESTIONS_FILE}")):
         for q in _logged_questions(core.root, path.parent.name):
-            if q.get("key") not in answered:
+            if not _closed(q, keys, topics):
                 out.setdefault(q.get("key"), q)
     return list(out.values())
 
@@ -543,12 +544,19 @@ def answers_by_key(core: Any) -> dict[str, str]:
     answer was bound to (``asked.key``, ``asked.keys``); free text and "Study it first" are
     no answer, and a closure the owner took back (``answer-unbound``) is gone."""
     out: dict[str, str] = {}
+    said: dict[str, str] = {}
     for e in core.events():
         if e.kind == "answer-unbound":
             out.pop(str(e.payload.get("key")), None)
+        elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping) \
+                and str(e.payload.get("answer")) in said:
+            # an answer given before its wording was registered (``_bind_earlier_answer``)
+            for key in e.payload["asked"].get("keys") or ():
+                out[str(key)] = said[str(e.payload.get("answer"))]
         elif e.kind == "question-answer" and not e.payload.get("free_text") \
                 and not e.payload.get("study"):
             answer = str(e.payload.get("answer") or "")
+            said[str(e.digest)] = answer
             out[question_key(str(e.payload.get("question") or ""))] = answer
             asked = e.payload.get("asked")
             if isinstance(asked, Mapping):
@@ -558,27 +566,71 @@ def answers_by_key(core: Any) -> dict[str, str]:
     return out
 
 
-def _answered_keys(core: Any) -> set[str]:
-    answered: set[str] = set()
+Topic = tuple[str, str, str]     # (record id, principle, the record's hash when it was asked)
+
+
+def _topics_of(asked: Mapping[str, Any]) -> set[Topic]:
+    """What a question, or the ``asked`` of an answer to one, is about: each of its records at
+    the version asked, on its principle. None for a question with no principle and for a
+    stale link's question, which is its link's alone."""
+    principle = _flat(asked.get("principle")).lower()
+    if not principle or str(asked.get("job") or "").startswith("stale:"):
+        return set()
+    return {(str(r.get("id")), principle, str(r.get("hash")))
+            for r in asked.get("records") or () if isinstance(r, Mapping)}
+
+
+def _closures(core: Any) -> tuple[set[str], dict[Topic, list[set[str]]]]:
+    """What the owner's answers closed (report-307d2564): the question keys, and the topics,
+    each with the keys of the answers that closed it. Any answer closes the questions it
+    answered, in every session of every checkout, its own words too (the record goes back
+    to the judge with them, SR-212); one that picked an option, or that tidy found settles
+    it, also closes every copy on its topic: reworded, filed by another session or after
+    the answer. A question on another principle about the same record stays (SR-362 EX-4);
+    an answer that picked nothing leaves a later round free to ask again (SR-362 EX-7)."""
+    keys: set[str] = set()
+    topics: dict[Topic, list[set[str]]] = {}
+
+    def close(asked: Any, *more: str, topic: bool = True) -> None:
+        named = set(more)
+        if isinstance(asked, Mapping):
+            named |= {str(asked.get("key")), *map(str, asked.get("keys") or ())}
+            for t in _topics_of(asked) if topic else ():
+                topics.setdefault(t, []).append(named)
+        keys.update(named)
+
     for e in core.events():
         # whichever session asked or answered: the owner's answer closes the question
-        if e.kind == "question-answer" and e.payload.get("free_text"):
-            continue    # SR-212: free text is logged and reread; the tidy job closes it
         if e.kind == "question-answer" and not e.payload.get("study"):
-            answered.add(question_key(str(e.payload.get("question") or "")))
-            if isinstance(e.payload.get("asked"), Mapping):
-                answered.add(str(e.payload["asked"].get("key")))
-                answered.update(map(str, e.payload["asked"].get("keys") or ()))
+            close(e.payload.get("asked"), question_key(str(e.payload.get("question") or "")),
+                  topic=not e.payload.get("free_text"))
         elif e.kind == "answer-bound" and isinstance(e.payload.get("asked"), Mapping):
-            answered.update(map(str, e.payload["asked"].get("keys") or ()))
+            close(e.payload["asked"])
         elif e.kind == "question-withdrawn" and e.payload.get("reason") in WITHDRAWN_CLOSES:
-            answered.add(str(e.payload.get("key")))
+            keys.add(str(e.payload.get("key")))
         elif e.kind == "answer-unbound":     # SR-218: the owner took a closure back
-            answered.discard(str(e.payload.get("key")))
+            key = str(e.payload.get("key"))
+            keys.discard(key)
+            for t in [t for t in topics if any(key in named for named in topics[t])]:
+                topics[t] = [named for named in topics[t] if key not in named]
+                if not topics[t]:
+                    del topics[t]
         elif e.kind == "pre-intent" and isinstance(e.payload.get("asked"), Mapping) \
                 and e.payload["asked"].get("key"):
-            answered.add(str(e.payload["asked"]["key"]))   # SR-214: answered in a typed message
-    return answered
+            # SR-214: answered in a typed message; its topic only when it picked an option
+            close(e.payload["asked"], topic=bool(e.payload.get("option")))
+    return keys, topics
+
+
+def _closed(question: Mapping[str, Any], keys: set[str],
+            topics: Mapping[Topic, Any]) -> bool:
+    """The owner's answer closed ``question``: by its key, or by an answer to the same
+    principle about one of its records at the version this question asks about."""
+    return question.get("key") in keys or any(t in topics for t in _topics_of(question))
+
+
+def _answered_keys(core: Any) -> set[str]:
+    return _closures(core)[0]
 
 
 def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
@@ -599,8 +651,9 @@ def open_questions(core: Any, session: str) -> list[Mapping[str, Any]]:
         ids = [str(r.get("id")) for r in q.get("records") or () if isinstance(r, Mapping)]
         labels = [_MARKER.sub("", str(o.get("label") or "")) for o in q.get("options") or ()
                   if isinstance(o, Mapping)]
-        return bool((labels or q.get("key")) and _answered_by(
-            core, index, ids, labels, str(q.get("key") or "")))
+        key = str(q.get("key") or "")
+        return bool((labels or key) and (_answered_by(core, index, ids, labels, key)
+                                         or _answered_elsewhere(core, ids, labels, key)))
 
     # a stale link's question (job ``stale:<link>``) lives as long as the link is stale
     # (``drop_settled_questions``), whether or not its record is confirmed
@@ -626,8 +679,8 @@ def to_ask(core: Any, session: str) -> list[Mapping[str, Any]]:
 
 def _typed_unread(core: Any) -> set[str]:
     """SR-212: the questions the owner replied to in their own words that the tidy job has not
-    read yet: open, but never put to them again meanwhile. Once it read the reply and did not
-    close the question (``answer-read``), the question comes back."""
+    read yet. Such a reply closes the question it answers (``_closures``); this keeps a copy
+    on its topic, which it does not close, from being put to them before the reading."""
     waiting: set[str] = set()
     for e in core.events():
         if e.kind == "question-answer" and e.payload.get("free_text") \
@@ -751,6 +804,71 @@ def _answered_by(core: Any, index: Mapping[str, Any], ids: Sequence[str],
     return ""
 
 
+_ELSEWHERE: dict[str, tuple[Any, list[Any]]] = {}   # per checkout root: (folders' times, found)
+
+
+def _branch_decisions(core: Any) -> list[Any]:
+    """The decisions the repository's other checkouts hold and this one does not (a new
+    file, or one whose text differs): what the owner decided on a branch not landed here,
+    read again when a decisions folder changed. None inside a hook (``log.LIVE_ONLY``),
+    which reads no other checkout's records."""
+    from iaso import log
+    from iaso.model import RecordError, parse_record
+
+    if log.LIVE_ONLY:
+        return []
+    own = state_dir(Path(core.root)) / "decisions"
+    folders = [own, *(state_dir(Path(o)) / "decisions"
+                      for o in log._worktree_roots(core.paths))]
+    times = []
+    for folder in folders:
+        try:
+            times.append(folder.stat().st_mtime_ns)
+        except OSError:
+            times.append(0)
+    cached = _ELSEWHERE.get(str(core.root))
+    if cached is not None and cached[0] == times:
+        return cached[1]
+    found: dict[str, Any] = {}
+    for folder in folders[1:]:
+        try:
+            names = [n for n in os.listdir(folder) if n.endswith(".md")]
+        except OSError:
+            continue
+        for name in names:
+            try:
+                # shortcut: a file of the same name and size here counts as the same decision;
+                # compare texts if an edit that keeps the size must be seen
+                if (own / name).is_file() and (own / name).stat().st_size == (
+                        folder / name).stat().st_size:
+                    continue
+                text = (folder / name).read_text(encoding="utf-8")
+                rec = parse_record(text, f".iaso/decisions/{name}")
+            except (OSError, ValueError, RecordError):
+                continue    # an unreadable decision settles nothing
+            found.setdefault(rec.hash or text, rec)
+    _ELSEWHERE[str(core.root)] = (times, list(found.values()))
+    return _ELSEWHERE[str(core.root)][1]
+
+
+def _answered_elsewhere(core: Any, ids: Sequence[str],
+                        labels: Sequence[str], key: str = "") -> str:
+    """report-307d2564: a decision on a branch not landed here that records the owner's answer
+    to this question (as ``_answered_by``, quoting the owner's own logged words): what the
+    owner decided once is not asked again in the default branch's checkout."""
+    said: list[tuple[str, str]] | None = None
+    for rec in _branch_decisions(core) if ids else ():
+        if not _about(rec, ids):
+            continue
+        if not (bool(key) and question_key(_flat(rec.fields.get("question"))) == key) \
+                and not _picks(rec, labels):
+            continue
+        said = premise.owner_words(core) if said is None else said
+        if premise.owner_quoted(rec, said):
+            return f"{rec.id} on another branch"
+    return ""
+
+
 def _answered_before(core: Any, index: Mapping[str, Any], made: Mapping[str, Any],
                      job: Job) -> str:
     """SR-362 EX-2: the owner's answer to an earlier question on the same principle about one of
@@ -867,9 +985,11 @@ def _questions(core: Any, job: Job, answer: Mapping[str, Any], judged: Mapping[s
     why: list[tuple[str, str]] = []
     for raw in answer.get("questions") or ():
         made, reason = _shaped(core, raw, job, judged, index)
-        done = made and (_answered_by(core, index, [r["id"] for r in made["records"]],
-                                      [_MARKER.sub("", o["label"]) for o in made["options"]])
-                         or _answered_before(core, index, made, job))
+        ids = [r["id"] for r in made["records"]] if made else []
+        labels = [_MARKER.sub("", o["label"]) for o in made["options"]] if made else []
+        done = made and (_answered_by(core, index, ids, labels)
+                         or _answered_before(core, index, made, job)
+                         or _answered_elsewhere(core, ids, labels))
         if made is None or done:   # shortcut: an answered question is dropped, its records wait
             asked = _flat(raw.get("question")) if isinstance(raw, Mapping) else ""
             why.append((asked, reason or f"the owner already answered it ({done})"))
@@ -933,10 +1053,20 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
     said = next((e for e in reversed(core.events()) if e.kind == "question-answer"
                  and e.payload.get("session") == session and not e.payload.get("asked")
                  and question_key(str(e.payload.get("question") or "")) == worded["key"]), None)
-    if not left or said is None:
+    if said is None:
         return
+    if not left:
+        _bind_flags(core, session, worded, said.digest)
+        return
+    principles = {str(q.get("principle") or "") for q in left}
+    picked = key_of_label(said.payload.get("answer")) in {
+        key_of_label(o.get("label")) for o in worded.get("options") or () if isinstance(o, Mapping)}
     asked = {"job": left[0].get("job"), "key": left[0].get("key"),
-             "keys": [q.get("key") for q in left],
+             # every key it covers, whichever checkout's session filed it (report-307d2564)
+             "keys": list(dict.fromkeys([*(q.get("key") for q in left),
+                                         *map(str, worded["covers"])])),
+             # one principle, and an option picked: the answer closes every copy on its topic
+             "principle": principles.pop() if picked and len(principles) == 1 else "",
              "records": list({(r.get("id"), r.get("hash")): r for q in left
                               for r in q.get("records") or () if isinstance(r, Mapping)}.values())}
     core.log_append_many("events", [("answer-bound", {"session": session, "answer": said.digest,
@@ -946,6 +1076,25 @@ def _bind_earlier_answer(core: Any, session: str, worded: Mapping[str, Any]) -> 
     queue.enqueue(core, files.make_job(kind, session, SCHEMA_ID, {
         "records": list(dict.fromkeys(str(r.get("id")) for r in asked["records"])),
         "answered": [said.digest]}))
+
+
+def key_of_label(label: Any) -> str:
+    return question_key(_MARKER.sub("", str(label or "")))
+
+
+def _bind_flags(core: Any, session: str, worded: Mapping[str, Any], digest: str) -> None:
+    """report-5f6565d7: the wording covers no question this checkout's sessions hold open: the
+    hidden-regression flag questions (the merge check's, in no session's question file), or,
+    report-307d2564, questions another checkout's sessions filed. The earlier answer is
+    pointed at each key it covers, once; no record goes back to the judge here, and the next
+    check reads it (``testchange.owner_needed``)."""
+    flags = [str(k) for k in worded["covers"]]
+    if not flags or any(e.kind == "answer-bound" and e.payload.get("answer") == digest
+                        for e in core.events()):
+        return
+    asked = {"job": None, "key": flags[0], "keys": flags, "records": []}
+    core.log_append_many("events", [("answer-bound", {"session": session, "answer": digest,
+                                                      "asked": asked})])
 
 
 def drop_settled_questions(core: Any, still_stale: Collection[str]) -> None:

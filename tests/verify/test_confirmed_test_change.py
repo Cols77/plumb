@@ -109,6 +109,30 @@ def test_a_pass_after_the_test_body_changed_does_not_resolve_a_regression() -> N
     assert "regressed" not in entry
 
 
+def test_a_requirement_owns_only_the_tests_its_link_reaches(confirmed) -> None:
+    """SR-030: a file-level link covers the file's nodes, a node-level link only that node, so a
+    regressed test is flagged under the requirement linking that test, or its file, and not
+    under one linking another test."""
+    root, _base = confirmed
+    _rewrite_test_to_pass(root)
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["requirements"] == {"SR-001": ["EX-1"]}  # the file-level link reaches it
+
+    commit_all(root, "rewritten")
+    core = open_core(root)
+    [old] = [lk for lk in core.index()["SR-001"].links
+             if lk.kind == "verified_by" and lk.target.path == "tests/test_mod.py"]
+    from iaso.links import unlink
+    core.add_link("SR-001", "verified_by", Target(test="tests/test_mod.py::test_add_zero"),
+                  example="EX-1")
+    unlink(core, old.id, "node-level links under test")
+    assert open_verify(open_core(root)).masked_regressions() == []  # a link to another test
+    core.add_link("SR-001", "verified_by", Target(test="tests/test_mod.py::test_add"),
+                  example="EX-1")
+    [item] = open_verify(open_core(root)).masked_regressions()
+    assert item["requirements"] == {"SR-001": ["EX-1"]}
+
+
 # -- report-fba0ba92: a background judge reads the test change before the flag drops ------------
 
 
@@ -363,6 +387,43 @@ def test_owner_waiver_of_the_full_run_covers_exactly_this_change(confirmed, caps
     assert "waived by the owner for this exact change" in out
     write(root, "src/pkg/lonely.py", "VALUE = 2\n")  # any later edit voids the waiver
     assert _check(root, base, as_json=False) == 5
+    capsys.readouterr()
+
+
+def test_the_owners_waive_answer_through_the_question_tool_is_the_waiver(
+        confirmed, monkeypatch, capsys, hook_input) -> None:
+    """SR-254 EX-11: the agent asks run-or-waive once through the question tool; the owner's
+    waive answer, logged by the question-answer hook, waives exactly this change."""
+    from iaso.hosts.claude_code import question_answer
+    from iaso.verify.policy import RUN, WAIVE
+
+    root, base = confirmed
+    write(root, "pyproject.toml", (root / "pyproject.toml").read_text("utf-8") + "# note\n")
+    commit_all(root, "pyproject comment")
+    monkeypatch.setenv("IASO_AGENT_SESSION", "claude-code")
+    monkeypatch.setenv("IASO_SESSION_ID", "s1")
+    assert _check(root, base) == 5
+    capsys.readouterr()
+
+    def answer(pick: str) -> None:
+        assert cli.main(["tests", "ask-waiver", "--merge", base, "--root", str(root)]) == 0
+        asked = json.loads(capsys.readouterr().out)
+        q = asked["questions"][0]
+        assert "pyproject.toml changed" in q["question"]
+        assert [o["label"] for o in q["options"]] == [RUN, WAIVE]
+        payload = hook_input("PostToolUse", tool_name="AskUserQuestion", tool_input=asked,
+                             tool_response={"answers": {q["question"]: pick}}, session_id="s1")
+        assert question_answer.main(stdin=io.StringIO(payload), stdout=io.StringIO(),
+                                    root=root) == 0
+
+    answer(RUN)                                  # "run it" waives nothing
+    assert _check(root, base) == 5
+    capsys.readouterr()
+    answer(WAIVE)
+    assert _check(root, base) == 0
+    assert "waived by the owner for this exact change" in capsys.readouterr().out
+    write(root, "src/pkg/lonely.py", "VALUE = 2\n")  # any later edit voids it
+    assert _check(root, base) == 5
     capsys.readouterr()
 
 

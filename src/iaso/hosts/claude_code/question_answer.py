@@ -9,7 +9,8 @@ answer is one of its option labels) names the records asked about at their versi
 and one bare judge job is queued for them: the worker rebuilds the premise with the answer and
 judges again (SR-212). An answer to the agent's own wording (``iaso question reword``,
 ``judge.reworded``) answers every judge question it covers, ``asked.keys`` naming each
-(SR-362). An answer to a pending proof question (``proof_questions.json``, filed by ``iaso proof SR-### --ask``
+(SR-362), and every hidden-regression flag question it covers (``testchange.flag_key``,
+report-5f6565d7). An answer to a pending proof question (``proof_questions.json``, filed by ``iaso proof SR-### --ask``
 in any checkout of this machine, matched by its key) carries ``proof: {record, hash,
 evidence_at}`` and the pending question is removed: the owner's yes is the only confirmation
 of a proof (DEC-257, ``proof.owner_confirmed``). The proof is tagged only when the question
@@ -84,7 +85,7 @@ def handle(ctx: HookContext) -> HookOutput | None:
         return None
     from iaso.api import open_core
     from iaso.present import owner_text
-    from iaso.understand import judge
+    from iaso.understand import judge, testchange
 
     core = open_core(ctx.root)
     own = list(judge.unanswered(core, ctx.session_id))
@@ -99,8 +100,11 @@ def handle(ctx: HookContext) -> HookOutput | None:
         covers = (worded.get(key) or {}).get("covers") or ()
         found = next((q for q in left if q.get("key") == key), None) or next(
             (q for q in left if q.get("key") in covers), None)  # SR-362: the agent's wording
+        # report-5f6565d7: the hidden-regression flag questions the wording covers (the merge
+        # check builds them, no session files them) take the answer too
+        flags = [str(k) for k in covers if testchange.flag_key(str(k))]
         mine = [q for q in left if q in own]
-        if found is None and len(mine) == 1 and key_of(entry["answer"]) in {
+        if found is None and not flags and len(mine) == 1 and key_of(entry["answer"]) in {
                 key_of(o.get("label")) for o in mine[0].get("options") or ()
                 if isinstance(o, dict)}:     # the one open question reworded: its option picked
             found = mine[0]
@@ -127,10 +131,29 @@ def handle(ctx: HookContext) -> HookOutput | None:
                                   for r in q.get("records") or () if isinstance(r, dict)
                               }.values()))}
             if covers:
-                entry["asked"]["keys"] = [q.get("key") for q in merged]
+                # every key it covers, whichever checkout's session filed it (report-307d2564)
+                entry["asked"]["keys"] = list(dict.fromkeys(
+                    [*(q.get("key") for q in merged), *map(str, covers)]))
             if _free_text(entry):
-                entry["free_text"] = True   # SR-212: logged and reread, the question stays open
+                # SR-212: the owner's own words close the question and go to the judge with it;
+                # its copies on the same topic still open here close with it
+                entry["free_text"] = True
+                about = judge._topics_of(entry["asked"])
+                copies = [q.get("key") for q in left if about & judge._topics_of(q)]
+                if copies:
+                    entry["asked"]["keys"] = list(dict.fromkeys(
+                        [*entry["asked"].get("keys", [found.get("key")]), *copies]))
+        elif covers and entry["answer"] != owner_text.STUDY_FIRST:
+            # none of the questions covered is open in this checkout (flags, or another
+            # checkout's): no record goes back to the judge here; each key takes the answer
+            # (``testchange.owner_needed`` reads a flag's)
+            entry["asked"] = {"job": None, "key": str(covers[0]), "principle": "",
+                              "records": [], "keys": list(map(str, covers))}
+            if _free_text(entry):
+                entry["free_text"] = True
+    _apply_conflicts(core, ctx.session_id, entries, key_of)
     elsewhere = _tag_proofs(core, ctx.session_id, entries, key_of)
+    _tag_waivers(core, ctx.session_id, entries, key_of)
     logged = core.log_append_many("events", [("question-answer", e) for e in entries])
     _share_proofs(core, entries, elsewhere)
     from iaso.mergedriver.conflicts import stage_choice
@@ -169,7 +192,8 @@ def _carried(core: Any, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _free_text(entry: dict[str, Any]) -> bool:
     """Options were shown and the answer is none of their labels (a multi-select answer joins
-    labels): the owner's own words, which do not by themselves close the question."""
+    labels): the owner's own words. They close the question and its copies open now
+    (report-307d2564), and go to the judge with the record (SR-212)."""
     labels = [str(o.get("label")) for o in entry.get("options") or () if o.get("label")]
     if not labels:
         return False
@@ -225,15 +249,83 @@ def _proof_files(core, session: str) -> list[tuple[Path, Path]]:
     """``(root, file)`` of every pending proof question file: the session's own first, then the
     other session folders of this checkout (the CLI's), then those of every other checkout of
     the repository on this machine, where ``iaso proof --ask`` in a worktree files them."""
-    from iaso import log
     from iaso.capture import proof
 
-    own = proof.questions_path(core.root, session)
+    return _pending_files(core, session, proof.QUESTIONS_FILE)
+
+
+def _pending_files(core, session: str, name: str) -> list[tuple[Path, Path]]:
+    from iaso import log
+    from iaso.understand import files
+
+    own = files.session_dir(Path(core.root), session) / name
     found = [(Path(core.root), own)] if own.exists() else []
     for root in (Path(core.root), *log.sibling_roots(core.paths)):
         found += [(root, path) for path in sorted((state_dir(root) / "session").glob(
-            f"*/{proof.QUESTIONS_FILE}")) if path != own]
+            f"*/{name}")) if path != own]
     return found
+
+
+def _tag_waivers(core, session: str, entries: list[dict], key_of) -> None:
+    """SR-254 EX-11: an answer to a pending run-or-waive question (``iaso tests ask-waiver``)
+    leaves its file; a WAIVE answer is the owner's ``waiver`` of the digest it was asked on,
+    logged in the checkout that filed it, where that merge is checked."""
+    from iaso.api import open_core
+    from iaso.understand import files
+    from iaso.verify.policy import WAIVE, WAIVER_QUESTIONS_FILE
+
+    for root, path in _pending_files(core, session, WAIVER_QUESTIONS_FILE):
+        asked = files.read_json(path)
+        asked = [q for q in asked if isinstance(q, dict)] if isinstance(asked, list) else []
+        hits = [(e, q) for e in entries if "waiver" not in e for q in asked
+                if q.get("key") == key_of(e["question"])]
+        if not hits:
+            continue
+        try:
+            where = core if root == Path(core.root) else open_core(root)
+        except Exception:  # noqa: BLE001 - a broken checkout never loses the owner's answer
+            continue
+        for entry, found in hits:
+            if found in asked:
+                asked.remove(found)
+            if entry["answer"] == WAIVE and WAIVE in [o["label"] for o in entry["options"]]:
+                entry["waiver"] = found.get("diff_digest")
+                where.log_append("events", "waiver", {
+                    "diff_digest": found.get("diff_digest"), "by": "owner",
+                    "via": "question-tool", "reason": "the owner waived it through the "
+                    "question tool"})
+        files.write_json_atomic(path, asked)
+
+
+def _apply_conflicts(core, session: str, entries: list[dict], key_of) -> None:
+    """report-cee7804c: an answer to a pending conflict question (``iaso conflict ask``, filed
+    in the checkout that holds the conflict) is applied in that checkout, and the question
+    leaves its file; the entry carries ``conflict: {ic, record, take}`` when it applied."""
+    from iaso.api import open_core
+    from iaso.mergedriver import conflicts
+    from iaso.understand import files
+
+    for root, path in _pending_files(core, session, conflicts.QUESTIONS_FILE):
+        asked = conflicts.pending(root, path.parent.name)
+        hits = [(e, q) for e in entries for q in asked if q.get("key") == key_of(e["question"])]
+        if not hits:
+            continue
+        try:
+            where = core if root == Path(core.root) else open_core(root)
+        except Exception:  # noqa: BLE001 - a broken checkout never loses the owner's answer
+            continue
+        for entry, found in hits:
+            if found not in asked:
+                continue
+            asked.remove(found)
+            try:
+                done = conflicts.answer_asked(where, found.get("ic"), entry["question"],
+                                              entry["answer"])
+            except Exception:  # noqa: BLE001 - the answer is still logged; the conflict stays
+                done = None
+            if done is not None:
+                entry["conflict"] = {k: done.get(k) for k in ("ic", "record", "take")}
+        files.write_json_atomic(path, asked)
 
 
 def _tag_proofs(core, session: str, entries: list[dict], key_of) -> list[tuple[Any, dict]]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,7 @@ def test_the_run_leaves_a_run_folder_and_no_scratch_repository(tmp_path):
     result = go(tmp_path, claude)
     assert not result.scratch.exists() and not result.scratch.parent.exists()
     assert [c[2] for c in claude.calls] == ["one", "two"]
-    for name in ("transcript.jsonl", "score.json", "issues.jsonl", "iaso"):
+    for name in ("transcript.jsonl", "score.json", "issues.jsonl", ".iaso"):
         assert (result.run_dir / name).exists()
     assert json.loads((result.run_dir / "score.json").read_text())["checks_total"] == 0
 
@@ -78,7 +79,7 @@ def test_the_model_is_passed_and_named_in_the_folder(tmp_path):
 
 @pytest.mark.sr("SR-344")
 def test_no_claude_raises_before_any_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(run.shutil, "which", lambda name: None)
+    monkeypatch.setattr("iaso.hosts.claude_code.claude_binary", lambda path=None: None)
     with pytest.raises(RuntimeError, match="claude command was not found"):
         run.run_task(tmp_path / "root", task(tmp_path), model="haiku", owner=Owner(False),
                      runs_dir=tmp_path / "runs", claude=Claude())
@@ -270,10 +271,24 @@ def test_the_run_judges_with_the_judge_of_the_repository_it_runs_from(tmp_path):
     (root / ".iaso" / "config.yaml").write_text(
         "judgment:\n  backend: jev\n  jev:\n    provider: openrouter\n", encoding="utf-8")
     kept = tmp_path / "kept"
-    shutil.copytree(go(tmp_path, Claude()).run_dir / "iaso", kept / ".iaso")
+    shutil.copytree(go(tmp_path, Claude()).run_dir / ".iaso", kept / ".iaso")
     judgment = load_config(kept).judgment
     assert judgment.backend == "jev"
     assert judgment.jev["credential_env"] == "OPENROUTER_API_KEY"
+
+
+@pytest.mark.sr("SR-344")
+def test_the_scratch_repository_tests_with_the_hosts_python(tmp_path):
+    """report-e1a601a7: the scratch tests run where pytest is, the host project's interpreter."""
+    from iaso.config import load_config
+
+    host = tmp_path / "host"
+    (host / ".venv" / "bin").mkdir(parents=True)
+    (host / ".venv" / "bin" / "python").write_text("", encoding="utf-8")
+    (host / ".iaso").mkdir()
+    scratch = run.scratch_repo(tmp_path / "s", host=host)
+    assert load_config(scratch).verify.python == str(host / ".venv" / "bin" / "python")
+    assert load_config(run.scratch_repo(tmp_path / "t")).verify.python == sys.executable
 
 
 def test_a_new_run_folder_removes_the_older_runs_of_its_series(tmp_path: Path) -> None:
