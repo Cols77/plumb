@@ -144,3 +144,20 @@ def test_report_921ca986_the_merge_verification_skips_files_the_runner_never_run
                                                   "SR-002": helpers}})
     assert out["unverified"] == {"SR-001": [test]}
     assert pytest_file("tests/a/b_test.py::t") and not pytest_file("tests/a/conftest.py")
+
+
+@pytest.mark.sr("SR-254")
+def test_sr254_ex27_drift_and_status_skip_files_the_runner_never_runs(repo: Path) -> None:
+    """SR-254 EX-27: Verify.acceptance (drift, status) agrees with the merge: a linked helper
+    module is no acceptance test, so only the real test is unverified."""
+    from iaso.verify import open_verify
+
+    write(repo, ".iaso/intents/INT-001.md", INT)
+    write(repo, ".iaso/requirements/SR-001.md", SR)
+    write(repo, "tests/awareness/test_x.py", "def test_y():\n    assert True\n")
+    write(repo, "tests/awareness/gitrepo.py", "HELPER = 1\n")
+    root = ["--root", str(repo)]
+    for end in ("tests/awareness/test_x.py", "tests/awareness/gitrepo.py"):
+        assert cli.main(["link", "SR-001", "verified_by", end, "--example", "EX-1", *root]) == 0
+    found = open_verify(open_core(repo)).unverified_acceptance(["SR-001"])
+    assert [item["test"] for item in found["SR-001"]] == ["tests/awareness/test_x.py"]

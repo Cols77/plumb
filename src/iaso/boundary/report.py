@@ -605,8 +605,9 @@ def _verification_lines(report: MergeReport, failing_line: Any) -> list[str]:
         else:
             out.append(f"verification: full verification pending ({reasons}); it holds the "
                        "merge until a full run passes (iaso merge-check runs it once), or the "
-                       "owner waives it for this change in their own terminal (iaso tests "
-                       f"waive --merge {report.base} --reason ...)")
+                       "owner waives it for this change: ask them once with the question "
+                       f"tool (iaso tests ask-waiver --merge {report.base} prints it); their "
+                       "waive answer is the waiver")
     else:
         out.append("verification: no full verification pending")
     if verification.get("confirmed_not_covered"):
