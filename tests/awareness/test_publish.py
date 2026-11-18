@@ -87,6 +87,7 @@ def test_committed_part_recomputed_only_when_head_moved(tmp_path: Path,
 
 def test_default_branch_has_no_committed_part(tmp_path: Path) -> None:
     main, _other = _setup(tmp_path)
+    requirement(main, "SR-001", "relay checks", "edited in main")
     data = pub.publish(open_core(main), [".iaso/requirements/SR-001.md"])
     assert data is not None and data["committed"] == []
     assert data["records"]["SR-001"]["how"] == "edited"
