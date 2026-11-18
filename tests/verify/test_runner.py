@@ -39,6 +39,22 @@ def test_hard_limit_terminates_own_child(tmp_path: Path) -> None:
 
 
 @pytest.mark.sr("SR-255")
+def test_a_run_keeps_its_tmp_folders_to_itself_and_removes_them(tmp_path: Path) -> None:
+    """/tmp filled up with pytest-of-<user> folders from many sessions' runs: each run's
+    tmp_path base is its own and is gone once the run ends."""
+    root = tmp_path / "temps"
+    write(root, "pytest.ini", "[pytest]\n")
+    write(root, "tests/test_t.py", "from pathlib import Path\n\n\ndef test_t(tmp_path):\n"
+          "    (tmp_path / 'f').write_text('x')\n    print('BASE=' + str(tmp_path.parent))\n"
+          "    assert 'iaso-pytest-' in str(tmp_path)\n")
+    result = run_pytest(root, ["tests/test_t.py", "-s"])
+    assert result.nodes["tests/test_t.py::test_t"]["outcome"] == "passed"
+    base = next(line.split("=", 1)[1] for line in result.output.splitlines()
+                if line.startswith("BASE="))
+    assert not Path(base).exists()
+
+
+@pytest.mark.sr("SR-255")
 def test_timeout_keeps_the_tests_that_finished_before_it(tmp_path: Path) -> None:
     """A timed-out run still reports every test that completed (setup, call, teardown)."""
     root = tmp_path / "partial"

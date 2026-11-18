@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextvars
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -351,6 +352,11 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             env["IASO_COV_SKIP"] = skip_file
     env["PYTHONDONTWRITEBYTECODE"] = "1"   # a file edited within the second of a run is read afresh
     cmd = build_command(args, workers=workers, cov=cov is not None, interpreter=interpreter)
+    # Each run's tmp_path folders live under a base of its own, removed when the run ends:
+    # pytest's keep-3 cleanup of /tmp/pytest-of-<user> did not keep up with many sessions'
+    # runs and used up /tmp's inodes (and, on tmpfs, its memory).
+    basetemp = tempfile.mkdtemp(prefix="iaso-pytest-")
+    cmd.append(f"--basetemp={basetemp}")
     start = time.monotonic()
     if progress is None and _PROGRESS.get() is not None:
         progress, step = _PROGRESS.get()
@@ -374,6 +380,7 @@ def run_pytest(root: Path, args: Sequence[str], *, timeout_s: float | None = Non
             out, _ = proc.communicate()
     if watch is not None:
         watch.finish()
+    shutil.rmtree(basetemp, ignore_errors=True)
     result.elapsed_s = round(time.monotonic() - start, 3)
     if cov is not None:
         result.cov_files = sorted(f for f in glob.glob(glob.escape(cov.data_base) + ".*")
