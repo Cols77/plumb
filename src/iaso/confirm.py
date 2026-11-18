@@ -167,9 +167,10 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
     confirms only whole; callers holding a Core use ``checked``/``remaining``."""
     from iaso.capture.autoapprove import recheck
     from iaso.understand.premise import ANSWER_VIA
-    from iaso.understand.recheck_model import cited_answers_problem
+    from iaso.understand.recheck_model import cited_answers_problem, resolved_answers
 
     answers: dict[str, Mapping[str, Any]] = {}   # the owner's question-tool answers so far
+    bound: dict[str, Mapping[str, Any]] = {}     # SR-362: answer digest -> its bound 'asked'
     prompts: set[str] = set()
     said: dict[str, str] = {}   # DEC-116: the owner's text split out of shared entries
     calibrations: dict[str, LogEntry] = {}
@@ -195,14 +196,25 @@ def checked_entries(entries: Iterable[LogEntry], affirmations: Sequence[str],
         elif entry.kind in ANSWER_VIA:
             if ANSWER_VIA[entry.kind] == entry.payload.get("via"):
                 answers[entry.digest] = entry.payload   # a pre-intent: the worker's only
+        elif entry.kind == "answer-bound":
+            target, asked = str(entry.payload.get("answer")), entry.payload.get("asked")
+            if isinstance(asked, Mapping) and target in answers:
+                earlier = bound.get(target, {}).get("records") or ()   # one answer may be
+                bound[target] = {**asked, "records": [                 # bound more than once
+                    *earlier, *(asked.get("records") or ())]}
         elif entry.kind in ("approval", "revocation"):
             problem = entry_problem(entry, prompts, affirmations, core)
             by = entry.payload.get("by")
+            cited: Mapping[str, Mapping[str, Any]] = answers
+            if problem is None and by in ("auto-jev", "auto-model") \
+                    and entry.kind == "approval":
+                # an answer with no 'asked' of its own counts as the judge's premise counts it
+                cited = resolved_answers(entry.payload, answers, bound, core)
             if problem is None and by == "auto-jev":
                 problem = recheck(entry, config, calibrations, prompts, approved, escalated,
-                                  answers)
+                                  cited)
             if problem is None and by == "auto-model" and entry.kind == "approval":
-                problem = cited_answers_problem(entry.payload, answers, "auto-model",
+                problem = cited_answers_problem(entry.payload, cited, "auto-model",
                                                 confirmed)
             if problem is None and by in ("auto-jev", "auto-model"):
                 problem = _split_set(entry.payload, escalated)
@@ -268,7 +280,7 @@ def escalated_of(core: Core) -> dict[str, frozenset[str]]:
 # and ``renumber`` for ``carry_renumbers``: a reader holding a Core loads these kinds only, so
 # a long-lived worker stays small as the log grows (report-30e224a3).
 CONFIRM_KINDS = ("prompt", "owner-words", "config", "calibration", "question-answer",
-                 "pre-intent", "approval", "revocation", "renumber")
+                 "answer-bound", "pre-intent", "approval", "revocation", "renumber")
 
 
 def confirm_events(core: Any) -> Sequence[LogEntry]:
