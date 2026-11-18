@@ -150,7 +150,9 @@ def build_command(args: Sequence[str], *, workers: int = 0, xdist: bool | None =
             xdist = xdist_available()
         if xdist:
             cmd += ["-n", str(workers)]
-    return cmd + list(args)
+    # Sorted: pytest 9 drops a package's conftest fixtures for files of a directory that comes
+    # back after another directory's file on the command line (engine_standins not found).
+    return cmd + sorted(args)
 
 
 def _node_outcomes(phases: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:

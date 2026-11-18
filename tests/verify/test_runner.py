@@ -78,6 +78,11 @@ def test_collection_error_does_not_stop_other_files(repo: Path) -> None:
     assert result.nodes["tests/test_helper.py::test_twice"]["outcome"] == "passed"
 
 
+def test_arguments_are_grouped_by_directory() -> None:
+    cmd = build_command(["tests/u/b.py", "tests/a.py", "tests/u/a.py"])
+    assert cmd[-3:] == ["tests/a.py", "tests/u/a.py", "tests/u/b.py"]
+
+
 def test_the_tests_run_in_the_repositorys_venv_when_it_has_one(tmp_path: Path) -> None:
     """Under the plugin, sys.executable is iaso's private environment, which has no pytest:
     a repository's .venv runs its tests; verify.python names another one; else iaso's."""
