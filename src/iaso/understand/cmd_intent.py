@@ -36,7 +36,7 @@ from typing import Any
 from iaso.cliutil import EXIT_FINDINGS, EXIT_USAGE, add_common, emit, resolve_root
 from iaso.understand import files, gate
 
-LOOP_VERBS = ("open", "gate", "done", "status", "progress", "adopt")
+LOOP_VERBS = ("open", "gate", "done", "status", "progress", "adopt", "drop")
 STAGES = ("clarify", "plan", "build")
 LEVELS = ("high", "medium", "low")
 BLOCKING = ("high", "medium")
@@ -404,6 +404,17 @@ def _checkouts(root: Path) -> list[Path]:
     return [root, main] if main.resolve() != root.resolve() else [root]
 
 
+def _matching(root: Path, args: argparse.Namespace) -> list[tuple[Path, Path, dict[str, Any]]]:
+    """The open loops of every checkout that --from-session, --intent and --digest name
+    exactly (a drop never takes an unclaimed loop for the intent named)."""
+    return [(r, p, d) for r in _checkouts(root) for p, d in loops(r)
+            if not d.get("handed_to") and not _passed(d, "build")
+            and (not args.from_session or p.parent.parent.name == args.from_session)
+            and (not args.intent or d.get("intent") == args.intent)
+            and (not args.digest or str(d["digest"]).removeprefix("sha256:").startswith(
+                args.digest.removeprefix("sha256:")))]
+
+
 def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
     """SR-302: take over an open loop of another session: copy it into this session, mark the
     old copy handed over and open the old session's gate."""
@@ -450,6 +461,42 @@ def cmd_adopt(core: Any, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_drop(core: Any, args: argparse.Namespace) -> int:
+    """The owner drops an open loop they no longer want: every copy of it goes (handed-over
+    ones too, so no new session reopens it), and the session it held is let go."""
+    from iaso.api import open_core
+    from iaso.understand.loops import touch
+
+    root = Path(core.root)
+    found = _matching(root, args)
+    if not found:
+        print("iaso: no open loop matches; nothing dropped", file=sys.stderr)
+        return EXIT_FINDINGS
+    if len(found) > 1:  # never guess: the others may be loops other sessions still run
+        print("iaso: more than one open loop matches; name one with --from-session, --intent "
+              "or --digest; nothing dropped:", file=sys.stderr)
+        for _r, p, d in found:
+            print(f"  session {p.parent.parent.name}: {d.get('intent') or 'no intent yet'} "
+                  f"({str(d['digest']).removeprefix('sha256:')[:12]})", file=sys.stderr)
+        return EXIT_FINDINGS
+    _r, path, data = found[0]
+    holders = []  # every session that held a copy, the one it was taken over from too
+    for r in _checkouts(root):
+        for p, d in loops(r):
+            if d.get("digest") == data["digest"]:
+                p.unlink(missing_ok=True)
+                holders.append((r, p.parent.parent.name))
+        touch(r)
+    for r, held_by in holders:
+        reset_head(r, held_by)
+        held = gate.state(r, held_by)
+        if held.state == "closed":
+            gate.open(open_core(r), held_by, held.message_digest, "handover",
+                      "the owner dropped the loop")
+    print(f"iaso: {data.get('intent') or 'the loop'} of session {path.parent.parent.name} dropped")
+    return 0
+
+
 def run(command: str, argv: list[str]) -> int:
     if not argv or argv[0] not in LOOP_VERBS:
         from iaso.capture import cli as capture_cli
@@ -479,10 +526,12 @@ def run(command: str, argv: list[str]) -> int:
     progress.add_argument("--left", action="append", metavar="WORDS",
                           help="a task still to do (repeat); the loop pane names them")
     adopter = verbs.add_parser("adopt")
-    adopter.add_argument("--from-session", default=None)
-    adopter.add_argument("--intent", default=None, metavar="INT-###")
-    adopter.add_argument("--digest", default=None)
-    for sub in (opener, gater, doner, verbs.choices["status"], progress, adopter):
+    dropper = verbs.add_parser("drop", help="the owner drops an open loop; on their word only")
+    for sub in (adopter, dropper):
+        sub.add_argument("--from-session", default=None)
+        sub.add_argument("--intent", default=None, metavar="INT-###")
+        sub.add_argument("--digest", default=None)
+    for sub in (opener, gater, doner, verbs.choices["status"], progress, adopter, dropper):
         add_common(sub)
         sub.add_argument("--session", default=None)
     try:
@@ -494,7 +543,7 @@ def run(command: str, argv: list[str]) -> int:
     core = open_core(resolve_root(args.root))
     try:
         return {"open": cmd_open, "gate": cmd_gate, "done": cmd_done, "status": cmd_status,
-                "progress": cmd_progress, "adopt": cmd_adopt}[
+                "progress": cmd_progress, "adopt": cmd_adopt, "drop": cmd_drop}[
             args.verb](core, args)
     except (LookupError, ValueError) as exc:
         print(f"iaso: {exc}", file=sys.stderr)
