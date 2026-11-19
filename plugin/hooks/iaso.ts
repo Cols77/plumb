@@ -352,22 +352,34 @@ export function elapsed(fromIso: string, now: number): string {
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-/** The session's open intent loop (SR-291): its newest loop file whose step is not proven
- * (`intent done` proves it, and the band is one line again); null when none is open. */
-export async function readLoop(io: Io, link: IasoLink): Promise<IasoLoop | null> {
-  const folder = join(sessionDir(link.root, link.session), 'intent')
+/** The newest open loop file of a session: null when none is open, undefined when its folder is unreadable or empty. */
+async function openLoop(io: Io, root: string, session: string): Promise<any | null | undefined> {
+  const folder = join(sessionDir(root, session), 'intent')
   let names: string[] = []
   try {
     names = (await io.list(folder)).filter(n => n.endsWith('.json'))
   } catch {
-    return null
+    return undefined
   }
+  if (names.length === 0) return undefined
   const open: any[] = []
   for (const name of names) {
     const data = await readJson(io, join(folder, name))
     if (data && STEPS.includes(data.step) && data.step !== 'proven') open.push(data)
   }
-  const loop = open.sort((a, b) => String(a.opened_at ?? '').localeCompare(String(b.opened_at ?? ''))).at(-1)
+  return open.sort((a, b) => String(a.opened_at ?? '').localeCompare(String(b.opened_at ?? ''))).at(-1) ?? null
+}
+
+/** The session's open intent loop (SR-291): its newest loop file whose step is not proven
+ * (`intent done` proves it, and the band is one line again); null when none is open. */
+export async function readLoop(io: Io, link: IasoLink): Promise<IasoLoop | null> {
+  let loop = await openLoop(io, link.root, link.session)
+  // an adopted loop goes on in the worktree it was handed to (handed_to); its folder gone, main's copy stands
+  const to = loop?.handed_to
+  if (to && typeof to.root === 'string' && typeof to.session === 'string') {
+    const there = await openLoop(io, to.root, to.session)
+    if (there !== undefined) loop = there
+  }
   if (!loop) return null
   const t = loop.tasks
   const task = t && typeof t === 'object' && t.label
