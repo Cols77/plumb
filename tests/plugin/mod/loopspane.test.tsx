@@ -76,7 +76,7 @@ for (const surface of SURFACES) {
       const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
       expect(await band.find({ type: 'Text', text: 'loops 4 · 1 idle' })).toBeDefined()
       await band.press({ key: 'chip:loops' })
-      expect(w.opens).toEqual([{ id: 'iaso-pane', columns: 80, closeOnEscape: true }])
+      expect(w.opens).toEqual([{ id: 'iaso-pane', columns: 400, closeOnEscape: true }])
       const view = await $.ui.mount(pane(surface))
       expect(await view.find({ type: 'Text', text: '● intent 2 +1 idle' })).toBeDefined()
       expect(await view.find({ type: 'Text', text: '○ debug 1' })).toBeDefined()
@@ -88,6 +88,22 @@ for (const surface of SURFACES) {
       expect((await view.find({ type: 'Text', text: /old loop/ }))?.props.dimColor).toBe(true)
       expect(await view.find({ type: 'Text', text: /stop hook/ })).toBeUndefined()
       await view.unmount()
+      await band.unmount()
+    })
+
+    test('SR-393 EX-13: a row is cut to the width the pane really has, not to a fixed 80', async ($, on) => {
+      const goal = 'a loop whose goal is long enough to be cut at eighty characters but not in a wider pane, so it reads'
+      const w = loopsWorld(() => answer([row('intent', 'aaaaaaaaaaaa', goal, 'plan')]))
+      install(on, w)
+      await $.session.start(START)
+      const band = await $.ui.mount({ plugin: 'iaso', surface, ...BAND })
+      await band.press({ key: 'chip:loops' })
+      const wide = await $.ui.mount({ ...pane(surface), props: { ...pane(surface).props, bodyColumns: 160 } })
+      expect(await wide.find({ type: 'Text', text: `● ${goal} · plan` })).toBeDefined()
+      await wide.unmount()
+      const narrow = await $.ui.mount(pane(surface))
+      expect((await narrow.find({ type: 'Text', text: /^● a loop whose goal/ }))?.text).toMatch(/…$/)
+      await narrow.unmount()
       await band.unmount()
     })
 

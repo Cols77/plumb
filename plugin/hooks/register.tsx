@@ -43,8 +43,10 @@ const paneAtom = atom({ plugin: 'iaso', key: 'pane' } as const,
 const loopsAtom = atom({ plugin: 'iaso', key: 'loops' } as const, iaso.NO_LOOPS)
 const knownAtom = atom({ plugin: 'iaso', key: 'known' } as const, iaso.NO_KNOWN)
 
-// the width the pane asks for when it docks beside the conversation
-const PANE_COLUMNS = 80
+// the width the pane asks for when it docks beside the conversation: as wide as the host allows
+// (it caps a dock at 45% of the terminal); lines are cut to the width the pane really has
+const PANE_COLUMNS = 400
+let paneWidth = 80
 
 function statusLine(view: IasoView): string {
   const waiting = view.status?.awaiting ?? 0 // SR-337 EX-1: status.json's count, never a card
@@ -189,7 +191,7 @@ type Row = { id: string; glyph: string; title: string; state: string; live: bool
 const CLASSES = ['loops', 'studies', 'problems', 'judge', 'build']
 
 /** a line cut to the pane's width with an ellipsis: nothing wraps (SR-410 EX-5) */
-const cutTo = (t: string, n = PANE_COLUMNS) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
+const cutTo = (t: string, n = paneWidth) => (t.length > n ? `${t.slice(0, n - 1)}…` : t)
 
 /** The pane's class counts, as its switch names them (SR-410). */
 function classCounts(view: IasoView, loops: IasoLoops, known: IasoKnown): Record<string, number> {
@@ -841,6 +843,7 @@ export const register: Register = on => {
       // a surface without the settings rows: the dark shade
     }
     const link = await read($, linkAtom)
+    paneWidth = Math.max(24, Number(e.props.bodyColumns) || 80) // the body the host really gave
     return classPane(ui, await read($, viewAtom), await read($, loopsAtom), await read($, knownAtom), await read($, paneAtom),
       link?.session ?? '', iasoColor(theme), brassColor(theme))
   })
